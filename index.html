@@ -291,9 +291,13 @@
                                     <!-- Eye whites -->
                                     <ellipse cx="38" cy="42" rx="10" ry="11" fill="white" />
                                     <ellipse cx="62" cy="42" rx="10" ry="11" fill="white" />
-                                    <!-- Pupils -->
-                                    <circle id="p-pupil-l" cx="39" cy="43" r="5.5" fill="#12122e" />
-                                    <circle id="p-pupil-r" cx="63" cy="43" r="5.5" fill="#12122e" />
+                                    <!-- Pupils with animation groups -->
+                                    <g id="p-eye-l">
+                                        <circle id="p-pupil-l" cx="39" cy="43" r="5.5" fill="#12122e" />
+                                    </g>
+                                    <g id="p-eye-r">
+                                        <circle id="p-pupil-r" cx="63" cy="43" r="5.5" fill="#12122e" />
+                                    </g>
                                     <!-- Eye shine -->
                                     <circle cx="42" cy="40" r="2.2" fill="white" />
                                     <circle cx="66" cy="40" r="2.2" fill="white" />
@@ -629,12 +633,12 @@
                     'Pani puri ka naam liya aur Bhandhari hazir!! 🌊😂',
                     'Arey!! Bhandhari ko pani puri khilao koi! 🥣✨',
                     'Khatta meetha teekha... bilkul Bhandhari jaisa! 🌶️🤭',
-                    'Pani puri ki treat pakki hai aaj!! 💃',
+                    'Pani puri की treat pakki hai aaj!! 💃',
                 ],
                 eggPuff: [
                     'Egg puff!! Bhandhari ka favorite! 🥚✨',
                     'Bhandhari aur Egg puff... sadiyon purana rishta 🥚😂',
-                    'Ek egg puff Bhatari ke liye bhi? 🥺',
+                    'Ek egg puff Bhatari ke liye भी? 🥺',
                 ],
                 beautiful: [
                     'Sundar toh hai... uski aankhein sab keh deti hain 🌸✨',
@@ -668,21 +672,22 @@
             let sustainedTipInterval = null;
             let lastState = 'idle';
 
-            function showTip(text, priority = 0, holdMs = 7000, force = false) {
+            function showTip(text, priority = 0, holdMs = 4500, force = false) {
                 // If a higher or equal priority tip comes in, we allow interruption
                 if (!force && tipActive && priority < currentTipPriority) return;
 
                 currentTipPriority = priority;
                 tipActive = true;
 
-                // Start fade out
-                penguinTip.style.transition = 'opacity 0.25s ease';
-                penguinTip.style.opacity = '0';
+                // Step 1: Fade out existing tip
+                penguin.classList.remove('show-tip');
 
                 clearTimeout(penguinTipTimeout);
                 penguinTipTimeout = setTimeout(() => {
+                    // Step 2: Swap text while hidden
                     penguinTip.textContent = text;
-                    penguinTip.style.opacity = '1';
+                    
+                    // Step 3: Fade in new tip
                     penguin.classList.add('show-tip');
 
                     // Reset tip after hold time
@@ -732,17 +737,17 @@
                 else if (state === 'p-think-down') tipKey = 'thinkDown';
                 else if (state && state.startsWith('p-')) tipKey = state.substring(2);
 
-                showTip(randomTip(tipKey || 'idle'), priority, (priority >= 3 ? 6500 : 4500), forceUpdate);
+                showTip(randomTip(tipKey || 'idle'), priority, (priority >= 3 ? 5000 : 4500), forceUpdate);
 
-                // Sustained states like thinking/sleep should rotate tips periodically
-                const sustained = ['p-sleep', 'p-think', 'p-think-up', 'p-think-down'];
+                // Sustained states like thinking/sleep/idle should rotate tips periodically
+                const sustained = ['idle', 'p-sleep', 'p-think', 'p-think-up', 'p-think-down'];
                 if (sustained.includes(state)) {
                     sustainedTipInterval = setInterval(() => {
                         // Only rotate if we're not being blocked by a higher priority action
                         if (!tipActive || currentTipPriority <= priority) {
-                            showTip(randomTip(tipKey), priority, 4500);
+                            showTip(randomTip(tipKey || 'idle'), priority, 4500);
                         }
-                    }, 9000); // 9s rotation for sustained states
+                    }, 12000); // Rotate every 12s for sustained states
                 } else if (autoReset && state && state !== 'idle') {
                     penguinStateTimeout = setTimeout(() => {
                         penguinSvg.classList.remove(state);

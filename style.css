@@ -1305,24 +1305,45 @@ section {
 }
 #chat-penguin .penguin-tooltip {
     position: absolute;
-    bottom: 108%;
+    bottom: 115%;
     right: 0;
-    background: rgba(20,10,40,0.96);
-    border: 1px solid var(--glass-border);
-    border-radius: 12px 12px 4px 12px;
-    padding: 0.45rem 0.8rem;
-    font-size: 0.76rem;
-    color: var(--accent-light);
-    white-space: nowrap;
+    left: auto;
+    background: linear-gradient(135deg, rgba(25, 10, 50, 0.98), rgba(15, 5, 30, 0.98));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(199, 125, 255, 0.3);
+    border-radius: 16px 16px 4px 16px;
+    padding: 0.75rem 1.2rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #ffffff;
+    width: max-content;
+    min-width: 140px; /* Stabilizes the box */
+    max-width: 220px;
+    text-align: center;
     opacity: 0;
     pointer-events: none;
-    transform: translateY(6px) scale(0.95);
-    transition: all 0.28s cubic-bezier(0.175,0.885,0.32,1.275);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    transform: translateY(12px) scale(0.94) translateZ(0);
+    transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7);
+    backface-visibility: hidden;
+    contain: paint layout; /* Optimization: Stops layout thrashing */
+    -webkit-font-smoothing: subpixel-antialiased;
+}
+/* Speech bubble tail */
+#chat-penguin .penguin-tooltip::after {
+    content: '';
+    position: absolute;
+    bottom: -9px;
+    right: 12px;
+    width: 0;
+    height: 0;
+    border-left: 9px solid transparent;
+    border-right: 9px solid transparent;
+    border-top: 10px solid rgba(15, 5, 30, 0.98);
 }
 #chat-penguin.show-tip .penguin-tooltip {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) scale(1) translateZ(0);
 }
 
 /* --- SVG base --- */
@@ -1447,4 +1468,40 @@ section {
     30%  { opacity: 1; }
     80%  { opacity: 0.7; }
     100% { opacity: 0;   transform: translate(8px,-18px) scale(1.1); }
+}
+
+/* --- ✨ DYNAMIC CUTENESS: Blinking & Face Loops --- */
+#p-eye-l, #p-eye-r {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+#penguin-svg:not(.p-sleep) #p-eye-l, 
+#penguin-svg:not(.p-sleep) #p-eye-r {
+    animation: pBlink 6s infinite;
+}
+#p-pupil-l, #p-pupil-r {
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 0.3s ease; /* Smooth eye movement */
+}
+@keyframes pBlink {
+    0%, 93%, 100% { transform: scaleY(1); }
+    96.5% { transform: scaleY(0); }
+}
+
+/* Background cute expressions when awake */
+#penguin-svg:not(.p-sleep):not(.p-happy) #p-blush-l,
+#penguin-svg:not(.p-sleep):not(.p-happy) #p-blush-r {
+    animation: pCuteBlush 12s infinite;
+}
+#penguin-svg:not(.p-sleep):not(.p-happy) #p-smile {
+    animation: pCuteSmile 12s infinite;
+}
+@keyframes pCuteBlush {
+    0%, 30%, 100% { opacity: 0; }
+    40%, 85% { opacity: 0.45; }
+}
+@keyframes pCuteSmile {
+    0%, 30%, 100% { opacity: 0; }
+    40%, 85% { opacity: 0.8; }
 }
