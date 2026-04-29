@@ -745,9 +745,9 @@
             // --- 24-Hour Disappearing Messages Logic ---
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-            // 1. Initial UI Query: Only fetch messages from the last 24 hours
-            const dayAgo = new Date(Date.now() - ONE_DAY_MS);
-            const q = query(
+            // 1. UI Query: Fetch messages from the last 24 hours (with a small safety overlap)
+            let dayAgo = new Date(Date.now() - ONE_DAY_MS - (10 * 60 * 1000)); // 24h + 10m buffer
+            let q = query(
                 repliesCol,
                 where("timestamp", ">=", dayAgo),
                 orderBy("timestamp", "asc")
@@ -756,7 +756,9 @@
             // 2. Reliable Background Cleanup: Delete expired messages exactly after 24 hours
             const cleanupExpiredMessages = async () => {
                 try {
-                    const cutoffTime = new Date(Date.now() - ONE_DAY_MS);
+                    // Safety Buffer: Only delete if message is OLDER than 24 hours + 10 mins
+                    // This prevents early deletion due to clock differences (Clock Drift)
+                    const cutoffTime = new Date(Date.now() - ONE_DAY_MS - (10 * 60 * 1000)); 
                     const cleanupQ = query(repliesCol, where("timestamp", "<", cutoffTime));
                     const expiredSnap = await getDocs(cleanupQ);
 
