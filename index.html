@@ -516,6 +516,10 @@
                     'Teri aankhon mein uski fikr saaf dikh rahi hai 💜',
                     'Woh sabse special hai... Bhatari ke liye 🌸',
                     'Bhandhari ko pata bhi nahi ki Bhatari usse kitna darta hai khone se 🥺',
+                    'Jab tak bhatari ka message nahi aata tab tak uska upar message padhlo',
+                    'Jab tak bhatari ka message nahi aata tab tak upar ke dono songs play kardo',
+                    'Jo songs upar bhatari ne add kiye hai na, uske lyrics wo tumhe kehna chahta hai',
+                    'Bhatari mujhse kehta hai, ke tum uski ek lauti bestfriend ho',
                 ],
                 wave: [
                     'Hiii Mera naam hai Pingu!! 🖐️💜',
@@ -670,7 +674,7 @@
             let currentTipPriority = 0; // 0: Idle, 1: Sleep, 2: Think, 3: Action/Special
             let tipActive = false;
             let sustainedTipInterval = null;
-            let lastState = 'idle';
+            let lastState = null; // Start null to ensure first state triggers
 
             function showTip(text, priority = 0, holdMs = 4500, force = false) {
                 // If a higher or equal priority tip comes in, we allow interruption
@@ -747,7 +751,7 @@
                         if (!tipActive || currentTipPriority <= priority) {
                             showTip(randomTip(tipKey || 'idle'), priority, 4500);
                         }
-                    }, 12000); // Rotate every 12s for sustained states
+                    }, 6500); // 4.5s duration + ~2s delay = 6.5s interval
                 } else if (autoReset && state && state !== 'idle') {
                     penguinStateTimeout = setTimeout(() => {
                         penguinSvg.classList.remove(state);
