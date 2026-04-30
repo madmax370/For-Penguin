@@ -952,7 +952,9 @@ section {
     color: #fff;
 }
 
+/*
 /* --- 🐧 THE PENGUIN MASCOT (Improved Interactivity) --- */
+/*
 .penguin-mascot {
     position: fixed;
     top: 50%;
@@ -967,6 +969,7 @@ section {
     pointer-events: auto;
     cursor: pointer; /* Desktop clickable feel */
 }
+*/
 
 .close-reply {
     position: absolute;
@@ -1292,6 +1295,7 @@ section {
     mix-blend-mode: screen;
 }
 
+/*
 /* ===================== ANIMATED SVG PENGUIN ===================== */
 #chat-penguin {
     position: absolute;
@@ -1507,3 +1511,4 @@ section {
     0%, 30%, 100% { opacity: 0; }
     40%, 85% { opacity: 0.8; }
 }
+*/

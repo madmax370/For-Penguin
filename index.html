@@ -303,51 +303,38 @@
                         <div class="reply-input-container user-sanobar mt-6" style="position: relative;">
                             <span class="sender-label">Bhandhari Chat from here</span>
 
-                            <!-- Animated SVG Penguin Mascot -->
+                            <!-- Animated SVG Penguin Mascot 
                             <div id="chat-penguin">
                                 <div class="penguin-tooltip" id="penguin-tip">Heyyy! 💜</div>
                                 <svg id="penguin-svg" viewBox="0 0 100 118" xmlns="http://www.w3.org/2000/svg">
-                                    <!-- Left Wing -->
                                     <g id="p-wing-l">
                                         <ellipse cx="21" cy="80" rx="11" ry="24" fill="#12122e"
                                             transform="rotate(-18,21,66)" />
                                     </g>
-                                    <!-- Body -->
                                     <ellipse cx="50" cy="88" rx="30" ry="32" fill="#12122e" />
-                                    <!-- Belly -->
                                     <ellipse cx="50" cy="94" rx="18" ry="22" fill="#eef0f5" />
-                                    <!-- Right Wing -->
                                     <g id="p-wing-r">
                                         <ellipse cx="79" cy="80" rx="11" ry="24" fill="#12122e"
                                             transform="rotate(18,79,66)" />
                                     </g>
-                                    <!-- Feet -->
                                     <ellipse cx="40" cy="116" rx="11" ry="5" fill="#f0a500" />
                                     <ellipse cx="60" cy="116" rx="11" ry="5" fill="#f0a500" />
-                                    <!-- Head -->
                                     <circle cx="50" cy="46" r="28" fill="#12122e" />
-                                    <!-- Eye whites -->
                                     <ellipse cx="38" cy="42" rx="10" ry="11" fill="white" />
                                     <ellipse cx="62" cy="42" rx="10" ry="11" fill="white" />
-                                    <!-- Pupils with animation groups -->
                                     <g id="p-eye-l">
                                         <circle id="p-pupil-l" cx="39" cy="43" r="5.5" fill="#12122e" />
                                     </g>
                                     <g id="p-eye-r">
                                         <circle id="p-pupil-r" cx="63" cy="43" r="5.5" fill="#12122e" />
                                     </g>
-                                    <!-- Eye shine -->
                                     <circle cx="42" cy="40" r="2.2" fill="white" />
                                     <circle cx="66" cy="40" r="2.2" fill="white" />
-                                    <!-- Beak -->
                                     <ellipse cx="50" cy="55" rx="7.5" ry="4.5" fill="#f0a500" />
-                                    <!-- Blush -->
                                     <ellipse id="p-blush-l" cx="28" cy="52" rx="8" ry="5" fill="#ff6b9d" opacity="0" />
                                     <ellipse id="p-blush-r" cx="72" cy="52" rx="8" ry="5" fill="#ff6b9d" opacity="0" />
-                                    <!-- Happy Smile -->
                                     <path id="p-smile" d="M 43 60 Q 50 67 57 60" stroke="#f0a500" stroke-width="2.5"
                                         fill="none" stroke-linecap="round" opacity="0" />
-                                    <!-- Sleep eyes (closed arcs drawn over eye whites) -->
                                     <ellipse cx="38" cy="43" rx="10" ry="11" fill="white" id="p-sleep-cover-l"
                                         opacity="0" />
                                     <ellipse cx="62" cy="43" rx="10" ry="11" fill="white" id="p-sleep-cover-r"
@@ -356,15 +343,14 @@
                                         fill="none" stroke-linecap="round" opacity="0" />
                                     <path id="p-sleep-r" d="M 53 43 Q 62 50 71 43" stroke="#12122e" stroke-width="3.5"
                                         fill="none" stroke-linecap="round" opacity="0" />
-                                    <!-- ZZZ -->
                                     <text id="p-zzz" x="72" y="28" font-size="11" fill="#c77dff" opacity="0"
                                         font-family="Outfit,sans-serif" font-weight="600">zzz</text>
-                                    <!-- Thought bubbles (thinking state) -->
                                     <circle id="p-think-1" cx="70" cy="28" r="2.5" fill="#c77dff" opacity="0" />
                                     <circle id="p-think-2" cx="77" cy="20" r="3.5" fill="#c77dff" opacity="0" />
                                     <circle id="p-think-3" cx="86" cy="11" r="4.5" fill="#c77dff" opacity="0" />
                                 </svg>
                             </div>
+                            -->
 
                             <!-- Reply Preview -->
                             <div id="sanobar-reply-preview" class="reply-preview-box">
@@ -469,6 +455,7 @@
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
             const repliesCol = collection(db, "replies");
+            let isFirstLoadFinished = false;
 
             const myReplyBtn = document.getElementById('send-my-btn');
             const myReplyInput = document.getElementById('my-reply-text');
@@ -480,6 +467,7 @@
             const typingBhandhari = document.getElementById('typing-bhandhari');
             const scrollBottomBtn = document.getElementById('scroll-to-bottom-btn');
 
+            /*
             // --- 🐧 ANIMATED SVG PENGUIN BRAIN ---
             const penguin = document.getElementById('chat-penguin');
             const penguinSvg = document.getElementById('penguin-svg');
@@ -593,7 +581,7 @@
                     'SENT!! Ab jo hoga dekha jaayega 😤✨',
                     'Ek message aur... teri taraf se 💜',
                     'Bhandhari padh lena please, dekh le ek baar 🥺',
-                    'Jo dil mein hai wo bol diya!! 🎯💜',
+                    'Jo dil mein hai wo बोल diya!! 🎯💜',
                     'Message bhi udd gaya, dil bhi udd gaya 💌',
                     'Ab reply aaye ya na aaye... tune try kiya 💜',
                 ],
@@ -652,7 +640,9 @@
                     'Itni beauty dekh ke penguin bhi blush kar gaya 🐧💓',
                 ],
             };
+            */
 
+            /*
             const tipHistory = {};
 
             function randomTip(state) {
@@ -776,6 +766,7 @@
             // Click to wave — always shows tip
             penguin.addEventListener('click', () => setPenguinState('p-wave'));
             resetSleepTimer();
+            */
 
             // --- ✨ LIVING BACKGROUND BOKEH ---
             const bokehContainer = document.getElementById('bokeh-container');
@@ -798,6 +789,7 @@
                 chatDisplay.scrollTo({ top: chatDisplay.scrollHeight, behavior: 'smooth' });
             }
 
+            /*
             // --- Typing indicator → Penguin looks directionally ---
             const typingObserver = new MutationObserver(() => {
                 const bhatariTyping = typingBhatari.style.display !== 'none';
@@ -822,6 +814,7 @@
             });
             typingObserver.observe(typingBhatari, { attributes: true, attributeFilter: ['style'] });
             typingObserver.observe(typingBhandhari, { attributes: true, attributeFilter: ['style'] });
+            */
 
             // --- Scroll to Bottom Logic ---
             chatDisplay.addEventListener('scroll', () => {
@@ -1090,8 +1083,8 @@
 
                 // 3. Optimistic UI - bubble appears instantly
                 const optimisticBubble = addOptimisticBubble(text, senderType, !!(imageFile || videoFile));
-                setPenguinState('p-happy');
-                showTip(randomTip('send'), 4000);
+                // setPenguinState('p-happy');
+                // showTip(randomTip('send'), 4000);
 
                 try {
                     btn.disabled = true;
@@ -1349,6 +1342,7 @@
                         const lastData = lastDoc ? lastDoc.data() : null;
 
                         if (lastData && lastData.sender === 'sanobar' && !isInitialLoad) {
+                            /*
                             setPenguinState('p-wave');
                             const text = (lastData.text || "").toLowerCase();
 
@@ -1363,8 +1357,9 @@
                             } else {
                                 showTip(randomTip('receive'), 3);
                             }
+                            */
                         } else if (!isInitialLoad) {
-                            setPenguinState('p-wave');
+                            // setPenguinState('p-wave');
                         }
                     }
                 }
@@ -1375,8 +1370,8 @@
                 if (!isFirstLoadFinished) {
                     isFirstLoadFinished = true;
                     setTimeout(() => {
-                        setPenguinState('p-wave');
-                        showTip(randomTip('welcome'), 3);
+                        // setPenguinState('p-wave');
+                        // showTip(randomTip('welcome'), 3);
                     }, 1500);
                 }
             });
