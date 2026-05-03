@@ -4,202 +4,1094 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Website Moved</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Outfit', sans-serif;
-        }
-
-        body {
-            background-color: #050505;
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .background-glow {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80vw;
-            height: 80vw;
-            max-width: 600px;
-            max-height: 600px;
-            background: radial-gradient(circle, rgba(124, 58, 237, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
-            z-index: 1;
-            animation: pulse 4s ease-in-out infinite alternate;
-        }
-
-        @keyframes pulse {
-            0% {
-                transform: translate(-50%, -50%) scale(1);
-                opacity: 0.8;
-            }
-
-            100% {
-                transform: translate(-50%, -50%) scale(1.1);
-                opacity: 1;
-            }
-        }
-
-        .container {
-            position: relative;
-            z-index: 2;
-            text-align: center;
-            background: rgba(20, 20, 20, 0.6);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            padding: 3rem 2rem;
-            border-radius: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            max-width: 90%;
-            width: 450px;
-            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-
-        @keyframes slideUp {
-            0% {
-                opacity: 0;
-                transform: translateY(40px);
-            }
-
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            display: inline-block;
-            animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-
-            0%,
-            100% {
-                transform: translateY(0);
-            }
-
-            50% {
-                transform: translateY(-10px);
-            }
-        }
-
-        h1 {
-            font-size: 1.8rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(to right, #fff, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        p {
-            color: #9ca3af;
-            font-size: 1rem;
-            margin-bottom: 2rem;
-            line-height: 1.6;
-        }
-
-        .link-box {
-            display: inline-block;
-            background: rgba(124, 58, 237, 0.1);
-            border: 1px solid rgba(124, 58, 237, 0.3);
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            text-decoration: none;
-            color: #c4b5fd;
-            font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.3s ease;
-            letter-spacing: 0.5px;
-        }
-
-        .link-box:hover {
-            background: rgba(124, 58, 237, 0.2);
-            border-color: rgba(124, 58, 237, 0.5);
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px -10px rgba(124, 58, 237, 0.4);
-            color: #fff;
-        }
-
-        .particles {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        .particle {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            background: rgba(167, 139, 250, 0.5);
-            border-radius: 50%;
-            animation: moveUp 10s linear infinite;
-        }
-
-        @keyframes moveUp {
-            0% {
-                transform: translateY(100vh) scale(0);
-                opacity: 0;
-            }
-
-            10% {
-                opacity: 1;
-                transform: translateY(90vh) scale(1);
-            }
-
-            90% {
-                opacity: 1;
-                transform: translateY(10vh) scale(1);
-            }
-
-            100% {
-                transform: translateY(0) scale(0);
-                opacity: 0;
-            }
-        }
-    </style>
+    <title>For Penguin 💜</title>
+    <meta name="description" content="A small gift for my bestfriend">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Playfair+Display:ital@1&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <div class="particles" id="particles"></div>
-    <div class="background-glow"></div>
-    <div class="container">
-        <div class="icon">✨</div>
-        <h1>We Have Moved</h1>
-        <p>This space has been permanently shut down.<br>You can find our new website at the link below.</p>
-        <a href="https://for-penguin.onrender.com" class="link-box">for-penguin.onrender.com</a>
+    <!-- Persistent Background Layer (Ensures visibility on mobile) -->
+    <div class="background-canvas">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+        <div class="bg-orb orb-3"></div>
     </div>
 
-    <script>
-        const particlesContainer = document.getElementById('particles');
-        for (let i = 0; i < 20; i++) {
-            const particle = document.createElement('div');
-            particle.classList.add('particle');
-            particle.style.left = Math.random() * 100 + 'vw';
-            particle.style.animationDuration = (Math.random() * 5 + 5) + 's';
-            particle.style.animationDelay = Math.random() * 5 + 's';
-            particlesContainer.appendChild(particle);
-        }
-    </script>
+    <!-- Password Protection Overlay -->
+    <div id="password-overlay" class="password-screen">
+        <div class="password-box glass-card">
+            <div class="lock-icon">🔒</div>
+            <h2 class="glow-text mb-4">My Comfort Space… 💜</h2>
+            <p class="body-text mb-2" style="font-size: 0.9rem;">Please enter the 4-digit code to unlock.</p>
+            <div class="input-group">
+                <input type="password" id="password-input" maxlength="4" placeholder="••••" autocomplete="off">
+            </div>
+            <button id="unlock-btn" class="primary-btn mt-6">Unlock ✨</button>
+            <p id="password-error" class="error-msg mt-3" style="display: none;">Incorrect code. Try again! 🐧</p>
+        </div>
+    </div>
+
+    <!-- Offline Protection Overlay -->
+    <div id="offline-overlay" class="password-screen" style="display: none; background: #000; z-index: 10000;">
+        <div class="password-box glass-card">
+            <div class="lock-icon">📡</div>
+            <h2 class="glow-text mb-4">Connection Required</h2>
+            <p class="body-text mb-2">Please connect to the internet to access this space.</p>
+            <p class="text-xs opacity-50 mt-4">Security verification requires an active network.</p>
+        </div>
+    </div>
+
+    <!-- Hidden Content Root -->
+    <div id="main-content" class="content-root"
+        style="display: none; opacity: 0; transform: scale(0.98); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);">
+        <!-- Bokeh Particles Container -->
+        <div id="bokeh-container"></div>
+        <div id="particles-container"></div>
+        <div class="glow-blob blob-1"></div>
+        <div class="glow-blob blob-2"></div>
+        <div class="glow-blob blob-3"></div>
+
+        <main class="scroll-container">
+
+            <!-- Section 1: Opening -->
+            <section id="s1-opening" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper">
+                    <h1 class="elegant-text glow-text">Assalamualaikum… 💜</h1>
+                    <h2 class="sub-title">My Best Friend</h2>
+                    <p class="body-text mt-4">This is only for my Bhandhari bestfriend,</p>
+                    <h3 class="highlight-name glow-text mt-2">Penguin</h3>
+
+                    <button id="start-btn" class="primary-btn mt-8 pulse-anim">Start</button>
+                </div>
+            </section>
+
+            <!-- Section 2: Pie Chart -->
+            <section id="s2-chart" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper w-full">
+                    <h2 class="section-title mb-6">A small truth about my daily life…</h2>
+
+                    <div class="pie-chart-container">
+                        <div class="pie-chart"></div>
+                        <!-- Legend -->
+                        <div class="legend">
+                            <div class="legend-item"><span class="color-box color-missing"></span> Missing You 💜
+                                (Largest)
+                            </div>
+                            <div class="legend-item"><span class="color-box color-studying"></span> Studying 📚</div>
+                            <div class="legend-item"><span class="color-box color-sleeping"></span> Sleeping 😴</div>
+                            <div class="legend-item"><span class="color-box color-eating"></span> Eating 🍜</div>
+                        </div>
+                    </div>
+
+                    <p class="body-text italic mt-8 text-center px-4">
+                        "No matter what I do…<br>you somehow stay in every part of my day."
+                    </p>
+                    <div class="scroll-indicator">↓</div>
+                </div>
+            </section>
+
+            <!-- Section 3: Photos & Personality -->
+            <section id="s3-photos" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper w-full py-10 scrollable-content">
+
+                    <div class="locked-container mb-6">
+                        <div class="component-lock" onclick="focusPinInput(this)">
+                            <div class="lock-icon-small">🔒</div>
+                            <h4 class="text-sm font-semibold mb-1">Security Check</h4>
+                            <p class="text-xs opacity-60 mb-4">Enter 4-digit PIN to view</p>
+
+                            <div class="pin-display">
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                            </div>
+
+                            <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
+                            <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
+                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                        </div>
+                        <div class="photo-card float-anim">
+                            <img class="photo-img" src="images/image1-smile.jpg" alt="Childhood Smile">
+                            <div class="card-caption">
+                                <p class="caption text-sm italic opacity-80 text-center">"That same big smile… still my
+                                    favorite thing in the world ✨</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="locked-container mb-10">
+                        <div class="component-lock" onclick="focusPinInput(this)">
+                            <div class="lock-icon-small">🔒</div>
+                            <h4 class="text-sm font-semibold mb-1">Security Check</h4>
+                            <p class="text-xs opacity-60 mb-4">Enter 4-digit PIN to view</p>
+
+                            <div class="pin-display">
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                            </div>
+
+                            <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
+                            <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
+                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                        </div>
+                        <div class="photo-card float-anim-delayed">
+                            <img class="photo-img" src="images/image2-eyes.jpg" alt="Beautiful Eyes">
+                            <div class="card-caption">
+                                <p class="caption text-sm italic opacity-80 text-center">My eyes never get tired of
+                                    watching you <3< /p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h2 class="section-title glow-text mb-6">Her Core…</h2>
+                    <ul class="personality-list">
+                        <li>Talking 🗣️</li>
+                        <li>Sleeping 😴</li>
+                        <li>Cute (always) 🩷</li>
+                        <li>Intelligent (thodi si) 🧠</li>
+                        <li>Ignoring me 😒</li>
+                        <li>Even busier than Modi ji 😅</li>
+                    </ul>
+                    <div class="scroll-indicator mt-6">↓</div>
+                </div>
+            </section>
+
+            <!-- Section 4: Music Section -->
+            <section id="s4-music" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper w-full">
+                    <h2 class="section-title mb-8">Some songs… that feel like you</h2>
+
+                    <div class="music-card mb-6" data-audio="songs/song1.mp3">
+                        <div class="poster-placeholder">
+                            <div class="music-disk">
+                                <span class="disk-center"></span>
+                            </div>
+                        </div>
+                        <div class="music-info mt-4">
+                            <h3 class="song-title">Ojhal ❤️‍🩹</h3>
+                            <button class="play-btn my-3">▶ Play</button>
+                        </div>
+                    </div>
+
+                    <div class="music-card" data-audio="songs/song2.mp3">
+                        <div class="poster-placeholder">
+                            <div class="music-disk">
+                                <span class="disk-center"></span>
+                            </div>
+                        </div>
+                        <div class="music-info mt-4">
+                            <h3 class="song-title"> Qareeb 💗</h3>
+                            <button class="play-btn my-3">▶ Play</button>
+                        </div>
+                    </div>
+                    <div class="scroll-indicator mt-6">↓</div>
+                </div>
+            </section>
+
+            <!-- Section 5: Shayari Section -->
+            <section id="s5-shayari" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper w-full px-4">
+                    <h2 class="section-title mb-8">For you… in words I couldn’t say directly</h2>
+
+                    <div class="shayari-card float-anim mb-6">
+                        <div class="quote-mark">“</div>
+                        <p class="shayari-text" style="line-height: 1.8;">
+                            Or bhi chehre hai zamane me, par dil ko sirf tera hi intezaar raha...<br>
+                            Log milte rahe muskurate huwe, Par aankhon ko bas tera hi didaar raha..<br>
+                            Har mehfil mein naam liya nahi tera, Phir bhi har baat mein tera zikr baar-baar raha...<br>
+                            Or bhi chehre hai zamane me, par dil ko sirf tera hi intezaar raha... 💜
+                        </p>
+                        <div class="quote-mark text-right">”</div>
+                    </div>
+
+                    <div class="shayari-card float-anim-delayed">
+                        <div class="quote-mark">“</div>
+                        <p class="shayari-text" style="line-height: 1.8;">
+                            Tumse dosti ki koi hisab thodi hai,<br>
+                            tumse dil lagaya khwaab thodi hai,<br>
+                            tum jo kareeb ho itne mazak thodi hai,<br>
+                            tumse milna sirf ek ittefaq thodi hai,<br>
+                            isse zyada or kya misal du main apni dosti ki<br>
+                            ab tumse zyada yaha koi lajawab thodi hai.. 💜
+                        </p>
+                        <div class="quote-mark text-right">”</div>
+                    </div>
+                    <div class="scroll-indicator mt-8">↓</div>
+                </div>
+            </section>
+
+            <!-- Section 6: Final Message -->
+            <section id="s6-message" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper w-full px-4">
+                    <h2 class="section-title glow-text mb-6">Something I really want to say…</h2>
+
+                    <div class="locked-container">
+                        <div class="component-lock" onclick="focusPinInput(this)">
+                            <div class="lock-icon-small">✉️</div>
+                            <h4 class="text-sm font-semibold mb-1">Confidential</h4>
+                            <p class="text-xs opacity-60 mb-4">Enter PIN to read message</p>
+                            <div class="pin-display">
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                            </div>
+                            <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
+                            <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
+                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                        </div>
+                        <div class="message-block custom-scroll relative">
+                            <!-- Message 1 -->
+                            <div class="message-date text-right italic text-sm mb-4 pb-2 border-b border-white/10"
+                                style="color: var(--accent-light); opacity: 0.8; font-size: 0.9rem;">Monday, 27th April
+                            </div>
+                            <p class="body-text">
+                                I have added some features, I hope you will like it...<br>
+                                <br>
+                                Aur sorry yaar, main website ki link change karne ki bhot koshish kiya, but
+                                jaha par maine website ko deploy kiya na wo allow nahi karra website change karne
+                                ko.<br>
+                                So for now it will not possible, but I will try kuch jugaad karne padenga.<br>
+                                <br>
+                                Okay the main talk, tune boli na tere face par kuch change hogaya hai, I think tere naak
+                                par
+                                change huwa hai, tune naak tochhi na? kyuki last time jab maine tujhe aawaz diya tha na,
+                                to
+                                tu mere paas aayi thi tab maine notice kiya tha, I can be wrong?<br>
+                                <br>
+                                And ab to lock bhi hai website par, to tension free hokar baat kar sakti, and main isko
+                                aur
+                                secure banane ke try karunga..<br>
+                                <br>
+                                Aur jab pin enter karte time, save password karke pop-up aaya to, do not save karna
+                                okay.<br>
+                                <br>
+                                Thankyou so muchh for being with me... 💜
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Real-time Chat Section -->
+                    <div class="chat-section mt-8 w-full max-w-[500px] mx-auto text-left locked-container"
+                        style="min-height: 400px;">
+                        <div class="component-lock" onclick="focusPinInput(this)">
+                            <div class="lock-icon-small">💬</div>
+                            <h4 class="text-sm font-semibold mb-1">Chat Encrypted</h4>
+                            <p class="text-xs opacity-60 mb-4">Enter PIN to access messages</p>
+
+                            <div class="pin-display">
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                                <div class="pin-dot"></div>
+                            </div>
+
+                            <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
+                            <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
+                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                        </div>
+                        <h3 class="sub-title mb-4 text-center" style="font-size: 1.2rem;">Chat Section💬</h3>
+
+                        <!-- Reply box for 'Me' (User) -->
+                        <div class="reply-input-container user-me mb-6">
+                            <span class="sender-label">Bhatari Chat from here</span>
+
+                            <!-- Reply Preview -->
+                            <div id="me-reply-preview" class="reply-preview-box">
+                                <span class="reply-sender">Replying to...</span>
+                                <span class="reply-text"></span>
+                                <span class="close-reply" id="close-me-reply">×</span>
+                            </div>
+
+                            <!-- Image Preview -->
+                            <div id="me-image-preview" class="reply-preview-box"
+                                style="display: none; padding: 0.5rem; margin-bottom: 0.5rem; align-items: center; gap: 10px;">
+                                <img id="me-preview-img" src=""
+                                    style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">
+                                <span class="reply-text" style="flex:1;">Image attached</span>
+                                <span class="close-reply" id="close-me-image">×</span>
+                            </div>
+
+                            <!-- Video Preview -->
+                            <div id="me-video-preview" class="reply-preview-box"
+                                style="display: none; padding: 0.5rem; margin-bottom: 0.5rem; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.2rem;">🎥</span>
+                                <span class="reply-text" style="flex:1;">Video attached</span>
+                                <span class="close-reply" id="close-me-video">×</span>
+                            </div>
+
+                            <textarea id="my-reply-text" placeholder="Type your message..."
+                                class="custom-scroll"></textarea>
+                            <div style="display: flex; gap: 10px; margin-top: 12px;">
+                                <label for="my-image-input" class="image-upload-btn" title="Attach Image">
+                                    📷
+                                </label>
+                                <input type="file" id="my-image-input"
+                                    accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;">
+
+                                <label for="my-video-input" class="image-upload-btn" title="Attach Video">
+                                    🎥
+                                </label>
+                                <input type="file" id="my-video-input"
+                                    accept="video/mp4, video/webm, video/ogg, video/quicktime" style="display: none;">
+
+                                <button id="send-my-btn" class="primary-btn btn-me w-full"
+                                    style="padding: 0.8rem; font-size: 1rem;">Send Message ✨</button>
+                            </div>
+                        </div>
+
+                        <!-- The Chat Box Display -->
+                        <div style="position: relative;">
+
+                            <div id="replies-display" class="chat-display custom-scroll">
+                                <div id="chat-messages-list">
+                                    <!-- Messages will appear here -->
+                                </div>
+
+                                <!-- Inline Typing Indicators -->
+                                <div id="typing-bhatari" class="chat-message msg-me"
+                                    style="display: none; margin-top: 10px;">
+                                    <div class="msg-bubble" style="padding: 0.6rem 1.25rem;">
+                                        <span class="msg-sender"
+                                            style="display: block; font-size: 0.7rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">Bhatari
+                                            is typing</span>
+                                        <div class="typing-dots" style="margin-top: 4px;">
+                                            <span></span><span></span><span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="typing-bhandhari" class="chat-message msg-sanobar"
+                                    style="display: none; margin-top: 10px;">
+                                    <div class="msg-bubble" style="padding: 0.6rem 1.25rem;">
+                                        <span class="msg-sender"
+                                            style="display: block; font-size: 0.7rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">Bhandhari
+                                            is typing</span>
+                                        <div class="typing-dots" style="margin-top: 4px;">
+                                            <span></span><span></span><span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button id="scroll-to-bottom-btn" class="scroll-bottom-btn"
+                                title="Jump to latest">↓</button>
+                        </div>
+
+                        <!-- Reply box for 'Sanobar' (Friend) -->
+                        <div class="reply-input-container user-sanobar mt-6" style="position: relative;">
+                            <span class="sender-label">Bhandhari Chat from here</span>
+
+
+                            <!-- Reply Preview -->
+                            <div id="sanobar-reply-preview" class="reply-preview-box">
+                                <span class="reply-sender">Replying to...</span>
+                                <span class="reply-text"></span>
+                                <span class="close-reply" id="close-sanobar-reply">×</span>
+                            </div>
+
+                            <!-- Image Preview -->
+                            <div id="sanobar-image-preview" class="reply-preview-box"
+                                style="display: none; padding: 0.5rem; margin-bottom: 0.5rem; align-items: center; gap: 10px;">
+                                <img id="sanobar-preview-img" src=""
+                                    style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">
+                                <span class="reply-text" style="flex:1;">Image attached</span>
+                                <span class="close-reply" id="close-sanobar-image">×</span>
+                            </div>
+
+                            <!-- Video Preview -->
+                            <div id="sanobar-video-preview" class="reply-preview-box"
+                                style="display: none; padding: 0.5rem; margin-bottom: 0.5rem; align-items: center; gap: 10px;">
+                                <span style="font-size: 1.2rem;">🎥</span>
+                                <span class="reply-text" style="flex:1;">Video attached</span>
+                                <span class="close-reply" id="close-sanobar-video">×</span>
+                            </div>
+
+                            <textarea id="sanobar-reply-text" placeholder="Type your message..."
+                                class="custom-scroll"></textarea>
+                            <div style="display: flex; gap: 10px; margin-top: 12px;">
+                                <label for="sanobar-image-input" class="image-upload-btn" title="Attach Image">
+                                    📷
+                                </label>
+                                <input type="file" id="sanobar-image-input"
+                                    accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;">
+
+                                <label for="sanobar-video-input" class="image-upload-btn" title="Attach Video">
+                                    🎥
+                                </label>
+                                <input type="file" id="sanobar-video-input"
+                                    accept="video/mp4, video/webm, video/ogg, video/quicktime" style="display: none;">
+
+                                <button id="send-sanobar-btn" class="primary-btn btn-sanobar w-full"
+                                    style="padding: 0.8rem; font-size: 1rem;">Send Message ✨</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Playlist Button -->
+                    <div class="text-center mt-8 mb-4">
+                        <a id="playlist-btn" class="primary-btn playlist-btn"
+                            href="https://www.youtube.com/playlist?list=PLuLZEPAfgr7GTFfv1fCR80laIrGdKn8z9"
+                            target="_blank" rel="noopener noreferrer">
+                            <span class="music-icon">🎵</span> Songs Dedicated To You
+                        </a>
+                    </div>
+
+                    <div class="scroll-indicator mt-6">↓</div>
+                </div>
+            </section>
+
+            <!-- Section 7: Dua & Ending -->
+            <section id="s7-dua" class="glass-section center-content fade-in-hidden">
+                <div class="content-wrapper w-full px-4 text-center">
+
+                    <h2 class="section-title mb-6" style="font-size: 3.5rem;">🤲</h2>
+                    <div class="dua-card float-anim mb-12">
+                        <p class="body-text text-lg leading-relaxed">
+                            May Allah send you so much happiness<br>
+                            that you forget all the times you've ever been hurt. 💜<br>
+                            <br>
+                            <span class="font-bold">Ameen.</span>
+                        </p>
+                    </div>
+
+                    <div class="ending-text fade-out-anim mt-12">
+                        <p class="italic opacity-80">
+                            This page ends here…<br>
+                            but you’ll always stay somewhere in my thoughts. 💜
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Fullscreen Image Viewer Modal -->
+        <div id="image-modal" class="image-modal">
+            <span id="close-modal" class="close-modal">×</span>
+            <img class="modal-content" id="modal-img">
+        </div>
+
+        <!-- Firebase Configuration & Real-time Replies -->
+        <script type="module">
+            import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+            import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, getDocs, deleteDoc, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+            // --- Cloudinary Configuration ---
+            const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dyua5q73q/upload";
+            const CLOUDINARY_PRESET = "chat_videos";
+
+            // IMPORTANT: Replace this with YOUR actual Firebase Config from the Firebase Console
+            const firebaseConfig = {
+                apiKey: "AIzaSyDzcftZ3qMZJ86-WdrSioH9Y6Dt9JFeCAk",
+                authDomain: "web-app-511d5.firebaseapp.com",
+                projectId: "web-app-511d5",
+                storageBucket: "web-app-511d5.firebasestorage.app",
+                messagingSenderId: "885726215189",
+                appId: "1:885726215189:web:50bcacb46d43f823d5221c",
+                measurementId: "G-XZVGWR7FMM"
+            };
+
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            const repliesCol = collection(db, "replies");
+            let isFirstLoadFinished = false;
+
+            const myReplyBtn = document.getElementById('send-my-btn');
+            const myReplyInput = document.getElementById('my-reply-text');
+            const sanobarReplyBtn = document.getElementById('send-sanobar-btn');
+            const sanobarReplyInput = document.getElementById('sanobar-reply-text');
+            const chatDisplay = document.getElementById('replies-display');
+            const chatMessagesList = document.getElementById('chat-messages-list');
+            const typingBhatari = document.getElementById('typing-bhatari');
+            const typingBhandhari = document.getElementById('typing-bhandhari');
+            const scrollBottomBtn = document.getElementById('scroll-to-bottom-btn');
+
+
+
+            // --- ✨ LIVING BACKGROUND BOKEH ---
+            const bokehContainer = document.getElementById('bokeh-container');
+            function spawnBokeh() {
+                const el = document.createElement('div');
+                el.className = 'bokeh-particle';
+                const size = Math.random() * 30 + 10;
+                const left = Math.random() * 100;
+                const duration = Math.random() * 12 + 8;
+                const delay = Math.random() * 5;
+                el.style.cssText = `width:${size}px;height:${size}px;left:${left}%;animation-duration:${duration}s;animation-delay:${delay}s;`;
+                bokehContainer.appendChild(el);
+                setTimeout(() => el.remove(), (duration + delay) * 1000);
+            }
+            for (let i = 0; i < 12; i++) spawnBokeh();
+            setInterval(spawnBokeh, 2500);
+
+            // --- Smooth scroll to bottom ---
+            function smoothScrollToBottom() {
+                chatDisplay.scrollTo({ top: chatDisplay.scrollHeight, behavior: 'smooth' });
+            }
+
+
+
+            // --- Scroll to Bottom Logic ---
+            chatDisplay.addEventListener('scroll', () => {
+                if (chatDisplay.scrollHeight - chatDisplay.scrollTop - chatDisplay.clientHeight > 150) {
+                    scrollBottomBtn.classList.add('visible');
+                } else {
+                    scrollBottomBtn.classList.remove('visible');
+                }
+            });
+
+            scrollBottomBtn.addEventListener('click', () => smoothScrollToBottom());
+
+            // --- Chat State Variables ---
+            let currentReplyMe = null;
+            let currentReplySanobar = null;
+            let currentImageMe = null;
+            let currentImageFileMe = null;
+            let currentImageSanobar = null;
+            let currentImageFileSanobar = null;
+            let currentVideoMe = null;
+            let currentVideoSanobar = null;
+            let typingTimeoutMe, typingTimeoutSanobar;
+
+            // --- Image Compression Logic ---
+            function compressImage(file, maxWidth = 800, quality = 0.5) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = event => {
+                        const img = new Image();
+                        img.src = event.target.result;
+                        img.onload = () => {
+                            const canvas = document.createElement('canvas');
+                            let width = img.width;
+                            let height = img.height;
+
+                            if (width > maxWidth) {
+                                height = Math.round((height * maxWidth) / width);
+                                width = maxWidth;
+                            }
+
+                            canvas.width = width;
+                            canvas.height = height;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            // Return compressed base64
+                            resolve(canvas.toDataURL('image/jpeg', quality));
+                        };
+                        img.onerror = error => reject(error);
+                    };
+                    reader.onerror = error => reject(error);
+                });
+            }
+
+            // Image input listeners
+            const handleImageInput = async (e, target) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    const compressedBase64 = await compressImage(file);
+                    if (target === 'me') {
+                        currentImageMe = compressedBase64;
+                        currentImageFileMe = file;
+                        const preview = document.getElementById('me-image-preview');
+                        const previewImg = document.getElementById('me-preview-img');
+                        previewImg.src = compressedBase64;
+                        preview.style.display = 'flex';
+                        myReplyInput.placeholder = "Add a caption...";
+                    } else {
+                        currentImageSanobar = compressedBase64;
+                        currentImageFileSanobar = file;
+                        const preview = document.getElementById('sanobar-image-preview');
+                        const previewImg = document.getElementById('sanobar-preview-img');
+                        previewImg.src = compressedBase64;
+                        preview.style.display = 'flex';
+                        sanobarReplyInput.placeholder = "Add a caption...";
+                    }
+                } catch (err) {
+                    console.error("Image processing error:", err);
+                    alert("Failed to process image. Try a smaller file.");
+                }
+            };
+
+            document.getElementById('my-image-input').addEventListener('change', (e) => handleImageInput(e, 'me'));
+            document.getElementById('sanobar-image-input').addEventListener('change', (e) => handleImageInput(e, 'sanobar'));
+
+            document.getElementById('close-me-image').onclick = () => {
+                document.getElementById('me-image-preview').style.display = 'none';
+                currentImageMe = null;
+                currentImageFileMe = null;
+                document.getElementById('my-image-input').value = '';
+                myReplyInput.placeholder = "Type your message...";
+            };
+            document.getElementById('close-sanobar-image').onclick = () => {
+                document.getElementById('sanobar-image-preview').style.display = 'none';
+                currentImageSanobar = null;
+                currentImageFileSanobar = null;
+                document.getElementById('sanobar-image-input').value = '';
+                sanobarReplyInput.placeholder = "Type your message...";
+            };
+
+            // Video input listeners
+            const handleVideoInput = (e, target) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                // Basic size check (optional, e.g., 20MB limit)
+                if (file.size > 20 * 1024 * 1024) {
+                    alert("Video is too large. Please select a video under 20MB.");
+                    return;
+                }
+
+                if (target === 'me') {
+                    currentVideoMe = file;
+                    const preview = document.getElementById('me-video-preview');
+                    preview.style.display = 'flex';
+                    myReplyInput.placeholder = "Add a caption...";
+                } else {
+                    currentVideoSanobar = file;
+                    const preview = document.getElementById('sanobar-video-preview');
+                    preview.style.display = 'flex';
+                    sanobarReplyInput.placeholder = "Add a caption...";
+                }
+            };
+
+            document.getElementById('my-video-input').addEventListener('change', (e) => handleVideoInput(e, 'me'));
+            document.getElementById('sanobar-video-input').addEventListener('change', (e) => handleVideoInput(e, 'sanobar'));
+
+            document.getElementById('close-me-video').onclick = () => {
+                document.getElementById('me-video-preview').style.display = 'none';
+                currentVideoMe = null;
+                document.getElementById('my-video-input').value = '';
+                myReplyInput.placeholder = "Type your message...";
+            };
+            document.getElementById('close-sanobar-video').onclick = () => {
+                document.getElementById('sanobar-video-preview').style.display = 'none';
+                currentVideoSanobar = null;
+                document.getElementById('sanobar-video-input').value = '';
+                sanobarReplyInput.placeholder = "Type your message...";
+            };
+
+            // Fullscreen Modal Logic
+            const modal = document.getElementById('image-modal');
+            const modalImg = document.getElementById('modal-img');
+            window.openFullscreen = (src) => {
+                modal.style.display = "flex";
+                modalImg.src = src;
+            };
+            document.getElementById('close-modal').onclick = () => modal.style.display = "none";
+            modal.onclick = (e) => { if (e.target === modal) modal.style.display = "none"; };
+
+            // --- Reply Logic ---
+            function setReply(text, sender, target) {
+                const preview = document.getElementById(`${target}-reply-preview`);
+                preview.querySelector('.reply-sender').textContent = `Replying to ${sender === 'me' ? 'Bhatari' : 'Bhandhari'}`;
+                preview.querySelector('.reply-text').textContent = text;
+                preview.style.display = 'block';
+                if (target === 'me') currentReplyMe = { text, sender };
+                else currentReplySanobar = { text, sender };
+            }
+
+            document.getElementById('close-me-reply').onclick = () => {
+                document.getElementById('me-reply-preview').style.display = 'none';
+                currentReplyMe = null;
+            };
+            document.getElementById('close-sanobar-reply').onclick = () => {
+                document.getElementById('sanobar-reply-preview').style.display = 'none';
+                currentReplySanobar = null;
+            };
+
+            // --- Typing Indicator Logic ---
+            const statusDocRef = doc(db, "replies", "typing_status");
+            let localTypingState = { bhatari: false, bhandhari: false };
+
+            const updateTyping = (user, isTyping) => {
+                if (localTypingState[user] === isTyping) return;
+                localTypingState[user] = isTyping;
+                const update = {};
+                update[`${user}_typing`] = isTyping;
+                update.timestamp = null;
+
+                setDoc(statusDocRef, update, { merge: true }).catch(err => console.error("Status update failed:", err));
+            };
+
+            myReplyInput.addEventListener('input', () => {
+                if (myReplyInput.value.trim().length > 0) {
+                    updateTyping('bhatari', true);
+                    clearTimeout(typingTimeoutMe);
+                    typingTimeoutMe = setTimeout(() => updateTyping('bhatari', false), 2500);
+                } else {
+                    updateTyping('bhatari', false);
+                }
+            });
+
+            sanobarReplyInput.addEventListener('input', () => {
+                if (sanobarReplyInput.value.trim().length > 0) {
+                    updateTyping('bhandhari', true);
+                    clearTimeout(typingTimeoutSanobar);
+                    typingTimeoutSanobar = setTimeout(() => updateTyping('bhandhari', false), 2500);
+                } else {
+                    updateTyping('bhandhari', false);
+                }
+            });
+
+            onSnapshot(statusDocRef, (doc) => {
+                const data = doc.data();
+                if (!data) return;
+
+                typingBhatari.style.display = data.bhatari_typing ? 'flex' : 'none';
+                typingBhandhari.style.display = data.bhandhari_typing ? 'flex' : 'none';
+
+                if (data.bhatari_typing || data.bhandhari_typing) {
+                    chatDisplay.scrollTop = chatDisplay.scrollHeight;
+                }
+            });
+
+            // Helper to get relative day label
+            function getDayLabel(date) {
+                const today = new Date();
+                const yesterday = new Date();
+                yesterday.setDate(today.getDate() - 1);
+
+                if (date.toDateString() === today.toDateString()) return "Today";
+                if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+
+                return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+            }
+
+            // --- Haptic Feedback Helper ---
+            function haptic(pattern = [40]) {
+                if (navigator.vibrate) navigator.vibrate(pattern);
+            }
+
+            // --- Optimistic UI bubble helper ---
+            function addOptimisticBubble(text, senderType, hasMedia) {
+                const isMe = senderType === 'me';
+                const div = document.createElement('div');
+                div.className = `chat-message ${isMe ? 'msg-me' : 'msg-sanobar'}`;
+                div.id = 'optimistic-bubble';
+                div.innerHTML = `<div class="msg-bubble sending-optimistic">
+                    <span class="msg-sender" style="display:block;font-size:0.75rem;font-weight:bold;margin-bottom:4px;opacity:0.8;">${isMe ? 'Bhatari' : 'Bhandhari'}</span>
+                    ${hasMedia ? '<span style="opacity:0.6;font-size:0.9rem">📎 Uploading media...</span>' : ''}
+                    ${text ? `<p>${text}</p>` : ''}
+                    <span class="msg-time" style="font-style:italic;">Sending...</span>
+                </div>`;
+                chatMessagesList.appendChild(div);
+                smoothScrollToBottom();
+                return div;
+            }
+
+            // --- Send Message ---
+            async function sendMessage(text, senderType, btn, originalText, replyData, imageFile, videoFile) {
+                if (!text && !imageFile && !videoFile) return;
+
+                // 1. Haptic feedback immediately
+                haptic([30]);
+
+                // 2. Whoosh animation on the input container
+                const container = btn.closest('.reply-input-container');
+                container.classList.remove('send-flash');
+                container.offsetHeight;
+                container.classList.add('send-flash');
+                setTimeout(() => container.classList.remove('send-flash'), 400);
+
+                // 3. Optimistic UI - bubble appears instantly
+                const optimisticBubble = addOptimisticBubble(text, senderType, !!(imageFile || videoFile));
+                // showTip(randomTip('send'), 4000);
+
+                try {
+                    btn.disabled = true;
+                    btn.textContent = 'Sending...';
+
+                    let uploadedUrl = null;
+                    const fileToUpload = imageFile || videoFile;
+
+                    if (fileToUpload) {
+                        uploadedUrl = await new Promise((resolve, reject) => {
+                            const formData = new FormData();
+                            formData.append('file', fileToUpload);
+                            formData.append('upload_preset', CLOUDINARY_PRESET);
+
+                            const xhr = new XMLHttpRequest();
+                            xhr.open('POST', CLOUDINARY_URL, true);
+
+                            xhr.upload.onprogress = (e) => {
+                                if (e.lengthComputable) {
+                                    const progress = Math.round((e.loaded / e.total) * 100);
+                                    btn.textContent = `Uploading ${progress}%...`;
+                                }
+                            };
+
+                            xhr.onload = () => {
+                                if (xhr.status === 200) {
+                                    const response = JSON.parse(xhr.responseText);
+                                    resolve(response.secure_url);
+                                } else {
+                                    reject(new Error('Upload Failed: ' + xhr.statusText));
+                                }
+                            };
+
+                            xhr.onerror = () => reject(new Error('Network Error during upload'));
+                            xhr.send(formData);
+                        });
+                    }
+
+                    const msgData = {
+                        text: text || "",
+                        sender: senderType,
+                        timestamp: serverTimestamp()
+                    };
+                    if (replyData) msgData.replyTo = replyData;
+                    if (imageFile) msgData.imageUrl = uploadedUrl;
+                    if (videoFile) msgData.videoUrl = uploadedUrl;
+
+                    await addDoc(repliesCol, msgData);
+                    updateTyping(senderType === 'me' ? 'bhatari' : 'bhandhari', false);
+                    haptic([20, 30, 20]); // success haptic
+
+                } catch (error) {
+                    console.error("Error sending message: ", error);
+                    alert("Failed to send. Error: " + error.message);
+                    optimisticBubble.remove();
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
+            }
+
+            // Bind 'Me' button
+            myReplyBtn.addEventListener('click', () => {
+                const text = myReplyInput.value.trim();
+                sendMessage(text, 'me', myReplyBtn, 'Send Message ✨', currentReplyMe, currentImageFileMe, currentVideoMe).then(() => {
+                    myReplyInput.value = '';
+                    myReplyInput.placeholder = "Type your message...";
+                    document.getElementById('me-reply-preview').style.display = 'none';
+                    document.getElementById('me-image-preview').style.display = 'none';
+                    document.getElementById('me-video-preview').style.display = 'none';
+                    currentReplyMe = null;
+                    currentImageMe = null;
+                    currentImageFileMe = null;
+                    currentVideoMe = null;
+                    document.getElementById('my-image-input').value = '';
+                    document.getElementById('my-video-input').value = '';
+                });
+            });
+
+            // Bind 'Sanobar' button
+            sanobarReplyBtn.addEventListener('click', () => {
+                const text = sanobarReplyInput.value.trim();
+                sendMessage(text, 'sanobar', sanobarReplyBtn, 'Send Message ✨', currentReplySanobar, currentImageFileSanobar, currentVideoSanobar).then(() => {
+                    sanobarReplyInput.value = '';
+                    sanobarReplyInput.placeholder = "Type your message...";
+                    document.getElementById('sanobar-reply-preview').style.display = 'none';
+                    document.getElementById('sanobar-image-preview').style.display = 'none';
+                    document.getElementById('sanobar-video-preview').style.display = 'none';
+                    currentReplySanobar = null;
+                    currentImageSanobar = null;
+                    currentImageFileSanobar = null;
+                    currentVideoSanobar = null;
+                    document.getElementById('sanobar-image-input').value = '';
+                    document.getElementById('sanobar-video-input').value = '';
+                });
+            });
+
+            // --- Persistence Logic: All messages will now stay ---
+            let q = query(
+                repliesCol,
+                orderBy("timestamp", "asc")
+            );
+
+            /*
+            // 2. Reliable Background Cleanup (DISABLED)
+            const cleanupExpiredMessages = async () => {
+                try {
+                    const cutoffTime = new Date(Date.now() - ONE_DAY_MS - (10 * 60 * 1000));
+                    const cleanupQ = query(repliesCol, where("timestamp", "<", cutoffTime));
+                    const expiredSnap = await getDocs(cleanupQ);
+                    expiredSnap.forEach(async (docSnap) => {
+                        if (docSnap.id !== "typing_status") {
+                            deleteDoc(docSnap.ref).catch(err => console.error("Failed to delete expired msg:", err));
+                        }
+                    });
+                } catch (error) {
+                    console.error("Cleanup process error:", error);
+                }
+            };
+            cleanupExpiredMessages();
+            setInterval(cleanupExpiredMessages, 60 * 1000);
+            */
+
+            // --- Image Lazy Load Observer ---
+            const imgObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        img.onload = () => img.classList.add('loaded');
+                        if (img.complete) img.classList.add('loaded');
+                        imgObserver.unobserve(img);
+                    }
+                });
+            }, { rootMargin: '100px' });
+
+            // Track known message IDs to detect truly NEW messages
+            let knownMessageIds = new Set();
+            let isInitialLoad = true;
+
+            // Track if user was at bottom before snapshot
+            let isUserAtBottom = true;
+            chatDisplay.addEventListener('scroll', () => {
+                isUserAtBottom = chatDisplay.scrollHeight - chatDisplay.scrollTop - chatDisplay.clientHeight < 60;
+            });
+
+            onSnapshot(q, (snapshot) => {
+                const ob = document.getElementById('optimistic-bubble');
+                if (ob) ob.remove();
+
+                chatMessagesList.innerHTML = '';
+                let lastDayLabel = "";
+                let hasNewMessage = false;
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+
+                    // Handle pending server timestamps
+                    const msgTimestamp = data.timestamp ? data.timestamp.toDate() : new Date();
+                    const timeStr = data.timestamp ? msgTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "...";
+
+                    const msgDate = msgTimestamp;
+                    const currentDayLabel = getDayLabel(msgDate);
+
+                    if (currentDayLabel !== lastDayLabel) {
+                        const divider = document.createElement('div');
+                        divider.className = 'chat-date-divider';
+                        divider.innerHTML = `<span>${currentDayLabel}</span>`;
+                        chatMessagesList.appendChild(divider);
+                        lastDayLabel = currentDayLabel;
+                    }
+
+                    const msgDiv = document.createElement('div');
+                    const isMe = data.sender === 'me';
+                    const senderClass = isMe ? 'msg-me' : 'msg-sanobar';
+                    const senderName = isMe ? 'Bhatari' : 'Bhandhari';
+
+                    // Detect if this is a genuinely new message (not initial load)
+                    const isNew = !isInitialLoad && !knownMessageIds.has(doc.id);
+                    knownMessageIds.add(doc.id);
+                    if (isNew) hasNewMessage = true;
+
+                    msgDiv.className = `chat-message ${senderClass}`;
+
+                    let replyHtml = '';
+                    if (data.replyTo) {
+                        const replyContent = data.replyTo.text || '📎 Media';
+                        replyHtml = `
+                            <div class="quoted-message">
+                                <span class="msg-sender-name">${data.replyTo.sender === 'me' ? 'Bhatari' : 'Bhandhari'}</span>
+                                <p style="margin:0; font-size: 0.8rem; opacity: 0.8;">${replyContent}</p>
+                            </div>
+                        `;
+                    }
+
+                    // Image with lazy load
+                    let imageHtml = '';
+                    if (data.imageUrl) {
+                        imageHtml = `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>`;
+                    }
+
+                    let videoHtml = '';
+                    if (data.videoUrl) {
+                        videoHtml = `
+                            <div class="msg-video-wrapper">
+                                <video controls class="msg-attached-video" preload="metadata">
+                                    <source src="${data.videoUrl}" type="video/mp4">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                        `;
+                    }
+
+                    msgDiv.innerHTML = `
+                        <div class="msg-bubble${isNew ? '' : ' no-anim'}">
+                            <button class="reply-btn-ui" title="Reply">↩</button>
+                            ${replyHtml}
+                            <span class="msg-sender" style="display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">${senderName}</span>
+                            ${imageHtml}
+                            ${videoHtml}
+                            ${data.text ? `<p>${data.text}</p>` : ''}
+                            <span class="msg-time">${timeStr}</span>
+                        </div>
+                    `;
+
+                    // Activate lazy load for images
+                    const imgEl = msgDiv.querySelector('.msg-attached-image');
+                    if (imgEl) {
+                        imgEl.src = imgEl.dataset.src;
+                        imgObserver.observe(imgEl);
+                    }
+
+                    // Handle Reply Button Click
+                    msgDiv.querySelector('.reply-btn-ui').onclick = () => {
+                        const replyLabel = data.text || (data.videoUrl ? '🎥 Video' : '📷 Image');
+                        if (data.sender === 'sanobar') {
+                            setReply(replyLabel, data.sender, 'me');
+                            myReplyInput.focus();
+                        } else {
+                            setReply(replyLabel, data.sender, 'sanobar');
+                            sanobarReplyInput.focus();
+                        }
+                    };
+
+                    chatMessagesList.appendChild(msgDiv);
+                });
+
+                if (isUserAtBottom || hasNewMessage) {
+                    smoothScrollToBottom();
+                    if (hasNewMessage) {
+                        const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+                        const lastData = lastDoc ? lastDoc.data() : null;
+
+                        if (lastData && lastData.sender === 'sanobar' && !isInitialLoad) {
+                            /*
+                            const text = (lastData.text || "").toLowerCase();
+
+                            if (lastData.imageUrl || lastData.videoUrl) {
+                                showTip(randomTip('media'), 3);
+                            } else if (text.includes('pani puri') || text.includes('chaat')) {
+                                showTip(randomTip('paniPuri'), 3);
+                            } else if (text.includes('egg puff')) {
+                                showTip(randomTip('eggPuff'), 3);
+                            } else if (text.includes('sundar') || text.includes('beautiful') || text.includes('cute')) {
+                                showTip(randomTip('beautiful'), 3);
+                            } else {
+                                showTip(randomTip('receive'), 3);
+                            }
+                            */
+                        } else if (!isInitialLoad) {
+                        }
+                    }
+                }
+
+                // After processing all docs, mark initial load as done
+                isInitialLoad = false;
+
+                if (!isFirstLoadFinished) {
+                    isFirstLoadFinished = true;
+                    setTimeout(() => {
+                        // showTip(randomTip('welcome'), 3);
+                    }, 1500);
+                }
+            });
+        </script>
+
+    </div> <!-- End main-content -->
+
+    <script src="script.js"></script>
 </body>
 
 </html>
