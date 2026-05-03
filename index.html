@@ -144,7 +144,7 @@
                             <img class="photo-img" src="images/image2-eyes.jpg" alt="Beautiful Eyes">
                             <div class="card-caption">
                                 <p class="caption text-sm italic opacity-80 text-center">My eyes never get tired of
-                                    watching you <3< /p>
+                                    watching you &lt;3</p>
                             </div>
                         </div>
                     </div>
@@ -513,21 +513,30 @@
 
 
 
-            // --- ✨ LIVING BACKGROUND BOKEH ---
+            // --- ✨ LIVING BACKGROUND BOKEH (Optimized Pool) ---
             const bokehContainer = document.getElementById('bokeh-container');
-            function spawnBokeh() {
+            const BOKEH_COUNT = 15;
+            for (let i = 0; i < BOKEH_COUNT; i++) {
                 const el = document.createElement('div');
                 el.className = 'bokeh-particle';
+                bokehContainer.appendChild(el);
+                resetBokeh(el, true);
+            }
+
+            function resetBokeh(el, initial = false) {
                 const size = Math.random() * 30 + 10;
                 const left = Math.random() * 100;
                 const duration = Math.random() * 12 + 8;
-                const delay = Math.random() * 5;
+                const delay = initial ? Math.random() * -10 : Math.random() * 2;
+                
                 el.style.cssText = `width:${size}px;height:${size}px;left:${left}%;animation-duration:${duration}s;animation-delay:${delay}s;`;
-                bokehContainer.appendChild(el);
-                setTimeout(() => el.remove(), (duration + delay) * 1000);
+                
+                el.style.animationName = 'none';
+                void el.offsetWidth; // trigger reflow
+                el.style.animationName = 'floatUp'; // Using the global animation
+
+                setTimeout(() => resetBokeh(el), (duration + delay) * 1000);
             }
-            for (let i = 0; i < 12; i++) spawnBokeh();
-            setInterval(spawnBokeh, 2500);
 
             // --- Smooth scroll to bottom ---
             function smoothScrollToBottom() {
@@ -536,12 +545,21 @@
 
 
 
-            // --- Scroll to Bottom Logic ---
+            // --- Scroll to Bottom Logic (Optimized) ---
+            let isScrollTicking = false;
             chatDisplay.addEventListener('scroll', () => {
-                if (chatDisplay.scrollHeight - chatDisplay.scrollTop - chatDisplay.clientHeight > 150) {
-                    scrollBottomBtn.classList.add('visible');
-                } else {
-                    scrollBottomBtn.classList.remove('visible');
+                if (!isScrollTicking) {
+                    window.requestAnimationFrame(() => {
+                        const dist = chatDisplay.scrollHeight - chatDisplay.scrollTop - chatDisplay.clientHeight;
+                        isUserAtBottom = dist < 60; // For new message tracking
+                        if (dist > 150) {
+                            scrollBottomBtn.classList.add('visible');
+                        } else {
+                            scrollBottomBtn.classList.remove('visible');
+                        }
+                        isScrollTicking = false;
+                    });
+                    isScrollTicking = true;
                 }
             });
 
@@ -561,8 +579,9 @@
             // --- Image Compression Logic ---
             function compressImage(file, maxWidth = 800, quality = 0.5) {
                 return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(file);
+                    setTimeout(() => { // Yield to main thread for UI responsiveness
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
                     reader.onload = event => {
                         const img = new Image();
                         img.src = event.target.result;
@@ -587,6 +606,7 @@
                         img.onerror = error => reject(error);
                     };
                     reader.onerror = error => reject(error);
+                    }, 10);
                 });
             }
 
@@ -944,10 +964,7 @@
             let isInitialLoad = true;
 
             // Track if user was at bottom before snapshot
-            let isUserAtBottom = true;
-            chatDisplay.addEventListener('scroll', () => {
-                isUserAtBottom = chatDisplay.scrollHeight - chatDisplay.scrollTop - chatDisplay.clientHeight < 60;
-            });
+            let isUserAtBottom = true; // updated securely in optimized scroll listener
 
             onSnapshot(q, (snapshot) => {
                 const ob = document.getElementById('optimistic-bubble');
@@ -957,7 +974,12 @@
                 let lastDayLabel = "";
                 let hasNewMessage = false;
 
-                snapshot.forEach((doc) => {
+                // DOM Memory Optimization: Cap at latest 100 messages
+                const allDocs = [];
+                snapshot.forEach(doc => allDocs.push(doc));
+                const docsToRender = allDocs.slice(-100);
+
+                docsToRender.forEach((doc) => {
                     const data = doc.data();
 
                     // Handle pending server timestamps
@@ -1008,8 +1030,8 @@
                     if (data.videoUrl) {
                         videoHtml = `
                             <div class="msg-video-wrapper">
-                                <video controls class="msg-attached-video" preload="metadata">
-                                    <source src="${data.videoUrl}" type="video/mp4">
+                                <video controls class="msg-attached-video" preload="metadata" playsinline>
+                                    <source src="${data.videoUrl}">
                                     Your browser does not support the video tag.
                                 </video>
                             </div>

@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const unlockBtn = document.getElementById('unlock-btn');
     const passwordError = document.getElementById('password-error');
     const mainContent = document.getElementById('main-content');
-    
+
     // Auto-initialize if the lock screen is turned off
     if (passwordOverlay && passwordOverlay.style.display === 'none') {
         initMainApp();
@@ -32,23 +32,23 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 passwordOverlay.style.display = 'none';
                 mainContent.style.display = 'block';
-                
+
                 // Trigger professional intro transition
                 requestAnimationFrame(() => {
                     mainContent.style.opacity = '1';
                     mainContent.style.transform = 'scale(1)';
                 });
-                
+
                 // Re-trigger global initialization
                 initMainApp();
-                
+
                 const firstSection = document.getElementById('s1-opening');
                 if (firstSection) firstSection.classList.add('fade-in-visible');
             }, 500); // Smooth fade out for overlay
         } else {
             failedAttempts++;
             passwordInput.value = '';
-            
+
             if (failedAttempts >= 3) {
                 isLockedOut = true;
                 passwordInput.disabled = true;
@@ -56,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 passwordError.style.display = 'none';
                 lockoutMsg.textContent = 'Too many attempts. Locked out for 15 seconds.';
                 lockoutMsg.style.display = 'block';
-                
+
                 let countdown = 15;
                 const lockTimer = setInterval(() => {
                     countdown--;
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const input = lockElement.querySelector('.pin-input-hidden');
         input.focus();
         lockElement.classList.add('focused');
-        
+
         // Ensure the focused class stays as long as the input is focused
         input.onblur = () => lockElement.classList.remove('focused');
         input.onfocus = () => lockElement.classList.add('focused');
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (value === '1102') {
                 lockElement.classList.add('unlocked');
                 lockElement.closest('.locked-container').classList.add('is-unlocked');
-                
+
                 // Auto-scroll chat if applicable
                 if (lockElement.closest('.chat-section')) {
                     setTimeout(() => {
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
             mutations.forEach((mutation) => {
                 const target = mutation.target;
                 const container = target.closest('.locked-container');
-                
+
                 // If the container is NOT unlocked but the lock is hidden/modified
                 if (container && !container.classList.contains('is-unlocked')) {
                     if (mutation.type === 'attributes' || mutation.type === 'childList') {
@@ -161,14 +161,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         document.querySelectorAll('.locked-container').forEach(container => {
-            observer.observe(container, { attributes: true, childList: true, subtree: true });
+            observer.observe(container, { attributes: true, childList: true, subtree: false });
         });
     };
     setupTamperProtection();
 
     // --- NEW: Security & Network Handling ---
     const offlineOverlay = document.getElementById('offline-overlay');
-    
+
     const handleNetworkChange = () => {
         if (!navigator.onLine) {
             offlineOverlay.style.display = 'flex';
@@ -189,9 +189,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // We use a combination of immediate blurring and forced reload on return
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            // 1. Immediate Aggressive Blur (Prevents clear screenshots in app switcher)
-            document.body.style.filter = 'blur(50px) brightness(0.2)';
-            
+            // 1. Immediate Blackout (Very cheap for GPU compared to blur)
+            let blackout = document.getElementById('privacy-blackout');
+            if (!blackout) {
+                blackout = document.createElement('div');
+                blackout.id = 'privacy-blackout';
+                blackout.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#05020a;z-index:999999;';
+                document.body.appendChild(blackout);
+            }
+            blackout.style.display = 'block';
+
             // 2. Clear sensitive input values immediately
             passwordInput.value = '';
             document.querySelectorAll('.pin-input-hidden').forEach(i => i.value = '');
@@ -216,10 +223,15 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // 3. Floating Hearts (Bonus interaction)
+        // 3. Floating Hearts (Bonus interaction - Throttled for performance)
+        let lastHeartTime = 0;
         document.addEventListener('click', (e) => {
-            if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA') {
-                createHeart(e.pageX, e.pageY);
+            if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'A') {
+                const now = Date.now();
+                if (now - lastHeartTime > 200) {
+                    createHeart(e.pageX, e.pageY);
+                    lastHeartTime = now;
+                }
             }
         });
 
@@ -234,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     entry.target.classList.add('fade-in-visible');
-                    
+
                     const children = entry.target.querySelectorAll('.photo-card, .music-card, .shayari-card, .personality-list li');
                     children.forEach((child, index) => {
                         setTimeout(() => {
@@ -277,13 +289,13 @@ document.addEventListener('DOMContentLoaded', () => {
         let currentCard = null;
 
         const musicCards = document.querySelectorAll('.music-card');
-        
+
         musicCards.forEach(card => {
             const btn = card.querySelector('.play-btn');
-            if(!btn) return;
-            
+            if (!btn) return;
+
             const audioSrc = card.getAttribute('data-audio');
-            
+
             btn.addEventListener('click', () => {
                 if (currentAudio && currentCard === card) {
                     if (!currentAudio.paused) {
@@ -301,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentAudio) {
                     currentAudio.pause();
                     const prevBtn = currentCard.querySelector('.play-btn');
-                    if(prevBtn) prevBtn.textContent = '▶ Play';
+                    if (prevBtn) prevBtn.textContent = '▶ Play';
                     currentCard.classList.remove('playing');
                 }
 
@@ -310,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 currentAudio = new Audio(audioSrc);
                 currentCard = card;
-                
+
                 currentAudio.addEventListener('canplaythrough', () => {
                     if (currentCard === card) {
                         const playPromise = currentAudio.play();
@@ -373,10 +385,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // Optimized Particle System for Mobile
 function createParticles() {
     const container = document.getElementById('particles-container');
-    if(!container) return;
+    if (!container) return;
 
     const isMobile = window.innerWidth <= 768;
-    const numParticles = isMobile ? 6 : 15; 
+    const numParticles = isMobile ? 6 : 15;
 
     for (let i = 0; i < numParticles; i++) {
         const particle = document.createElement('div');
@@ -388,16 +400,16 @@ function createParticles() {
         particle.style.borderRadius = '50%';
         particle.style.left = `${Math.random() * 90}vw`; // Stay within screen
         particle.style.top = `${Math.random() * 90}vh`; // Stay within screen
-        
+
         particle.style.willChange = 'transform';
         const duration = Math.random() * 10 + 20; // Even slower for elegance
-        const delay = Math.random() * -20; 
+        const delay = Math.random() * -20;
         // Safer path: 0 to 10% movement only to stay within screen
         particle.style.animation = `flowSafe ${duration}s linear ${delay}s infinite alternate`;
         container.appendChild(particle);
     }
 
-    if(!document.getElementById('particle-styles')) {
+    if (!document.getElementById('particle-styles')) {
         const styleSheet = document.createElement('style');
         styleSheet.id = 'particle-styles';
         styleSheet.innerText = `

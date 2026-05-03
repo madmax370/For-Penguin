@@ -1806,3 +1806,14 @@ section {
         transform: scale(1);
     }
 }
+
+/* --- Mobile Performance Overrides --- */
+@media (max-width: 768px) {
+    .password-screen, .component-lock, .glass-card, .reply-input-container {
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .privacy-blur {
+        filter: blur(15px) brightness(0.2) !important;
+    }
+}
