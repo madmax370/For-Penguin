@@ -988,8 +988,8 @@
                 // We reverse them so the UI still shows oldest-to-newest
                 const docsToRender = snapshot.docs.map(doc => doc).reverse();
 
-                docsToRender.forEach((doc) => {
-                    const data = doc.data();
+                docsToRender.forEach((docSnap) => {
+                    const data = docSnap.data();
 
                     // Handle pending server timestamps
                     const msgTimestamp = data.timestamp ? data.timestamp.toDate() : new Date();
@@ -1012,8 +1012,8 @@
                     const senderName = isMe ? 'Bhatari' : 'Bhandhari';
 
                     // Detect if this is a genuinely new message (not initial load)
-                    const isNew = !isInitialLoad && !knownMessageIds.has(doc.id);
-                    knownMessageIds.add(doc.id);
+                    const isNew = !isInitialLoad && !knownMessageIds.has(docSnap.id);
+                    knownMessageIds.add(docSnap.id);
                     if (isNew) hasNewMessage = true;
 
                     msgDiv.className = `chat-message ${senderClass}`;
@@ -1050,12 +1050,15 @@
                     msgDiv.innerHTML = `
                         <div class="msg-bubble${isNew ? '' : ' no-anim'}">
                             <button class="reply-btn-ui" title="Reply">↩</button>
+                            <button class="edit-btn-ui" title="Edit">✎</button>
                             ${replyHtml}
                             <span class="msg-sender" style="display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">${senderName}</span>
                             ${imageHtml}
                             ${videoHtml}
-                            ${data.text ? `<p>${data.text}</p>` : ''}
-                            <span class="msg-time">${timeStr}</span>
+                            <div class="msg-content-area">
+                                ${data.text ? `<p class="msg-text">${data.text}</p>` : ''}
+                            </div>
+                            <span class="msg-time">${timeStr}${data.edited ? '<span class="edited-label">(edited)</span>' : ''}</span>
                         </div>
                     `;
 
@@ -1064,6 +1067,56 @@
                     if (imgEl) {
                         imgEl.src = imgEl.dataset.src;
                         imgObserver.observe(imgEl);
+                    }
+
+                    // Handle Edit Button Click
+                    const editBtn = msgDiv.querySelector('.edit-btn-ui');
+                    if (editBtn) {
+                        editBtn.onclick = () => {
+                            const bubble = msgDiv.querySelector('.msg-bubble');
+                            const contentArea = msgDiv.querySelector('.msg-content-area');
+                            const originalText = data.text || "";
+                            
+                            // Prevent multiple editors
+                            if (contentArea.querySelector('.inline-editor')) return;
+
+                            contentArea.innerHTML = `
+                                <textarea class="inline-editor" rows="2">${originalText}</textarea>
+                                <div class="edit-controls">
+                                    <button class="edit-cancel-btn">Cancel</button>
+                                    <button class="edit-save-btn">Save</button>
+                                </div>
+                            `;
+
+                            const textarea = contentArea.querySelector('.inline-editor');
+                            textarea.focus();
+                            // Move cursor to end
+                            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+                            contentArea.querySelector('.edit-cancel-btn').onclick = () => {
+                                contentArea.innerHTML = data.text ? `<p class="msg-text">${data.text}</p>` : '';
+                            };
+
+                            contentArea.querySelector('.edit-save-btn').onclick = async () => {
+                                const newText = textarea.value.trim();
+                                if (!newText || newText === originalText) {
+                                    contentArea.innerHTML = data.text ? `<p class="msg-text">${data.text}</p>` : '';
+                                    return;
+                                }
+
+                                try {
+                                    const docRef = doc(db, "replies", docSnap.id);
+                                    await updateDoc(docRef, { 
+                                        text: newText, 
+                                        edited: true 
+                                    });
+                                    // The onSnapshot will update the UI automatically
+                                } catch (err) {
+                                    console.error("Edit failed:", err);
+                                    alert("Could not update message.");
+                                }
+                            };
+                        };
                     }
 
                     // Handle Reply Button Click
