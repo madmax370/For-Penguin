@@ -479,7 +479,7 @@
         <!-- Firebase Configuration & Real-time Replies -->
         <script type="module">
             import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-            import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, getDocs, deleteDoc, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+            import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, getDocs, deleteDoc, doc, setDoc, updateDoc, limit, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
             // --- Cloudinary Configuration ---
             const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dyua5q73q/upload";
@@ -498,6 +498,15 @@
 
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
+
+            // Enable Persistence to reduce repeated reads
+            enableIndexedDbPersistence(db).catch((err) => {
+                if (err.code == 'failed-precondition') {
+                    console.warn("Persistence failed: Multiple tabs open.");
+                } else if (err.code == 'unimplemented-state') {
+                    console.warn("Persistence not supported by browser.");
+                }
+            });
             const repliesCol = collection(db, "replies");
             let isFirstLoadFinished = false;
 
@@ -921,10 +930,11 @@
                 });
             });
 
-            // --- Persistence Logic: All messages will now stay ---
+            // --- Persistence Logic: Optimized for Quota (Latest 50 only) ---
             let q = query(
                 repliesCol,
-                orderBy("timestamp", "asc")
+                orderBy("timestamp", "desc"),
+                limit(50)
             );
 
             /*
@@ -974,10 +984,9 @@
                 let lastDayLabel = "";
                 let hasNewMessage = false;
 
-                // DOM Memory Optimization: Cap at latest 100 messages
-                const allDocs = [];
-                snapshot.forEach(doc => allDocs.push(doc));
-                const docsToRender = allDocs.slice(-100);
+                // DOM Memory Optimization: Latest 50 messages from query
+                // We reverse them so the UI still shows oldest-to-newest
+                const docsToRender = snapshot.docs.map(doc => doc).reverse();
 
                 docsToRender.forEach((doc) => {
                     const data = doc.data();
