@@ -739,7 +739,7 @@
             };
 
             // --- Typing Indicator Logic ---
-            const statusDocRef = doc(db, "replies", "typing_status");
+            const statusDocRef = doc(db, "typing", "status");
             let localTypingState = { bhatari: false, bhandhari: false };
 
             const updateTyping = (user, isTyping) => {
