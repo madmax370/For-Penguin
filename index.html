@@ -748,8 +748,6 @@
                 localTypingState[user] = isTyping;
                 const update = {};
                 update[`${user}_typing`] = isTyping;
-                update.timestamp = null;
-
                 setDoc(statusDocRef, update, { merge: true }).catch(err => console.error("Status update failed:", err));
             };
 
@@ -779,17 +777,8 @@
                 }, 300);
             });
 
-            onSnapshot(statusDocRef, (doc) => {
-                const data = doc.data();
-                if (!data) return;
-
-                typingBhatari.style.display = data.bhatari_typing ? 'flex' : 'none';
-                typingBhandhari.style.display = data.bhandhari_typing ? 'flex' : 'none';
-
-                if (data.bhatari_typing || data.bhandhari_typing) {
-                    chatDisplay.scrollTop = chatDisplay.scrollHeight;
-                }
-            });
+            // NOTE: Typing listener is managed inside startListeners() to ensure
+            // it is properly paused when the tab is hidden. See startListeners() below.
 
             // Helper to get relative day label
             function getDayLabel(date) {
@@ -940,7 +929,7 @@
             });
 
             // --- Persistence Logic: Optimized for Quota (Latest 30 only) ---
-            let q = query(
+            const q = query(
                 repliesCol,
                 orderBy("timestamp", "asc"),
                 limitToLast(30)
@@ -1061,7 +1050,10 @@
                         textarea.focus();
                         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
 
-                        contentArea.querySelector('.edit-cancel-btn').onclick = () => updateMessageUI(el, data);
+                        contentArea.querySelector('.edit-cancel-btn').onclick = () => {
+                            // Read from dataset to restore latest confirmed text
+                            updateMessageUI(el, { text: el.dataset.currentText, edited: el.querySelector('.edit-status')?.innerHTML.includes('edited') });
+                        };
                         contentArea.querySelector('.edit-save-btn').onclick = async () => {
                             const newText = textarea.value.trim();
                             if (newText && newText !== originalText) {
@@ -1084,51 +1076,91 @@
                 if (img) { img.src = img.dataset.src; imgObserver.observe(img); }
             }
 
-            onSnapshot(q, (snapshot) => {
-                const ob = document.getElementById('optimistic-bubble');
-                if (ob) ob.remove();
+            // --- 🔋 TAB VISIBILITY: Pause listeners when tab is hidden to save reads ---
+            let unsubscribeMessages = null;
+            let unsubscribeTyping = null;
 
-                let hasNewMessage = false;
+            function startListeners() {
+                // Guard: don't attach duplicate listeners
+                if (unsubscribeMessages) return;
 
-                snapshot.docChanges().forEach((change) => {
-                    const docId = change.doc.id;
-                    const data = change.doc.data();
+                unsubscribeMessages = onSnapshot(q, (snapshot) => {
+                    const ob = document.getElementById('optimistic-bubble');
+                    if (ob) ob.remove();
 
-                    if (change.type === "added") {
-                        const isNew = !isInitialLoad && !messageCache.has(docId);
-                        const msgEl = createMessageElement(change.doc, isNew);
-                        
-                        // Handle Date Dividers
-                        const dateLabel = getDayLabel(data.timestamp ? data.timestamp.toDate() : new Date());
-                        if (dateLabel !== lastDateLabel) {
-                            const div = document.createElement('div');
-                            div.className = 'chat-date-divider';
-                            div.innerHTML = `<span>${dateLabel}</span>`;
-                            chatMessagesList.appendChild(div);
-                            lastDateLabel = dateLabel;
+                    let hasNewMessage = false;
+
+                    snapshot.docChanges().forEach((change) => {
+                        const docId = change.doc.id;
+                        const data = change.doc.data();
+
+                        if (change.type === "added") {
+                            const isNew = !isInitialLoad && !messageCache.has(docId);
+                            const msgEl = createMessageElement(change.doc, isNew);
+                            
+                            // Handle Date Dividers
+                            const dateLabel = getDayLabel(data.timestamp ? data.timestamp.toDate() : new Date());
+                            if (dateLabel !== lastDateLabel) {
+                                const div = document.createElement('div');
+                                div.className = 'chat-date-divider';
+                                div.innerHTML = `<span>${dateLabel}</span>`;
+                                chatMessagesList.appendChild(div);
+                                lastDateLabel = dateLabel;
+                            }
+
+                            chatMessagesList.appendChild(msgEl);
+                            messageCache.set(docId, msgEl);
+                            if (isNew) hasNewMessage = true;
+
+                        } else if (change.type === "modified") {
+                            const existingEl = messageCache.get(docId);
+                            if (existingEl) updateMessageUI(existingEl, data);
+
+                        } else if (change.type === "removed") {
+                            const existingEl = messageCache.get(docId);
+                            if (existingEl) { existingEl.remove(); messageCache.delete(docId); }
                         }
+                    });
 
-                        chatMessagesList.appendChild(msgEl);
-                        messageCache.set(docId, msgEl);
-                        if (isNew) hasNewMessage = true;
-
-                    } else if (change.type === "modified") {
-                        const existingEl = messageCache.get(docId);
-                        if (existingEl) updateMessageUI(existingEl, data);
-
-                    } else if (change.type === "removed") {
-                        const existingEl = messageCache.get(docId);
-                        if (existingEl) { existingEl.remove(); messageCache.delete(docId); }
+                    // Only scroll for genuinely new incoming messages
+                    if (hasNewMessage && isUserAtBottom) smoothScrollToBottom();
+                    isInitialLoad = false;
+                    if (!isFirstLoadFinished) {
+                        isFirstLoadFinished = true;
                     }
                 });
 
-                if (isUserAtBottom || hasNewMessage) smoothScrollToBottom();
-                isInitialLoad = false;
-                if (!isFirstLoadFinished) {
-                    isFirstLoadFinished = true;
-                    setTimeout(() => {
-                        // showTip(randomTip('welcome'), 3);
-                    }, 1500);
+                unsubscribeTyping = onSnapshot(statusDocRef, (statusSnap) => {
+                    const statusData = statusSnap.data();
+                    if (!statusData) return;
+
+                    typingBhatari.style.display = statusData.bhatari_typing ? 'flex' : 'none';
+                    typingBhandhari.style.display = statusData.bhandhari_typing ? 'flex' : 'none';
+
+                    // Only scroll if user is near bottom — avoids layout thrash
+                    if ((statusData.bhatari_typing || statusData.bhandhari_typing) && isUserAtBottom) {
+                        smoothScrollToBottom();
+                    }
+                });
+            }
+
+            function stopListeners() {
+                if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
+                if (unsubscribeTyping) { unsubscribeTyping(); unsubscribeTyping = null; }
+            }
+
+            // Start immediately on load
+            startListeners();
+
+            // Pause when tab is hidden, resume when visible again
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    stopListeners();
+                } else {
+                    // Mark as re-subscribing so cached messages don't animate as "new"
+                    isInitialLoad = true;
+                    // Small delay prevents rapid resubscriptions on quick tab switches
+                    setTimeout(startListeners, 300);
                 }
             });
         </script>
