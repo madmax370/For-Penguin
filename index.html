@@ -481,7 +481,7 @@
         <!-- Firebase Configuration & Real-time Replies -->
         <script type="module">
             import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-            import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, getDocs, deleteDoc, doc, setDoc, updateDoc, limit, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+            import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, where, getDocs, deleteDoc, doc, setDoc, updateDoc, limit, limitToLast, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
             // --- Cloudinary Configuration ---
             const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dyua5q73q/upload";
@@ -738,9 +738,10 @@
                 currentReplySanobar = null;
             };
 
-            // --- Typing Indicator Logic ---
+            // --- Typing Indicator Logic (Debounced) ---
             const statusDocRef = doc(db, "typing", "status");
             let localTypingState = { bhatari: false, bhandhari: false };
+            let typingDebounceMe, typingDebounceSanobar;
 
             const updateTyping = (user, isTyping) => {
                 if (localTypingState[user] === isTyping) return;
@@ -753,23 +754,29 @@
             };
 
             myReplyInput.addEventListener('input', () => {
-                if (myReplyInput.value.trim().length > 0) {
-                    updateTyping('bhatari', true);
-                    clearTimeout(typingTimeoutMe);
-                    typingTimeoutMe = setTimeout(() => updateTyping('bhatari', false), 2500);
-                } else {
-                    updateTyping('bhatari', false);
-                }
+                clearTimeout(typingDebounceMe);
+                typingDebounceMe = setTimeout(() => {
+                    if (myReplyInput.value.trim().length > 0) {
+                        updateTyping('bhatari', true);
+                        clearTimeout(typingTimeoutMe);
+                        typingTimeoutMe = setTimeout(() => updateTyping('bhatari', false), 2500);
+                    } else {
+                        updateTyping('bhatari', false);
+                    }
+                }, 300);
             });
 
             sanobarReplyInput.addEventListener('input', () => {
-                if (sanobarReplyInput.value.trim().length > 0) {
-                    updateTyping('bhandhari', true);
-                    clearTimeout(typingTimeoutSanobar);
-                    typingTimeoutSanobar = setTimeout(() => updateTyping('bhandhari', false), 2500);
-                } else {
-                    updateTyping('bhandhari', false);
-                }
+                clearTimeout(typingDebounceSanobar);
+                typingDebounceSanobar = setTimeout(() => {
+                    if (sanobarReplyInput.value.trim().length > 0) {
+                        updateTyping('bhandhari', true);
+                        clearTimeout(typingTimeoutSanobar);
+                        typingTimeoutSanobar = setTimeout(() => updateTyping('bhandhari', false), 2500);
+                    } else {
+                        updateTyping('bhandhari', false);
+                    }
+                }, 300);
             });
 
             onSnapshot(statusDocRef, (doc) => {
@@ -932,11 +939,11 @@
                 });
             });
 
-            // --- Persistence Logic: Optimized for Quota (Latest 50 only) ---
+            // --- Persistence Logic: Optimized for Quota (Latest 30 only) ---
             let q = query(
                 repliesCol,
-                orderBy("timestamp", "desc"),
-                limit(50)
+                orderBy("timestamp", "asc"),
+                limitToLast(30)
             );
 
             /*
@@ -971,201 +978,152 @@
                 });
             }, { rootMargin: '100px' });
 
-            // Track known message IDs to detect truly NEW messages
-            let knownMessageIds = new Set();
+            // --- 🚀 HIGH-PERFORMANCE CHAT ARCHITECTURE ---
+            const messageCache = new Map(); // messageId -> DOM Element
+            let lastDateLabel = "";
             let isInitialLoad = true;
+            let isUserAtBottom = true;
 
-            // Track if user was at bottom before snapshot
-            let isUserAtBottom = true; // updated securely in optimized scroll listener
+            // Helper to build a fresh message element
+            function createMessageElement(docSnap, isNew) {
+                const data = docSnap.data();
+                const msgTimestamp = data.timestamp ? data.timestamp.toDate() : new Date();
+                const timeStr = data.timestamp ? msgTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "...";
+                const isMe = data.sender === 'me';
+                const senderName = isMe ? 'Bhatari' : 'Bhandhari';
+
+                const msgDiv = document.createElement('div');
+                msgDiv.className = `chat-message ${isMe ? 'msg-me' : 'msg-sanobar'}`;
+                msgDiv.id = `msg-${docSnap.id}`;
+
+                let replyHtml = '';
+                if (data.replyTo) {
+                    const replyContent = data.replyTo.text || '📎 Media';
+                    replyHtml = `
+                        <div class="quoted-message">
+                            <span class="msg-sender-name">${data.replyTo.sender === 'me' ? 'Bhatari' : 'Bhandhari'}</span>
+                            <p style="margin:0; font-size: 0.8rem; opacity: 0.8;">${replyContent}</p>
+                        </div>
+                    `;
+                }
+
+                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
+                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${data.videoUrl}"></video></div>` : '';
+
+                msgDiv.innerHTML = `
+                    <div class="msg-bubble${isNew ? '' : ' no-anim'}">
+                        <button class="reply-btn-ui" title="Reply">↩</button>
+                        <button class="edit-btn-ui" title="Edit">✎</button>
+                        ${replyHtml}
+                        <span class="msg-sender" style="display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">${senderName}</span>
+                        ${imageHtml}
+                        ${videoHtml}
+                        <div class="msg-content-area">
+                            ${data.text ? `<p class="msg-text">${data.text}</p>` : ''}
+                        </div>
+                        <span class="msg-time">${timeStr}<span class="edit-status">${data.edited ? '<span class="edited-label">(edited)</span>' : ''}</span></span>
+                    </div>
+                `;
+
+                // Store text in dataset to avoid stale closure data during edits
+                msgDiv.dataset.currentText = data.text || "";
+
+                bindMessageListeners(msgDiv, docSnap, data);
+                return msgDiv;
+            }
+
+            // Minimal DOM update for edits
+            function updateMessageUI(el, data) {
+                const contentArea = el.querySelector('.msg-content-area');
+                const editStatus = el.querySelector('.edit-status');
+                if (contentArea && data.text) contentArea.innerHTML = `<p class="msg-text">${data.text}</p>`;
+                if (editStatus) editStatus.innerHTML = data.edited ? '<span class="edited-label">(edited)</span>' : '';
+                
+                // Update dataset for future edits
+                el.dataset.currentText = data.text || "";
+            }
+
+            function bindMessageListeners(el, docSnap, data) {
+                // Edit Logic
+                const editBtn = el.querySelector('.edit-btn-ui');
+                if (editBtn) {
+                    editBtn.onclick = () => {
+                        const contentArea = el.querySelector('.msg-content-area');
+                        // Always read the latest text from the dataset
+                        const originalText = el.dataset.currentText || "";
+                        if (contentArea.querySelector('.inline-editor')) return;
+
+                        contentArea.innerHTML = `
+                            <textarea class="inline-editor" rows="2">${originalText}</textarea>
+                            <div class="edit-controls"><button class="edit-cancel-btn">Cancel</button><button class="edit-save-btn">Save</button></div>
+                        `;
+                        const textarea = contentArea.querySelector('.inline-editor');
+                        textarea.focus();
+                        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+                        contentArea.querySelector('.edit-cancel-btn').onclick = () => updateMessageUI(el, data);
+                        contentArea.querySelector('.edit-save-btn').onclick = async () => {
+                            const newText = textarea.value.trim();
+                            if (newText && newText !== originalText) {
+                                try {
+                                    await updateDoc(doc(db, "replies", docSnap.id), { text: newText, edited: true });
+                                } catch (err) { alert("Edit failed."); updateMessageUI(el, data); }
+                            } else { updateMessageUI(el, data); }
+                        };
+                    };
+                }
+
+                // Reply Logic
+                el.querySelector('.reply-btn-ui').onclick = () => {
+                    const replyLabel = data.text || (data.videoUrl ? '🎥 Video' : '📷 Image');
+                    setReply(replyLabel, data.sender, data.sender === 'sanobar' ? 'me' : 'sanobar');
+                };
+
+                // Lazy Load Images
+                const img = el.querySelector('.msg-attached-image');
+                if (img) { img.src = img.dataset.src; imgObserver.observe(img); }
+            }
 
             onSnapshot(q, (snapshot) => {
                 const ob = document.getElementById('optimistic-bubble');
                 if (ob) ob.remove();
 
-                chatMessagesList.innerHTML = '';
-                let lastDayLabel = "";
                 let hasNewMessage = false;
 
-                // DOM Memory Optimization: Latest 50 messages from query
-                // We reverse them so the UI still shows oldest-to-newest
-                const docsToRender = snapshot.docs.map(doc => doc).reverse();
+                snapshot.docChanges().forEach((change) => {
+                    const docId = change.doc.id;
+                    const data = change.doc.data();
 
-                docsToRender.forEach((docSnap) => {
-                    const data = docSnap.data();
-
-                    // Handle pending server timestamps
-                    const msgTimestamp = data.timestamp ? data.timestamp.toDate() : new Date();
-                    const timeStr = data.timestamp ? msgTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "...";
-
-                    const msgDate = msgTimestamp;
-                    const currentDayLabel = getDayLabel(msgDate);
-
-                    if (currentDayLabel !== lastDayLabel) {
-                        const divider = document.createElement('div');
-                        divider.className = 'chat-date-divider';
-                        divider.innerHTML = `<span>${currentDayLabel}</span>`;
-                        chatMessagesList.appendChild(divider);
-                        lastDayLabel = currentDayLabel;
-                    }
-
-                    const msgDiv = document.createElement('div');
-                    const isMe = data.sender === 'me';
-                    const senderClass = isMe ? 'msg-me' : 'msg-sanobar';
-                    const senderName = isMe ? 'Bhatari' : 'Bhandhari';
-
-                    // Detect if this is a genuinely new message (not initial load)
-                    const isNew = !isInitialLoad && !knownMessageIds.has(docSnap.id);
-                    knownMessageIds.add(docSnap.id);
-                    if (isNew) hasNewMessage = true;
-
-                    msgDiv.className = `chat-message ${senderClass}`;
-
-                    let replyHtml = '';
-                    if (data.replyTo) {
-                        const replyContent = data.replyTo.text || '📎 Media';
-                        replyHtml = `
-                            <div class="quoted-message">
-                                <span class="msg-sender-name">${data.replyTo.sender === 'me' ? 'Bhatari' : 'Bhandhari'}</span>
-                                <p style="margin:0; font-size: 0.8rem; opacity: 0.8;">${replyContent}</p>
-                            </div>
-                        `;
-                    }
-
-                    // Image with lazy load
-                    let imageHtml = '';
-                    if (data.imageUrl) {
-                        imageHtml = `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>`;
-                    }
-
-                    let videoHtml = '';
-                    if (data.videoUrl) {
-                        videoHtml = `
-                            <div class="msg-video-wrapper">
-                                <video controls class="msg-attached-video" preload="metadata" playsinline>
-                                    <source src="${data.videoUrl}">
-                                    Your browser does not support the video tag.
-                                </video>
-                            </div>
-                        `;
-                    }
-
-                    msgDiv.innerHTML = `
-                        <div class="msg-bubble${isNew ? '' : ' no-anim'}">
-                            <button class="reply-btn-ui" title="Reply">↩</button>
-                            <button class="edit-btn-ui" title="Edit">✎</button>
-                            ${replyHtml}
-                            <span class="msg-sender" style="display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">${senderName}</span>
-                            ${imageHtml}
-                            ${videoHtml}
-                            <div class="msg-content-area">
-                                ${data.text ? `<p class="msg-text">${data.text}</p>` : ''}
-                            </div>
-                            <span class="msg-time">${timeStr}${data.edited ? '<span class="edited-label">(edited)</span>' : ''}</span>
-                        </div>
-                    `;
-
-                    // Activate lazy load for images
-                    const imgEl = msgDiv.querySelector('.msg-attached-image');
-                    if (imgEl) {
-                        imgEl.src = imgEl.dataset.src;
-                        imgObserver.observe(imgEl);
-                    }
-
-                    // Handle Edit Button Click
-                    const editBtn = msgDiv.querySelector('.edit-btn-ui');
-                    if (editBtn) {
-                        editBtn.onclick = () => {
-                            const bubble = msgDiv.querySelector('.msg-bubble');
-                            const contentArea = msgDiv.querySelector('.msg-content-area');
-                            const originalText = data.text || "";
-
-                            // Prevent multiple editors
-                            if (contentArea.querySelector('.inline-editor')) return;
-
-                            contentArea.innerHTML = `
-                                <textarea class="inline-editor" rows="2">${originalText}</textarea>
-                                <div class="edit-controls">
-                                    <button class="edit-cancel-btn">Cancel</button>
-                                    <button class="edit-save-btn">Save</button>
-                                </div>
-                            `;
-
-                            const textarea = contentArea.querySelector('.inline-editor');
-                            textarea.focus();
-                            // Move cursor to end
-                            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-
-                            contentArea.querySelector('.edit-cancel-btn').onclick = () => {
-                                contentArea.innerHTML = data.text ? `<p class="msg-text">${data.text}</p>` : '';
-                            };
-
-                            contentArea.querySelector('.edit-save-btn').onclick = async () => {
-                                const newText = textarea.value.trim();
-                                if (!newText || newText === originalText) {
-                                    contentArea.innerHTML = data.text ? `<p class="msg-text">${data.text}</p>` : '';
-                                    return;
-                                }
-
-                                try {
-                                    const docRef = doc(db, "replies", docSnap.id);
-                                    await updateDoc(docRef, {
-                                        text: newText,
-                                        edited: true
-                                    });
-                                    // The onSnapshot will update the UI automatically
-                                } catch (err) {
-                                    console.error("Edit failed:", err);
-                                    alert("Could not update message.");
-                                }
-                            };
-                        };
-                    }
-
-                    // Handle Reply Button Click
-                    msgDiv.querySelector('.reply-btn-ui').onclick = () => {
-                        const replyLabel = data.text || (data.videoUrl ? '🎥 Video' : '📷 Image');
-                        if (data.sender === 'sanobar') {
-                            setReply(replyLabel, data.sender, 'me');
-                            myReplyInput.focus();
-                        } else {
-                            setReply(replyLabel, data.sender, 'sanobar');
-                            sanobarReplyInput.focus();
+                    if (change.type === "added") {
+                        const isNew = !isInitialLoad && !messageCache.has(docId);
+                        const msgEl = createMessageElement(change.doc, isNew);
+                        
+                        // Handle Date Dividers
+                        const dateLabel = getDayLabel(data.timestamp ? data.timestamp.toDate() : new Date());
+                        if (dateLabel !== lastDateLabel) {
+                            const div = document.createElement('div');
+                            div.className = 'chat-date-divider';
+                            div.innerHTML = `<span>${dateLabel}</span>`;
+                            chatMessagesList.appendChild(div);
+                            lastDateLabel = dateLabel;
                         }
-                    };
 
-                    chatMessagesList.appendChild(msgDiv);
+                        chatMessagesList.appendChild(msgEl);
+                        messageCache.set(docId, msgEl);
+                        if (isNew) hasNewMessage = true;
+
+                    } else if (change.type === "modified") {
+                        const existingEl = messageCache.get(docId);
+                        if (existingEl) updateMessageUI(existingEl, data);
+
+                    } else if (change.type === "removed") {
+                        const existingEl = messageCache.get(docId);
+                        if (existingEl) { existingEl.remove(); messageCache.delete(docId); }
+                    }
                 });
 
-                if (isUserAtBottom || hasNewMessage) {
-                    smoothScrollToBottom();
-                    if (hasNewMessage) {
-                        const lastDoc = snapshot.docs[0];
-                        const lastData = lastDoc ? lastDoc.data() : null;
-
-                        if (lastData && lastData.sender === 'sanobar' && !isInitialLoad) {
-                            /*
-                            const text = (lastData.text || "").toLowerCase();
-
-                            if (lastData.imageUrl || lastData.videoUrl) {
-                                showTip(randomTip('media'), 3);
-                            } else if (text.includes('pani puri') || text.includes('chaat')) {
-                                showTip(randomTip('paniPuri'), 3);
-                            } else if (text.includes('egg puff')) {
-                                showTip(randomTip('eggPuff'), 3);
-                            } else if (text.includes('sundar') || text.includes('beautiful') || text.includes('cute')) {
-                                showTip(randomTip('beautiful'), 3);
-                            } else {
-                                showTip(randomTip('receive'), 3);
-                            }
-                            */
-                        } else if (!isInitialLoad) {
-                        }
-                    }
-                }
-
-                // After processing all docs, mark initial load as done
+                if (isUserAtBottom || hasNewMessage) smoothScrollToBottom();
                 isInitialLoad = false;
-
                 if (!isFirstLoadFinished) {
                     isFirstLoadFinished = true;
                     setTimeout(() => {
