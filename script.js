@@ -186,10 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
     handleNetworkChange();
 
     // Privacy Protection: RELOCK when user leaves tab
-    // We use a combination of immediate blurring and forced reload on return
+    // OPTIMIZED: No page reload. Firestore listeners stay alive to avoid re-downloading messages.
+    // Only the UI is locked — PIN overlay is shown again without any network cost.
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            // 1. Immediate Blackout (Very cheap for GPU compared to blur)
+            // 1. Immediate Blackout when tab is hidden
             let blackout = document.getElementById('privacy-blackout');
             if (!blackout) {
                 blackout = document.createElement('div');
@@ -202,11 +203,31 @@ document.addEventListener('DOMContentLoaded', () => {
             // 2. Clear sensitive input values immediately
             passwordInput.value = '';
             document.querySelectorAll('.pin-input-hidden').forEach(i => i.value = '');
+
         } else {
-            // 3. Forced Security Refresh on Return
-            // This ensures all state is wiped and the user MUST re-authenticate
-            console.log("Security: Forcing refresh on return...");
-            location.reload();
+            // 3. UI-only re-lock on return — NO page reload, NO Firestore re-fetch
+            const blackout = document.getElementById('privacy-blackout');
+            if (blackout) blackout.style.display = 'none';
+
+            // Re-show the main password overlay (forces PIN re-entry)
+            mainContent.style.display = 'none';
+            passwordOverlay.style.display = 'flex';
+            passwordOverlay.style.opacity = '1';
+            passwordInput.value = '';
+            passwordInput.focus();
+
+            // Re-lock all component PIN overlays (chat, photos, etc.)
+            document.querySelectorAll('.locked-container').forEach(container => {
+                container.classList.remove('is-unlocked');
+                const lock = container.querySelector('.component-lock');
+                if (lock) {
+                    lock.classList.remove('unlocked');
+                    const pinInput = lock.querySelector('.pin-input-hidden');
+                    if (pinInput) pinInput.value = '';
+                    const dots = lock.querySelectorAll('.pin-dot');
+                    dots.forEach(dot => dot.classList.remove('filled'));
+                }
+            });
         }
     });
 

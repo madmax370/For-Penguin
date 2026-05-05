@@ -1076,13 +1076,14 @@
                 if (img) { img.src = img.dataset.src; imgObserver.observe(img); }
             }
 
-            // --- 🔋 TAB VISIBILITY: Pause listeners when tab is hidden to save reads ---
+            // --- 🔋 PERSISTENT LISTENERS: Attach once, never restart ---
+            // Security (PIN re-lock on tab switch) is handled by script.js.
+            // Keeping listeners alive avoids re-downloading 30 messages on every tab switch.
             let unsubscribeMessages = null;
             let unsubscribeTyping = null;
 
             function startListeners() {
-                // Guard: don't attach duplicate listeners
-                if (unsubscribeMessages) return;
+                if (unsubscribeMessages) return; // Guard against duplicates
 
                 unsubscribeMessages = onSnapshot(q, (snapshot) => {
                     const ob = document.getElementById('optimistic-bubble');
@@ -1097,8 +1098,7 @@
                         if (change.type === "added") {
                             const isNew = !isInitialLoad && !messageCache.has(docId);
                             const msgEl = createMessageElement(change.doc, isNew);
-                            
-                            // Handle Date Dividers
+
                             const dateLabel = getDayLabel(data.timestamp ? data.timestamp.toDate() : new Date());
                             if (dateLabel !== lastDateLabel) {
                                 const div = document.createElement('div');
@@ -1122,47 +1122,24 @@
                         }
                     });
 
-                    // Only scroll for genuinely new incoming messages
                     if (hasNewMessage && isUserAtBottom) smoothScrollToBottom();
                     isInitialLoad = false;
-                    if (!isFirstLoadFinished) {
-                        isFirstLoadFinished = true;
-                    }
+                    if (!isFirstLoadFinished) isFirstLoadFinished = true;
                 });
 
                 unsubscribeTyping = onSnapshot(statusDocRef, (statusSnap) => {
                     const statusData = statusSnap.data();
                     if (!statusData) return;
-
                     typingBhatari.style.display = statusData.bhatari_typing ? 'flex' : 'none';
                     typingBhandhari.style.display = statusData.bhandhari_typing ? 'flex' : 'none';
-
-                    // Only scroll if user is near bottom — avoids layout thrash
                     if ((statusData.bhatari_typing || statusData.bhandhari_typing) && isUserAtBottom) {
                         smoothScrollToBottom();
                     }
                 });
             }
 
-            function stopListeners() {
-                if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
-                if (unsubscribeTyping) { unsubscribeTyping(); unsubscribeTyping = null; }
-            }
-
-            // Start immediately on load
+            // Start once on page load — never stopped or restarted
             startListeners();
-
-            // Pause when tab is hidden, resume when visible again
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    stopListeners();
-                } else {
-                    // Mark as re-subscribing so cached messages don't animate as "new"
-                    isInitialLoad = true;
-                    // Small delay prevents rapid resubscriptions on quick tab switches
-                    setTimeout(startListeners, 300);
-                }
-            });
         </script>
 
     </div> <!-- End main-content -->
