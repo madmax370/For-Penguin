@@ -391,7 +391,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(heart);
         setTimeout(() => heart.remove(), 1500);
     }
-
     // Playlist button logic
     const playlistBtn = document.getElementById('playlist-btn');
     if (playlistBtn) {
@@ -401,7 +400,76 @@ document.addEventListener('DOMContentLoaded', () => {
             playlistBtn.removeAttribute('target');
         }
     }
-});
+
+    // --- Bhandhari Online Notification (Brevo Integration) ---
+    const notifyBtn = document.getElementById('notify-online-btn');
+    if (notifyBtn) {
+        notifyBtn.addEventListener('click', async () => {
+            if (sessionStorage.getItem('notified_madmax')) {
+                notifyBtn.style.animation = 'none'; // Stop pulse
+                alert("You've already notified Bhatari! 🐧");
+                return;
+            }
+
+            notifyBtn.disabled = true;
+            notifyBtn.style.animation = 'none'; // Stop pulse immediately
+            notifyBtn.textContent = "⏳ Notifying...";
+
+            // Get human-readable time (e.g., 11:59 PM)
+            const timeStr = new Date().toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit', 
+                hour12: true 
+            });
+
+            // Random emoji to ensure unique subject lines
+            const moods = ['💜', '✨', '🐧', '🌸', '💬', '🍭', '🎀'];
+            const randomMood = moods[Math.floor(Math.random() * moods.length)];
+
+            // Obfuscated key to deter simple bots
+            const k1 = "xkeysib-c79ba323f247914b1534019a4f8a93c51add92c444f";
+            const k2 = "010578a07a1aea00a53c3-Lnmk98xb1MHy5fyL";
+            const BREVO_KEY = k1 + k2;
+
+            const payload = {
+                sender: { name: "Bhandhari", email: "madmax801065@gmail.com" },
+                to: [{ email: "madmax801065@gmail.com", name: "MadMax" }],
+                subject: `Bhandhari is Online! (${timeStr}) ${randomMood}`,
+                htmlContent: `
+                    <div style="background:#0f0c29; color:white; padding:20px; border-radius:10px; font-family:sans-serif; border: 1px solid #c77dff;">
+                        <h2 style="color:#c77dff;">Hello MadMax!</h2>
+                        <p style="font-size:1.1rem;">Bhandhari is currently online and waiting in the chat! 🐧</p>
+                        <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
+                        <p style="font-size:0.8rem; opacity:0.6;">Sent from your Bhandhari Chat App</p>
+                    </div>
+                `
+            };
+
+            try {
+                const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                    method: 'POST',
+                    headers: {
+                        'accept': 'application/json',
+                        'api-key': BREVO_KEY,
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    notifyBtn.textContent = "✅ Bhatari Notified!";
+                    sessionStorage.setItem('notified_madmax', 'true');
+                } else {
+                    throw new Error();
+                }
+            } catch (error) {
+                console.error("Notify failed");
+                notifyBtn.textContent = "❌ Failed. Retry?";
+                notifyBtn.disabled = false;
+            }
+        });
+    }
+}); // <--- Closing DOMContentLoaded properly
 
 // Optimized Particle System for Mobile
 function createParticles() {
