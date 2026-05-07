@@ -1057,9 +1057,9 @@
                     `;
                 }
 
-                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${optimizeUrl(data.imageUrl)}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
+                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${optimizeUrl(data.imageUrl)}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
                 const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${optimizeUrl(data.videoUrl)}"></video></div>` : '';
-                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
+                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${optimizeUrl(data.gifUrl)}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
 
                 msgDiv.innerHTML = `
                     <div class="msg-bubble${isNew ? '' : ' no-anim'}">
@@ -1196,9 +1196,17 @@
             // --- Mobile Optimization Helper ---
             function optimizeUrl(url) {
                 if (!url) return '';
-                // If it's a Cloudinary URL, inject auto-quality and resizing
+                
+                // 1. Optimize GIPHY (Past and Future)
+                if (url.includes('giphy.com')) {
+                    // Automatically swap "original" or "downsized" for the fast "fixed_width" version
+                    return url.replace('/giphy.gif', '/fixed_width.gif')
+                              .replace('/giphy-downsized.gif', '/fixed_width.gif')
+                              .replace('/200.gif', '/fixed_width.gif');
+                }
+
+                // 2. Optimize Cloudinary
                 if (url.includes('cloudinary.com')) {
-                    // Inject /q_auto,f_auto,w_450/ into the URL
                     return url.replace('/upload/', '/upload/q_auto,f_auto,w_450/');
                 }
                 return url;
