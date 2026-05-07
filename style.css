@@ -2228,4 +2228,14 @@ section {
     object-fit: cover;
     margin-bottom: 4px;
     cursor: pointer;
+    /* Hardware Acceleration to stop flickering on Android */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+.msg-attached-image, .msg-attached-video {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
 }

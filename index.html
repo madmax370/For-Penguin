@@ -1057,8 +1057,8 @@
                     `;
                 }
 
-                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
-                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${data.videoUrl}"></video></div>` : '';
+                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${optimizeUrl(data.imageUrl)}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
+                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${optimizeUrl(data.videoUrl)}"></video></div>` : '';
                 const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
 
                 msgDiv.innerHTML = `
@@ -1193,6 +1193,17 @@
                 return json.data;
             }
 
+            // --- Mobile Optimization Helper ---
+            function optimizeUrl(url) {
+                if (!url) return '';
+                // If it's a Cloudinary URL, inject auto-quality and resizing
+                if (url.includes('cloudinary.com')) {
+                    // Inject /q_auto,f_auto,w_450/ into the URL
+                    return url.replace('/upload/', '/upload/q_auto,f_auto,w_450/');
+                }
+                return url;
+            }
+
             // Render GIFs into grid using DocumentFragment (performance)
             function renderGifs(gifs, gridEl, target, append = false) {
                 if (!append) {
@@ -1216,13 +1227,12 @@
                     const img = document.createElement('img');
                     img.className = 'gif-thumb';
                     img.loading = 'lazy';
-                    // Using fixed_width_small for the grid to save user data/bandwidth
                     img.src = gif.images.fixed_width_small.url;
-                    img.dataset.original = gif.images.original.url;
+                    img.dataset.original = gif.images.fixed_width.url;
                     img.addEventListener('click', () => {
                         selectGif(
                             gif.images.fixed_width_small.url,
-                            gif.images.original.url,
+                            gif.images.fixed_width.url,
                             target
                         );
                     });
