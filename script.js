@@ -200,7 +200,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             blackout.style.display = 'block';
 
-            // 2. Clear sensitive input values immediately
+            // 2. Close any open GIF pickers or attach popups
+            if (window.closeAllPanels) window.closeAllPanels();
+
+            // 3. Clear sensitive input values immediately
             passwordInput.value = '';
             document.querySelectorAll('.pin-input-hidden').forEach(i => i.value = '');
 

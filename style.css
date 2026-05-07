@@ -1953,3 +1953,253 @@ section {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ============================================================
+   GIF FEATURE & TOOLBAR STYLES
+   No backdrop-filter anywhere. Solid backgrounds only.
+   ============================================================ */
+
+/* --- New Chat Toolbar --- */
+.chat-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    align-items: center;
+    position: relative;
+}
+
+.toolbar-btn {
+    background: rgba(199, 125, 255, 0.1);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: inherit;
+    transition: background 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.toolbar-btn:active {
+    background: rgba(199, 125, 255, 0.25);
+}
+
+.toolbar-send-btn {
+    flex: 1;
+    padding: 0.8rem;
+    font-size: 1rem;
+    min-width: 0;
+}
+
+/* --- Attach Popup --- */
+.attach-popup-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.attach-popup {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    background: #1a0a2e;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 200;
+    min-width: 130px;
+}
+
+.attach-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 14px;
+    font-size: 0.9rem;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    font-family: inherit;
+}
+
+.attach-option:active {
+    background: rgba(199, 125, 255, 0.15);
+}
+
+/* --- GIF Picker Panel --- */
+.gif-picker-panel {
+    background: #12082a;
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    max-height: 280px;
+    display: flex;
+    flex-direction: column;
+}
+
+.gif-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(199, 125, 255, 0.12);
+    flex-shrink: 0;
+}
+
+.gif-search-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-family: inherit;
+    outline: none;
+}
+
+.gif-search-input::placeholder {
+    opacity: 0.45;
+}
+
+.gif-close-btn {
+    background: none;
+    border: none;
+    color: var(--accent-light);
+    font-size: 1.3rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    line-height: 1;
+    flex-shrink: 0;
+    font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* --- Category Pills --- */
+.gif-category-pills {
+    display: flex;
+    gap: 6px;
+    padding: 6px 10px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+}
+
+.gif-category-pills::-webkit-scrollbar {
+    display: none;
+}
+
+.gif-pill {
+    background: rgba(199, 125, 255, 0.08);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 3px 11px;
+    font-size: 0.75rem;
+    color: var(--accent-light);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease;
+}
+
+.gif-pill.active {
+    background: rgba(199, 125, 255, 0.28);
+    border-color: var(--accent-light);
+}
+
+/* --- GIF Grid --- */
+.gif-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    padding: 6px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(199, 125, 255, 0.3) transparent;
+}
+
+.gif-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+    display: block;
+}
+
+/* --- Loading Spinner --- */
+.gif-spinner {
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    flex-shrink: 0;
+}
+
+.gif-spinner::after {
+    content: '';
+    width: 26px;
+    height: 26px;
+    border: 3px solid rgba(199, 125, 255, 0.15);
+    border-top-color: var(--accent-light);
+    border-radius: 50%;
+    animation: gifSpin 0.8s linear infinite;
+}
+
+@keyframes gifSpin {
+    to { transform: rotate(360deg); }
+}
+
+.gif-empty-state {
+    text-align: center;
+    padding: 24px;
+    font-size: 0.85rem;
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+/* --- GIF Preview Bar --- */
+.gif-preview-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(199, 125, 255, 0.07);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    margin-bottom: 6px;
+}
+
+.gif-preview-thumb {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+.gif-preview-label {
+    flex: 1;
+    font-size: 0.82rem;
+    opacity: 0.75;
+}
+
+/* --- GIF in Chat Bubble --- */
+.msg-attached-gif {
+    max-height: 250px;
+    width: 100%;
+    border-radius: 10px;
+    display: block;
+    object-fit: cover;
+    margin-bottom: 4px;
+    cursor: pointer;
+}

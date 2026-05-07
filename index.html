@@ -328,23 +328,48 @@
                                 <span class="close-reply" id="close-me-video">×</span>
                             </div>
 
+                            <!-- Hidden file inputs: must stay in DOM -->
+                            <input type="file" id="my-image-input" accept="image/png, image/jpeg, image/gif, image/webp"
+                                style="display:none;">
+                            <input type="file" id="my-video-input"
+                                accept="video/mp4, video/webm, video/ogg, video/quicktime" style="display:none;">
+
+                            <!-- GIF Preview Bar -->
+                            <div id="me-gif-preview" class="gif-preview-bar" style="display:none;">
+                                <img id="me-gif-thumb" src="" class="gif-preview-thumb" alt="GIF">
+                                <span class="gif-preview-label">🎞️ GIF ready to send</span>
+                                <span id="close-me-gif" class="close-reply">×</span>
+                            </div>
+
+                            <!-- GIF Picker Panel -->
+                            <div id="me-gif-picker" class="gif-picker-panel" style="display:none;">
+                                <div class="gif-search-bar">
+                                    <input type="text" id="me-gif-search" class="gif-search-input"
+                                        placeholder="Search GIPHY..." autocomplete="off">
+                                    <button id="me-gif-close-btn" class="gif-close-btn">×</button>
+                                </div>
+                                <div id="me-gif-pills" class="gif-category-pills"></div>
+                                <div id="me-gif-spinner" class="gif-spinner" style="display:none;"></div>
+                                <div id="me-gif-empty" class="gif-empty-state" style="display:none;">No GIFs found 🐧
+                                </div>
+                                <div id="me-gif-grid" class="gif-grid"></div>
+                            </div>
+
                             <textarea id="my-reply-text" placeholder="Type your message..."
                                 class="custom-scroll"></textarea>
-                            <div style="display: flex; gap: 10px; margin-top: 12px;">
-                                <label for="my-image-input" class="image-upload-btn" title="Attach Image">
-                                    📷
-                                </label>
-                                <input type="file" id="my-image-input"
-                                    accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;">
 
-                                <label for="my-video-input" class="image-upload-btn" title="Attach Video">
-                                    🎥
-                                </label>
-                                <input type="file" id="my-video-input"
-                                    accept="video/mp4, video/webm, video/ogg, video/quicktime" style="display: none;">
-
-                                <button id="send-my-btn" class="primary-btn btn-me w-full"
-                                    style="padding: 0.8rem; font-size: 1rem;">Send Message ✨</button>
+                            <!-- Toolbar: [➕ Attach] [🎞️ GIF] [Send button] -->
+                            <div class="chat-toolbar">
+                                <div class="attach-popup-wrapper">
+                                    <div id="me-attach-popup" class="attach-popup" style="display:none;">
+                                        <label for="my-image-input" class="attach-option">📷 Photo</label>
+                                        <label for="my-video-input" class="attach-option">🎥 Video</label>
+                                    </div>
+                                    <button id="me-attach-btn" class="toolbar-btn" title="Attach media">➕</button>
+                                </div>
+                                <button id="me-gif-btn" class="toolbar-btn" title="Send GIF">🎞️</button>
+                                <button id="send-my-btn" class="primary-btn btn-me toolbar-send-btn">Send Message
+                                    ✨</button>
                             </div>
                         </div>
 
@@ -413,26 +438,52 @@
                                 <span class="close-reply" id="close-sanobar-video">×</span>
                             </div>
 
+                            <!-- Hidden file inputs: must stay in DOM -->
+                            <input type="file" id="sanobar-image-input"
+                                accept="image/png, image/jpeg, image/gif, image/webp" style="display:none;">
+                            <input type="file" id="sanobar-video-input"
+                                accept="video/mp4, video/webm, video/ogg, video/quicktime" style="display:none;">
+
+                            <!-- GIF Preview Bar -->
+                            <div id="sanobar-gif-preview" class="gif-preview-bar" style="display:none;">
+                                <img id="sanobar-gif-thumb" src="" class="gif-preview-thumb" alt="GIF">
+                                <span class="gif-preview-label">🎞️ GIF ready to send</span>
+                                <span id="close-sanobar-gif" class="close-reply">×</span>
+                            </div>
+
+                            <!-- GIF Picker Panel -->
+                            <div id="sanobar-gif-picker" class="gif-picker-panel" style="display:none;">
+                                <div class="gif-search-bar">
+                                    <input type="text" id="sanobar-gif-search" class="gif-search-input"
+                                        placeholder="Search GIPHY..." autocomplete="off">
+                                    <button id="sanobar-gif-close-btn" class="gif-close-btn">×</button>
+                                </div>
+                                <div id="sanobar-gif-pills" class="gif-category-pills"></div>
+                                <div id="sanobar-gif-spinner" class="gif-spinner" style="display:none;"></div>
+                                <div id="sanobar-gif-empty" class="gif-empty-state" style="display:none;">No GIFs found
+                                    🐧</div>
+                                <div id="sanobar-gif-grid" class="gif-grid"></div>
+                            </div>
+
                             <textarea id="sanobar-reply-text" placeholder="Type your message..."
                                 class="custom-scroll"></textarea>
-                            <div style="display: flex; gap: 10px; margin-top: 12px;">
-                                <label for="sanobar-image-input" class="image-upload-btn" title="Attach Image">
-                                    📷
-                                </label>
-                                <input type="file" id="sanobar-image-input"
-                                    accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;">
 
-                                <label for="sanobar-video-input" class="image-upload-btn" title="Attach Video">
-                                    🎥
-                                </label>
-                                <input type="file" id="sanobar-video-input"
-                                    accept="video/mp4, video/webm, video/ogg, video/quicktime" style="display: none;">
-
-                                <button id="send-sanobar-btn" class="primary-btn btn-sanobar w-full"
-                                    style="padding: 0.8rem; font-size: 1rem;">Send Message ✨</button>
+                            <!-- Toolbar: [➕ Attach] [🎞️ GIF] [Send button] -->
+                            <div class="chat-toolbar">
+                                <div class="attach-popup-wrapper">
+                                    <div id="sanobar-attach-popup" class="attach-popup" style="display:none;">
+                                        <label for="sanobar-image-input" class="attach-option">📷 Photo</label>
+                                        <label for="sanobar-video-input" class="attach-option">🎥 Video</label>
+                                    </div>
+                                    <button id="sanobar-attach-btn" class="toolbar-btn" title="Attach media">➕</button>
+                                </div>
+                                <button id="sanobar-gif-btn" class="toolbar-btn" title="Send GIF">🎞️</button>
+                                <button id="send-sanobar-btn" class="primary-btn btn-sanobar toolbar-send-btn">Send
+                                    Message ✨</button>
                             </div>
                             <div class="notify-wrapper">
-                                <button id="notify-online-btn" class="notify-btn">📧 Notify Bhatari That I Am Online</button>
+                                <button id="notify-online-btn" class="notify-btn">📧 Notify Bhatari That I Am
+                                    Online</button>
                             </div>
                         </div>
                     </div>
@@ -818,8 +869,8 @@
             }
 
             // --- Send Message ---
-            async function sendMessage(text, senderType, btn, originalText, replyData, imageFile, videoFile) {
-                if (!text && !imageFile && !videoFile) return;
+            async function sendMessage(text, senderType, btn, originalText, replyData, imageFile, videoFile, gifUrl) {
+                if (!text && !imageFile && !videoFile && !gifUrl) return;
 
                 // 1. Haptic feedback immediately
                 haptic([30]);
@@ -880,6 +931,7 @@
                     if (replyData) msgData.replyTo = replyData;
                     if (imageFile) msgData.imageUrl = uploadedUrl;
                     if (videoFile) msgData.videoUrl = uploadedUrl;
+                    if (gifUrl) msgData.gifUrl = gifUrl;
 
                     await addDoc(repliesCol, msgData);
                     updateTyping(senderType === 'me' ? 'bhatari' : 'bhandhari', false);
@@ -898,16 +950,19 @@
             // Bind 'Me' button
             myReplyBtn.addEventListener('click', () => {
                 const text = myReplyInput.value.trim();
-                sendMessage(text, 'me', myReplyBtn, 'Send Message ✨', currentReplyMe, currentImageFileMe, currentVideoMe).then(() => {
+                const gifUrl = currentGifMe;
+                sendMessage(text, 'me', myReplyBtn, 'Send Message ✨', currentReplyMe, currentImageFileMe, currentVideoMe, gifUrl).then(() => {
                     myReplyInput.value = '';
                     myReplyInput.placeholder = "Type your message...";
                     document.getElementById('me-reply-preview').style.display = 'none';
                     document.getElementById('me-image-preview').style.display = 'none';
                     document.getElementById('me-video-preview').style.display = 'none';
+                    document.getElementById('me-gif-preview').style.display = 'none';
                     currentReplyMe = null;
                     currentImageMe = null;
                     currentImageFileMe = null;
                     currentVideoMe = null;
+                    currentGifMe = null;
                     document.getElementById('my-image-input').value = '';
                     document.getElementById('my-video-input').value = '';
                 });
@@ -916,16 +971,19 @@
             // Bind 'Sanobar' button
             sanobarReplyBtn.addEventListener('click', () => {
                 const text = sanobarReplyInput.value.trim();
-                sendMessage(text, 'sanobar', sanobarReplyBtn, 'Send Message ✨', currentReplySanobar, currentImageFileSanobar, currentVideoSanobar).then(() => {
+                const gifUrl = currentGifSanobar;
+                sendMessage(text, 'sanobar', sanobarReplyBtn, 'Send Message ✨', currentReplySanobar, currentImageFileSanobar, currentVideoSanobar, gifUrl).then(() => {
                     sanobarReplyInput.value = '';
                     sanobarReplyInput.placeholder = "Type your message...";
                     document.getElementById('sanobar-reply-preview').style.display = 'none';
                     document.getElementById('sanobar-image-preview').style.display = 'none';
                     document.getElementById('sanobar-video-preview').style.display = 'none';
+                    document.getElementById('sanobar-gif-preview').style.display = 'none';
                     currentReplySanobar = null;
                     currentImageSanobar = null;
                     currentImageFileSanobar = null;
                     currentVideoSanobar = null;
+                    currentGifSanobar = null;
                     document.getElementById('sanobar-image-input').value = '';
                     document.getElementById('sanobar-video-input').value = '';
                 });
@@ -1001,6 +1059,7 @@
 
                 const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
                 const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${data.videoUrl}"></video></div>` : '';
+                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy"></div>` : '';
 
                 msgDiv.innerHTML = `
                     <div class="msg-bubble${isNew ? '' : ' no-anim'}">
@@ -1010,6 +1069,7 @@
                         <span class="msg-sender" style="display: block; font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; opacity: 0.8;">${senderName}</span>
                         ${imageHtml}
                         ${videoHtml}
+                        ${gifHtml}
                         <div class="msg-content-area">
                             ${data.text ? `<p class="msg-text">${data.text}</p>` : ''}
                         </div>
@@ -1030,7 +1090,7 @@
                 const editStatus = el.querySelector('.edit-status');
                 if (contentArea && data.text) contentArea.innerHTML = `<p class="msg-text">${data.text}</p>`;
                 if (editStatus) editStatus.innerHTML = data.edited ? '<span class="edited-label">(edited)</span>' : '';
-                
+
                 // Update dataset for future edits
                 el.dataset.currentText = data.text || "";
             }
@@ -1070,13 +1130,13 @@
 
                 // Reply Logic
                 el.querySelector('.reply-btn-ui').onclick = () => {
-                    const replyLabel = data.text || (data.videoUrl ? '🎥 Video' : '📷 Image');
+                    const replyLabel = data.text || (data.gifUrl ? '🎞️ GIF' : data.videoUrl ? '🎥 Video' : '📷 Image');
                     setReply(replyLabel, data.sender, data.sender === 'sanobar' ? 'me' : 'sanobar');
                 };
 
-                // Lazy Load Images
-                const img = el.querySelector('.msg-attached-image');
-                if (img) { img.src = img.dataset.src; imgObserver.observe(img); }
+                // Lazy Load Images and GIFs
+                const imgs = el.querySelectorAll('[data-src]');
+                imgs.forEach(img => { img.src = img.dataset.src; imgObserver.observe(img); });
             }
 
             // --- 🔋 PERSISTENT LISTENERS: Attach once, never restart ---
@@ -1084,6 +1144,229 @@
             // Keeping listeners alive avoids re-downloading 30 messages on every tab switch.
             let unsubscribeMessages = null;
             let unsubscribeTyping = null;
+
+            // ============================================================
+            // 🎞️ GIPHY GIF FEATURE
+            // ============================================================
+            const GIPHY_API_KEY = 'uFmNuub4QWQAWW3uwaKHtEuvKHoEhPAU'; // Replace with your key
+            const GIF_CATEGORIES = ['Trending', 'Love', 'Happy', 'Sad', 'Celebrate', 'Hi', 'Thumbs Up', 'Dramatic'];
+
+            // Independent GIF state per user
+            let currentGifMe = null;
+            let currentGifSanobar = null;
+            let trendingCacheMe = null;
+            let trendingCacheSanobar = null;
+            let gifSearchDebounceMe, gifSearchDebounceSanobar;
+
+            // Close all popups/pickers at once
+            function closeAllPanels() {
+                document.getElementById('me-gif-picker').style.display = 'none';
+                document.getElementById('me-attach-popup').style.display = 'none';
+                document.getElementById('sanobar-gif-picker').style.display = 'none';
+                document.getElementById('sanobar-attach-popup').style.display = 'none';
+            }
+            // Expose to window so script.js can call it on tab hide
+            window.closeAllPanels = closeAllPanels;
+
+            // Fetch from GIPHY REST API (no SDK)
+            async function fetchGifs(query, isSearch) {
+                const base = 'https://api.giphy.com/v1/gifs';
+                const endpoint = isSearch
+                    ? `${base}/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=15&rating=g`
+                    : `${base}/trending?api_key=${GIPHY_API_KEY}&limit=15&rating=g`;
+                const res = await fetch(endpoint);
+                const json = await res.json();
+                return json.data;
+            }
+
+            // Render GIFs into grid using DocumentFragment (performance)
+            function renderGifs(gifs, gridEl, target) {
+                gridEl.innerHTML = '';
+                const emptyEl = document.getElementById(`${target}-gif-empty`);
+                if (!gifs || !gifs.length) { emptyEl.style.display = 'block'; return; }
+                emptyEl.style.display = 'none';
+                const fragment = document.createDocumentFragment();
+                gifs.forEach(gif => {
+                    const img = document.createElement('img');
+                    img.className = 'gif-thumb';
+                    img.loading = 'lazy';
+                    img.src = gif.images.fixed_width_small.url;
+                    img.dataset.original = gif.images.original.url;
+                    img.addEventListener('click', () => selectGif(
+                        gif.images.fixed_width_small.url,
+                        gif.images.original.url,
+                        target
+                    ));
+                    fragment.appendChild(img);
+                });
+                gridEl.appendChild(fragment);
+            }
+
+            // Select a GIF — close picker, show preview bar
+            function selectGif(thumbUrl, originalUrl, target) {
+                closeAllPanels();
+                if (target === 'me') {
+                    currentGifMe = originalUrl;
+                    document.getElementById('me-gif-thumb').src = thumbUrl;
+                    document.getElementById('me-gif-preview').style.display = 'flex';
+                    myReplyInput.placeholder = 'Add a caption...';
+                } else {
+                    currentGifSanobar = originalUrl;
+                    document.getElementById('sanobar-gif-thumb').src = thumbUrl;
+                    document.getElementById('sanobar-gif-preview').style.display = 'flex';
+                    sanobarReplyInput.placeholder = 'Add a caption...';
+                }
+            }
+
+            // Open GIF picker — fetch trending once per session
+            async function openGifPicker(target) {
+                const picker = document.getElementById(`${target}-gif-picker`);
+                picker.style.display = 'flex';
+                const gridEl = document.getElementById(`${target}-gif-grid`);
+                const spinnerEl = document.getElementById(`${target}-gif-spinner`);
+                // Only fetch if grid is empty (session cache)
+                if (gridEl.children.length > 0) return;
+                const cache = target === 'me' ? trendingCacheMe : trendingCacheSanobar;
+                if (cache) { renderGifs(cache, gridEl, target); return; }
+                spinnerEl.style.display = 'flex';
+                try {
+                    const gifs = await fetchGifs('', false);
+                    if (target === 'me') trendingCacheMe = gifs;
+                    else trendingCacheSanobar = gifs;
+                    renderGifs(gifs, gridEl, target);
+                } catch (e) { console.error('GIPHY error:', e); }
+                finally { spinnerEl.style.display = 'none'; }
+            }
+
+            // Setup category pills for a target user
+            function setupGifPills(target) {
+                const pillsEl = document.getElementById(`${target}-gif-pills`);
+                GIF_CATEGORIES.forEach((cat, i) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'gif-pill' + (i === 0 ? ' active' : '');
+                    btn.textContent = cat;
+                    btn.addEventListener('click', async () => {
+                        pillsEl.querySelectorAll('.gif-pill').forEach(p => p.classList.remove('active'));
+                        btn.classList.add('active');
+                        const gridEl = document.getElementById(`${target}-gif-grid`);
+                        const spinnerEl = document.getElementById(`${target}-gif-spinner`);
+                        spinnerEl.style.display = 'flex';
+                        gridEl.innerHTML = '';
+                        try {
+                            const isSearch = cat !== 'Trending';
+                            const gifs = await fetchGifs(isSearch ? cat : '', isSearch);
+                            if (!isSearch) {
+                                if (target === 'me') trendingCacheMe = gifs;
+                                else trendingCacheSanobar = gifs;
+                            }
+                            renderGifs(gifs, gridEl, target);
+                        } catch (e) { console.error('GIPHY error:', e); }
+                        finally { spinnerEl.style.display = 'none'; }
+                    });
+                    pillsEl.appendChild(btn);
+                });
+            }
+            setupGifPills('me');
+            setupGifPills('sanobar');
+
+            // GIF search — debounced 400ms
+            document.getElementById('me-gif-search').addEventListener('input', (e) => {
+                clearTimeout(gifSearchDebounceMe);
+                gifSearchDebounceMe = setTimeout(async () => {
+                    const query = e.target.value.trim();
+                    const gridEl = document.getElementById('me-gif-grid');
+                    const spinnerEl = document.getElementById('me-gif-spinner');
+                    spinnerEl.style.display = 'flex';
+                    gridEl.innerHTML = '';
+                    try {
+                        const gifs = await fetchGifs(query || '', !!query);
+                        renderGifs(gifs, gridEl, 'me');
+                    } catch (err) { console.error(err); }
+                    finally { spinnerEl.style.display = 'none'; }
+                }, 400);
+            });
+
+            document.getElementById('sanobar-gif-search').addEventListener('input', (e) => {
+                clearTimeout(gifSearchDebounceSanobar);
+                gifSearchDebounceSanobar = setTimeout(async () => {
+                    const query = e.target.value.trim();
+                    const gridEl = document.getElementById('sanobar-gif-grid');
+                    const spinnerEl = document.getElementById('sanobar-gif-spinner');
+                    spinnerEl.style.display = 'flex';
+                    gridEl.innerHTML = '';
+                    try {
+                        const gifs = await fetchGifs(query || '', !!query);
+                        renderGifs(gifs, gridEl, 'sanobar');
+                    } catch (err) { console.error(err); }
+                    finally { spinnerEl.style.display = 'none'; }
+                }, 400);
+            });
+
+            // Attach button toggle popup
+            document.getElementById('me-attach-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const popup = document.getElementById('me-attach-popup');
+                const isOpen = popup.style.display !== 'none';
+                closeAllPanels();
+                if (!isOpen) popup.style.display = 'block';
+            });
+            document.getElementById('sanobar-attach-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const popup = document.getElementById('sanobar-attach-popup');
+                const isOpen = popup.style.display !== 'none';
+                closeAllPanels();
+                if (!isOpen) popup.style.display = 'block';
+            });
+
+            // GIF button toggle picker
+            document.getElementById('me-gif-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const picker = document.getElementById('me-gif-picker');
+                const isOpen = picker.style.display !== 'none';
+                closeAllPanels();
+                if (!isOpen) openGifPicker('me');
+            });
+            document.getElementById('sanobar-gif-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const picker = document.getElementById('sanobar-gif-picker');
+                const isOpen = picker.style.display !== 'none';
+                closeAllPanels();
+                if (!isOpen) openGifPicker('sanobar');
+            });
+
+            // Close picker × buttons
+            document.getElementById('me-gif-close-btn').addEventListener('click', () => {
+                document.getElementById('me-gif-picker').style.display = 'none';
+            });
+            document.getElementById('sanobar-gif-close-btn').addEventListener('click', () => {
+                document.getElementById('sanobar-gif-picker').style.display = 'none';
+            });
+
+            // Close GIF preview bars
+            document.getElementById('close-me-gif').onclick = () => {
+                document.getElementById('me-gif-preview').style.display = 'none';
+                currentGifMe = null;
+                myReplyInput.placeholder = 'Type your message...';
+            };
+            document.getElementById('close-sanobar-gif').onclick = () => {
+                document.getElementById('sanobar-gif-preview').style.display = 'none';
+                currentGifSanobar = null;
+                sanobarReplyInput.placeholder = 'Type your message...';
+            };
+
+            // Close attach options when a file label is picked
+            document.querySelectorAll('.attach-option').forEach(opt => {
+                opt.addEventListener('click', () => closeAllPanels());
+            });
+
+            // Close all panels on outside click
+            document.addEventListener('click', closeAllPanels);
+
+            // Prevent closing when clicking INSIDE the panels
+            ['me-gif-picker', 'sanobar-gif-picker', 'me-attach-popup', 'sanobar-attach-popup'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('click', (e) => e.stopPropagation());
+            });
 
             function startListeners() {
                 if (unsubscribeMessages) return; // Guard against duplicates
