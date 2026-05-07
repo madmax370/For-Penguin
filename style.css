@@ -2228,8 +2228,10 @@ section {
     object-fit: cover;
     margin-bottom: 4px;
     cursor: pointer;
-    /* Hardware Acceleration to stop flickering on Android */
+    /* Hardware Acceleration & Smoothness Logic */
     transform: translateZ(0);
+    will-change: transform; /* Pre-allocates GPU power */
+    contain: paint; /* Optimizes browser painting */
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
 }

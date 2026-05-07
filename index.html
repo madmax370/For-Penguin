@@ -1016,17 +1016,28 @@
             setInterval(cleanupExpiredMessages, 60 * 1000);
             */
 
-            // --- Image Lazy Load Observer ---
-            const imgObserver = new IntersectionObserver((entries) => {
+            // --- Media Lazy Load Observer (Images, GIFs, and Videos) ---
+            const mediaObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
-                        const img = entry.target;
-                        img.onload = () => img.classList.add('loaded');
-                        if (img.complete) img.classList.add('loaded');
-                        imgObserver.unobserve(img);
+                        const el = entry.target;
+                        
+                        if (el.tagName === 'IMG') {
+                            el.src = el.dataset.src;
+                            el.onload = () => el.classList.add('loaded');
+                        } else if (el.tagName === 'SOURCE') {
+                            const video = el.closest('video');
+                            el.src = el.dataset.src;
+                            if (video) {
+                                video.load(); // Tell video to start loading now that source is set
+                                video.classList.add('loaded');
+                            }
+                        }
+                        
+                        mediaObserver.unobserve(el);
                     }
                 });
-            }, { rootMargin: '100px' });
+            }, { rootMargin: '150px' });
 
             // --- 🚀 HIGH-PERFORMANCE CHAT ARCHITECTURE ---
             const messageCache = new Map(); // messageId -> DOM Element
@@ -1057,9 +1068,10 @@
                     `;
                 }
 
-                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${optimizeUrl(data.imageUrl)}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
-                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${optimizeUrl(data.videoUrl)}"></video></div>` : '';
-                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${optimizeUrl(data.gifUrl)}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
+                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
+                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${data.videoUrl}"></video></div>` : '';
+                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
+                // Note: Video is back to standard 'src' for 100% reliability.
 
                 msgDiv.innerHTML = `
                     <div class="msg-bubble${isNew ? '' : ' no-anim'}">
@@ -1134,9 +1146,9 @@
                     setReply(replyLabel, data.sender, data.sender === 'sanobar' ? 'me' : 'sanobar');
                 };
 
-                // Lazy Load Images and GIFs
-                const imgs = el.querySelectorAll('[data-src]');
-                imgs.forEach(img => { img.src = img.dataset.src; imgObserver.observe(img); });
+                // Lazy Load All Media (Images, GIFs, Videos)
+                const mediaElements = el.querySelectorAll('[data-src]');
+                mediaElements.forEach(item => mediaObserver.observe(item));
             }
 
             // --- 🔋 PERSISTENT LISTENERS: Attach once, never restart ---
@@ -1191,25 +1203,6 @@
                 if (!res.ok) throw new Error('GIPHY API Error');
                 const json = await res.json();
                 return json.data;
-            }
-
-            // --- Mobile Optimization Helper ---
-            function optimizeUrl(url) {
-                if (!url) return '';
-                
-                // 1. Optimize GIPHY (Past and Future)
-                if (url.includes('giphy.com')) {
-                    // Automatically swap "original" or "downsized" for the fast "fixed_width" version
-                    return url.replace('/giphy.gif', '/fixed_width.gif')
-                              .replace('/giphy-downsized.gif', '/fixed_width.gif')
-                              .replace('/200.gif', '/fixed_width.gif');
-                }
-
-                // 2. Optimize Cloudinary
-                if (url.includes('cloudinary.com')) {
-                    return url.replace('/upload/', '/upload/q_auto,f_auto,w_450/');
-                }
-                return url;
             }
 
             // Render GIFs into grid using DocumentFragment (performance)
