@@ -1158,6 +1158,13 @@
             let trendingCacheSanobar = null;
             let gifSearchDebounceMe, gifSearchDebounceSanobar;
 
+            // Pagination state
+            let meGifOffset = 0;
+            let sanobarGifOffset = 0;
+            let meCurrentQuery = '';
+            let sanobarCurrentQuery = '';
+            const GIF_LIMIT = 24; // 8 rows of 3 GIFs
+
             // Close all popups/pickers at once
             function closeAllPanels() {
                 document.getElementById('me-gif-picker').style.display = 'none';
@@ -1169,37 +1176,101 @@
             window.closeAllPanels = closeAllPanels;
 
             // Fetch from GIPHY REST API (no SDK)
-            async function fetchGifs(query, isSearch) {
+            // Using 'bundle=messaging_non_clips' for Instagram/WhatsApp style results
+            async function fetchGifs(query, isSearch, offset = 0) {
                 const base = 'https://api.giphy.com/v1/gifs';
+                const bundle = 'messaging_non_clips'; // Best for chat apps
+                const rating = 'g';
+                const lang = 'en';
+
                 const endpoint = isSearch
-                    ? `${base}/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=15&rating=g`
-                    : `${base}/trending?api_key=${GIPHY_API_KEY}&limit=15&rating=g`;
+                    ? `${base}/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=${GIF_LIMIT}&offset=${offset}&rating=${rating}&lang=${lang}&bundle=${bundle}`
+                    : `${base}/trending?api_key=${GIPHY_API_KEY}&limit=${GIF_LIMIT}&offset=${offset}&rating=${rating}&bundle=${bundle}`;
+
                 const res = await fetch(endpoint);
+                if (!res.ok) throw new Error('GIPHY API Error');
                 const json = await res.json();
                 return json.data;
             }
 
             // Render GIFs into grid using DocumentFragment (performance)
-            function renderGifs(gifs, gridEl, target) {
-                gridEl.innerHTML = '';
+            function renderGifs(gifs, gridEl, target, append = false) {
+                if (!append) {
+                    gridEl.innerHTML = '';
+                    gridEl.scrollTo(0, 0);
+                }
+
+                // Remove any existing Load More button before adding new ones
+                const oldLoadMore = gridEl.querySelector('.gif-load-more-container');
+                if (oldLoadMore) oldLoadMore.remove();
+
                 const emptyEl = document.getElementById(`${target}-gif-empty`);
-                if (!gifs || !gifs.length) { emptyEl.style.display = 'block'; return; }
+                if (!gifs || !gifs.length) {
+                    if (!append) emptyEl.style.display = 'block';
+                    return;
+                }
                 emptyEl.style.display = 'none';
+
                 const fragment = document.createDocumentFragment();
                 gifs.forEach(gif => {
                     const img = document.createElement('img');
                     img.className = 'gif-thumb';
                     img.loading = 'lazy';
+                    // Using fixed_width_small for the grid to save user data/bandwidth
                     img.src = gif.images.fixed_width_small.url;
                     img.dataset.original = gif.images.original.url;
-                    img.addEventListener('click', () => selectGif(
-                        gif.images.fixed_width_small.url,
-                        gif.images.original.url,
-                        target
-                    ));
+                    img.addEventListener('click', () => {
+                        selectGif(
+                            gif.images.fixed_width_small.url,
+                            gif.images.original.url,
+                            target
+                        );
+                    });
                     fragment.appendChild(img);
                 });
+
+                // Add "Load More" button if we got a full set of results
+                if (gifs.length === GIF_LIMIT) {
+                    const container = document.createElement('div');
+                    container.className = 'gif-load-more-container';
+                    const btn = document.createElement('button');
+                    btn.className = 'gif-load-more-btn';
+                    btn.textContent = 'Load More...';
+                    btn.type = 'button'; // Prevent any form submission weirdness
+                    btn.addEventListener('click', () => {
+                        loadMoreGifs(target);
+                    });
+                    container.appendChild(btn);
+                    fragment.appendChild(container);
+                }
+
                 gridEl.appendChild(fragment);
+            }
+
+            // Load More Logic
+            async function loadMoreGifs(target) {
+                const isMe = target === 'me';
+                const gridEl = document.getElementById(`${target}-gif-grid`);
+                const loadMoreBtn = gridEl.querySelector('.gif-load-more-btn');
+                
+                if (loadMoreBtn) {
+                    loadMoreBtn.textContent = 'Loading...';
+                    loadMoreBtn.disabled = true;
+                }
+
+                const offset = isMe ? (meGifOffset += GIF_LIMIT) : (sanobarGifOffset += GIF_LIMIT);
+                const query = isMe ? meCurrentQuery : sanobarCurrentQuery;
+
+                try {
+                    const gifs = await fetchGifs(query, !!query, offset);
+                    renderGifs(gifs, gridEl, target, true);
+                } catch (err) {
+                    console.error('Load more failed:', err);
+                    if (loadMoreBtn) {
+                        loadMoreBtn.textContent = 'Retry Load More';
+                        loadMoreBtn.disabled = false;
+                    }
+                }
             }
 
             // Select a GIF — close picker, show preview bar
@@ -1224,13 +1295,18 @@
                 picker.style.display = 'flex';
                 const gridEl = document.getElementById(`${target}-gif-grid`);
                 const spinnerEl = document.getElementById(`${target}-gif-spinner`);
+
+                // Reset offsets when opening
+                if (target === 'me') { meGifOffset = 0; meCurrentQuery = ''; }
+                else { sanobarGifOffset = 0; sanobarCurrentQuery = ''; }
+
                 // Only fetch if grid is empty (session cache)
                 if (gridEl.children.length > 0) return;
                 const cache = target === 'me' ? trendingCacheMe : trendingCacheSanobar;
                 if (cache) { renderGifs(cache, gridEl, target); return; }
                 spinnerEl.style.display = 'flex';
                 try {
-                    const gifs = await fetchGifs('', false);
+                    const gifs = await fetchGifs('', false, 0);
                     if (target === 'me') trendingCacheMe = gifs;
                     else trendingCacheSanobar = gifs;
                     renderGifs(gifs, gridEl, target);
@@ -1245,23 +1321,37 @@
                     const btn = document.createElement('button');
                     btn.className = 'gif-pill' + (i === 0 ? ' active' : '');
                     btn.textContent = cat;
-                    btn.addEventListener('click', async () => {
+                    btn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
                         pillsEl.querySelectorAll('.gif-pill').forEach(p => p.classList.remove('active'));
                         btn.classList.add('active');
+
+                        const isSearch = cat !== 'Trending';
+                        // To make it feel "fresh", pick a random "page" (offset) for searches
+                        // We pick 0, 24, 48, 72, or 96 as the starting point.
+                        const randomOffset = isSearch ? Math.floor(Math.random() * 5) * GIF_LIMIT : 0;
+                        
+                        if (target === 'me') { 
+                            meGifOffset = randomOffset; 
+                            meCurrentQuery = isSearch ? cat : ''; 
+                        } else { 
+                            sanobarGifOffset = randomOffset; 
+                            sanobarCurrentQuery = isSearch ? cat : ''; 
+                        }
+
                         const gridEl = document.getElementById(`${target}-gif-grid`);
                         const spinnerEl = document.getElementById(`${target}-gif-spinner`);
                         spinnerEl.style.display = 'flex';
                         gridEl.innerHTML = '';
+                        
                         try {
-                            const isSearch = cat !== 'Trending';
-                            const gifs = await fetchGifs(isSearch ? cat : '', isSearch);
-                            if (!isSearch) {
-                                if (target === 'me') trendingCacheMe = gifs;
-                                else trendingCacheSanobar = gifs;
-                            }
+                            const gifs = await fetchGifs(isSearch ? cat : '', isSearch, randomOffset);
                             renderGifs(gifs, gridEl, target);
-                        } catch (e) { console.error('GIPHY error:', e); }
-                        finally { spinnerEl.style.display = 'none'; }
+                        } catch (e) { 
+                            console.error('GIPHY error:', e); 
+                        } finally { 
+                            spinnerEl.style.display = 'none'; 
+                        }
                     });
                     pillsEl.appendChild(btn);
                 });
@@ -1274,12 +1364,15 @@
                 clearTimeout(gifSearchDebounceMe);
                 gifSearchDebounceMe = setTimeout(async () => {
                     const query = e.target.value.trim();
+                    meCurrentQuery = query;
+                    meGifOffset = 0;
+
                     const gridEl = document.getElementById('me-gif-grid');
                     const spinnerEl = document.getElementById('me-gif-spinner');
                     spinnerEl.style.display = 'flex';
                     gridEl.innerHTML = '';
                     try {
-                        const gifs = await fetchGifs(query || '', !!query);
+                        const gifs = await fetchGifs(query || '', !!query, 0);
                         renderGifs(gifs, gridEl, 'me');
                     } catch (err) { console.error(err); }
                     finally { spinnerEl.style.display = 'none'; }
@@ -1290,12 +1383,15 @@
                 clearTimeout(gifSearchDebounceSanobar);
                 gifSearchDebounceSanobar = setTimeout(async () => {
                     const query = e.target.value.trim();
+                    sanobarCurrentQuery = query;
+                    sanobarGifOffset = 0;
+
                     const gridEl = document.getElementById('sanobar-gif-grid');
                     const spinnerEl = document.getElementById('sanobar-gif-spinner');
                     spinnerEl.style.display = 'flex';
                     gridEl.innerHTML = '';
                     try {
-                        const gifs = await fetchGifs(query || '', !!query);
+                        const gifs = await fetchGifs(query || '', !!query, 0);
                         renderGifs(gifs, gridEl, 'sanobar');
                     } catch (err) { console.error(err); }
                     finally { spinnerEl.style.display = 'none'; }
@@ -1359,13 +1455,15 @@
                 opt.addEventListener('click', () => closeAllPanels());
             });
 
-            // Close all panels on outside click
-            document.addEventListener('click', closeAllPanels);
-
-            // Prevent closing when clicking INSIDE the panels
-            ['me-gif-picker', 'sanobar-gif-picker', 'me-attach-popup', 'sanobar-attach-popup'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('click', (e) => e.stopPropagation());
+            // --- Close all panels on outside click (Smart Check) ---
+            document.addEventListener('click', (e) => {
+                // If the click is INSIDE a picker, a popup, or on the toggle buttons, DO NOTHING.
+                if (e.target.closest('.gif-picker-panel') || 
+                    e.target.closest('.attach-popup') ||
+                    e.target.closest('.toolbar-btn')) {
+                    return;
+                }
+                closeAllPanels();
             });
 
             function startListeners() {

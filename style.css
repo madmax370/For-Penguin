@@ -2135,6 +2135,32 @@ section {
     border-radius: 6px;
     cursor: pointer;
     display: block;
+    background: rgba(255, 255, 255, 0.03); /* Placeholder color */
+}
+
+/* --- Load More Button --- */
+.gif-load-more-container {
+    grid-column: 1 / -1; /* Spans across all 3 columns */
+    display: flex;
+    justify-content: center;
+    padding: 10px 0;
+}
+
+.gif-load-more-btn {
+    background: rgba(199, 125, 255, 0.12);
+    border: 1px solid var(--glass-border);
+    color: var(--accent-light);
+    border-radius: 20px;
+    padding: 6px 16px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s ease;
+}
+
+.gif-load-more-btn:active {
+    background: rgba(199, 125, 255, 0.25);
+    transform: scale(0.95);
 }
 
 /* --- Loading Spinner --- */
