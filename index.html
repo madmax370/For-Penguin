@@ -803,14 +803,96 @@
             };
 
             // Fullscreen Modal Logic
-            const modal = document.getElementById('image-modal');
+            function openFullscreen(src) {
+                const modal = document.getElementById('image-modal');
+                const modalImg = document.getElementById('modal-img');
+                if (!modal || !modalImg) return;
+
+                modalImg.src = src; // Instant load from current view
+                modal.style.display = 'flex';
+                modal.classList.add('active');
+                modalImg.classList.add('zoom-effect');
+
+                modal.onclick = () => {
+                    modal.classList.remove('active');
+                    modalImg.classList.remove('zoom-effect');
+                    zoomScale = 1; // Reset zoom
+                    modalImg.style.transform = 'scale(1)'; 
+                    setTimeout(() => modal.style.display = 'none', 300);
+                };
+            }
+            window.openFullscreen = openFullscreen;
+
+            // --- PREMIUM: Global Double-Tap Handler ---
+            let lastTap = 0;
+            document.addEventListener('touchstart', (e) => {
+                const target = e.target.closest('.msg-attached-image, .msg-attached-gif');
+                if (!target) return;
+
+                const now = Date.now();
+                const timesince = now - lastTap;
+                if ((timesince < 300) && (timesince > 0)) {
+                    // Double Tap Detected
+                    e.preventDefault();
+                    triggerHeartPop(target);
+                }
+                lastTap = now;
+            }, { passive: false });
+
+            // Desktop Double Click
+            document.addEventListener('dblclick', (e) => {
+                const target = e.target.closest('.msg-attached-image, .msg-attached-gif');
+                if (target) triggerHeartPop(target);
+            });
+
+            function triggerHeartPop(container) {
+                const wrapper = container.parentElement;
+                if (!wrapper) return;
+                
+                const heart = document.createElement('div');
+                heart.className = 'heart-pop';
+                heart.innerHTML = '❤️';
+                wrapper.appendChild(heart);
+                
+                setTimeout(() => heart.remove(), 800);
+            }
+
+            // --- PREMIUM: Pinch-to-Zoom Logic ---
+            let zoomScale = 1;
+            let initialDistance = 0;
             const modalImg = document.getElementById('modal-img');
-            window.openFullscreen = (src) => {
-                modal.style.display = "flex";
-                modalImg.src = src;
-            };
-            document.getElementById('close-modal').onclick = () => modal.style.display = "none";
-            modal.onclick = (e) => { if (e.target === modal) modal.style.display = "none"; };
+
+            modalImg.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 2) {
+                    initialDistance = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                }
+            }, { passive: true });
+
+            modalImg.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    const distance = Math.hypot(
+                        e.touches[0].pageX - e.touches[1].pageX,
+                        e.touches[0].pageY - e.touches[1].pageY
+                    );
+                    const scale = distance / initialDistance;
+                    zoomScale = Math.min(Math.max(1, scale), 4);
+                    modalImg.style.transform = `scale(${zoomScale})`;
+                }
+            }, { passive: false });
+
+            modalImg.addEventListener('touchend', () => {
+                // Reset scale if needed or keep it
+            });
+
+            // Double Tap to Reset Zoom
+            modalImg.addEventListener('dblclick', () => {
+                zoomScale = zoomScale === 1 ? 2.5 : 1;
+                modalImg.style.transform = `scale(${zoomScale})`;
+            });
 
             // --- Reply Logic ---
             function setReply(text, sender, target) {
@@ -1062,8 +1144,10 @@
                         const el = entry.target;
                         
                         if (el.tagName === 'IMG') {
-                            el.src = el.dataset.src;
-                            el.onload = () => el.classList.add('loaded');
+                            if (el.dataset.src) {
+                                el.src = el.dataset.src;
+                                el.onload = () => el.classList.add('loaded');
+                            }
                         } else if (el.tagName === 'SOURCE') {
                             const video = el.closest('video');
                             el.src = el.dataset.src;
@@ -1088,7 +1172,7 @@
             function createMessageElement(docSnap, isNew) {
                 const data = docSnap.data();
                 const msgTimestamp = data.timestamp ? data.timestamp.toDate() : new Date();
-                const timeStr = data.timestamp ? msgTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "...";
+                const timeStr = msgTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const isMe = data.sender === 'me';
                 const senderName = isMe ? 'Bhatari' : 'Bhandhari';
 
@@ -1107,9 +1191,10 @@
                     `;
                 }
 
-                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
+                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src || this.dataset.src)" loading="lazy" decoding="async"></div>` : '';
                 const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${data.videoUrl}"></video></div>` : '';
-                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img data-src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src)" loading="lazy" decoding="async"></div>` : '';
+                // GIFs now load instantly (no data-src) to fix blank message issue
+                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src || this.dataset.src)" loading="eager" decoding="async"></div>` : '';
                 // Note: Video is back to standard 'src' for 100% reliability.
 
                 msgDiv.innerHTML = `

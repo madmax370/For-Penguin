@@ -315,6 +315,16 @@ section {
     box-shadow: 0 15px 50px rgba(123, 44, 191, 0.3);
 }
 
+.glass-card {
+    background: rgba(25, 15, 45, 0.95); /* High-performance solid background */
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
 .photo-card {
     background: rgba(26, 15, 46, 0.85);
     border: 1px solid var(--glass-border);
@@ -335,8 +345,6 @@ section {
     border-radius: 16px;
     padding: 0;
     /* Edge-to-edge for images */
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     overflow: hidden;
     /* Ensure image corners are clipped by card radius */
@@ -908,12 +916,16 @@ section {
     transform: translateY(-2px);
 }
 
-.msg-image-wrapper {
-    margin: 0.5rem 0;
-    border-radius: 8px;
+.msg-image-wrapper, .msg-video-wrapper {
+    position: relative;
+    border-radius: 10px;
     overflow: hidden;
-    max-width: 100%;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    margin-bottom: 4px;
+    min-height: 150px; /* Prevents layout jump when media loads */
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 @keyframes fadeIn {
@@ -988,12 +1000,13 @@ section {
 }
 
 .modal-content {
-    max-width: 90%;
+    max-width: 95%;
     max-height: 90vh;
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 10px 50px rgba(0, 0, 0, 0.8);
     object-fit: contain;
-    animation: zoomInModal 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transition: transform 0.3s ease;
+    will-change: transform;
 }
 
 @keyframes zoomInModal {
@@ -1023,7 +1036,46 @@ section {
     transform: scale(1.1);
 }
 
-/* duplicate removed — see above */
+/* --- PREMIUM: Double-Tap Heart Animation --- */
+.heart-pop {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 5rem;
+    color: #ff4d4d;
+    text-shadow: 0 0 20px rgba(255, 77, 77, 0.6);
+    pointer-events: none;
+    z-index: 100;
+    animation: heartBurst 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes heartBurst {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    40% { transform: translate(-50%, -50%) scale(1.4); opacity: 1; }
+    70% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* --- Premium Fullscreen Transition --- */
+.image-modal.active {
+    display: flex;
+    animation: modalFadeIn 0.3s ease forwards;
+}
+
+@keyframes modalFadeIn {
+    from { background-color: rgba(0,0,0,0); }
+    to { background-color: rgba(0,0,0,0.95); }
+}
+
+.modal-content.zoom-effect {
+    animation: zoomScaleUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes zoomScaleUp {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
 
 /* Bhatari (User) Message: Left / Silver */
 .chat-message.msg-me {
