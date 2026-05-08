@@ -87,24 +87,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- NEW: Professional Inline PIN Unlocking ---
     window.focusPinInput = (lockElement) => {
         const input = lockElement.querySelector('.pin-input-hidden');
+        
+        // Reset input state on every focus to avoid "already filled" bugs
+        input.value = '';
+        const dots = lockElement.querySelectorAll('.pin-dot');
+        dots.forEach(dot => dot.classList.remove('filled'));
+        
         input.focus();
         lockElement.classList.add('focused');
 
-        // Ensure the focused class stays as long as the input is focused
         input.onblur = () => lockElement.classList.remove('focused');
-        input.onfocus = () => lockElement.classList.add('focused');
+        input.onfocus = () => {
+            lockElement.classList.add('focused');
+            // Re-clear to be absolutely sure
+            input.value = ''; 
+            dots.forEach(dot => dot.classList.remove('filled'));
+        };
     };
 
     window.handlePinInput = (inputElement) => {
         const lockElement = inputElement.closest('.component-lock');
         const dots = lockElement.querySelectorAll('.pin-dot');
+        
+        // Robust value extraction for mobile browsers
         let value = inputElement.value;
-
-        // Force numeric only (extra safety for some mobile browsers)
         value = value.replace(/[^0-9]/g, '').slice(0, 4);
+        
+        // Sync the internal value immediately
         inputElement.value = value;
 
-        // Update dots visual state
+        // Visual update with forced synchronization
         dots.forEach((dot, index) => {
             if (index < value.length) {
                 dot.classList.add('filled');
@@ -113,13 +125,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Verify when 4 digits are entered
+        // Validation logic
         if (value.length === 4) {
             if (value === '1102') {
                 lockElement.classList.add('unlocked');
                 lockElement.closest('.locked-container').classList.add('is-unlocked');
+                
+                // Success feedback: vibration
+                if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
 
-                // Auto-scroll chat if applicable
                 if (lockElement.closest('.chat-section')) {
                     setTimeout(() => {
                         const display = document.getElementById('replies-display');
@@ -127,8 +141,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     }, 600);
                 }
             } else {
-                // Shake and clear on wrong PIN
+                // Wrong PIN feedback
                 lockElement.classList.add('shake');
+                if (navigator.vibrate) navigator.vibrate(200);
+                
                 setTimeout(() => {
                     lockElement.classList.remove('shake');
                     inputElement.value = '';

@@ -114,7 +114,8 @@
 
                             <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
                             <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
-                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                                class="pin-input-hidden" oninput="handlePinInput(this)" 
+                                autocomplete="one-time-code">
                         </div>
                         <div class="photo-card float-anim">
                             <img class="photo-img" src="images/image1-smile.jpg" alt="Childhood Smile">
@@ -140,7 +141,8 @@
 
                             <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
                             <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
-                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                                class="pin-input-hidden" oninput="handlePinInput(this)" 
+                                autocomplete="one-time-code">
                         </div>
                         <div class="photo-card float-anim-delayed">
                             <img class="photo-img" src="images/image2-eyes.jpg" alt="Beautiful Eyes">
@@ -246,7 +248,8 @@
                             </div>
                             <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
                             <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
-                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                                class="pin-input-hidden" oninput="handlePinInput(this)" 
+                                autocomplete="one-time-code">
                         </div>
                         <div class="message-block custom-scroll relative">
                             <!-- Message Header -->
@@ -335,7 +338,8 @@
 
                             <p class="text-[10px] mt-4 opacity-40 uppercase tracking-tighter">Tap anywhere to type</p>
                             <input type="tel" pattern="[0-9]*" inputmode="numeric" maxlength="4"
-                                class="pin-input-hidden" oninput="handlePinInput(this)">
+                                class="pin-input-hidden" oninput="handlePinInput(this)" 
+                                autocomplete="one-time-code">
                         </div>
                         <h3 class="sub-title mb-4 text-center" style="font-size: 1.2rem;">Chat Section💬</h3>
 
@@ -566,11 +570,6 @@
         </main>
 
         <!-- Fullscreen Image Viewer Modal -->
-        <div id="image-modal" class="image-modal">
-            <span id="close-modal" class="close-modal">×</span>
-            <img class="modal-content" id="modal-img">
-        </div>
-
         <!-- Firebase Configuration & Real-time Replies -->
         <script type="module">
             import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -619,7 +618,7 @@
 
             // --- ✨ LIVING BACKGROUND BOKEH (Optimized Pool) ---
             const bokehContainer = document.getElementById('bokeh-container');
-            const BOKEH_COUNT = 15;
+            const BOKEH_COUNT = 8; // Reduced for performance
             for (let i = 0; i < BOKEH_COUNT; i++) {
                 const el = document.createElement('div');
                 el.className = 'bokeh-particle';
@@ -637,7 +636,7 @@
 
                 el.style.animationName = 'none';
                 void el.offsetWidth; // trigger reflow
-                el.style.animationName = 'floatUp'; // Using the global animation
+                el.style.animationName = 'bokehFloat'; // Using the global animation
 
                 setTimeout(() => resetBokeh(el), (duration + delay) * 1000);
             }
@@ -801,98 +800,6 @@
                 document.getElementById('sanobar-video-input').value = '';
                 sanobarReplyInput.placeholder = "Type your message...";
             };
-
-            // Fullscreen Modal Logic
-            function openFullscreen(src) {
-                const modal = document.getElementById('image-modal');
-                const modalImg = document.getElementById('modal-img');
-                if (!modal || !modalImg) return;
-
-                modalImg.src = src; // Instant load from current view
-                modal.style.display = 'flex';
-                modal.classList.add('active');
-                modalImg.classList.add('zoom-effect');
-
-                modal.onclick = () => {
-                    modal.classList.remove('active');
-                    modalImg.classList.remove('zoom-effect');
-                    zoomScale = 1; // Reset zoom
-                    modalImg.style.transform = 'scale(1)'; 
-                    setTimeout(() => modal.style.display = 'none', 300);
-                };
-            }
-            window.openFullscreen = openFullscreen;
-
-            // --- PREMIUM: Global Double-Tap Handler ---
-            let lastTap = 0;
-            document.addEventListener('touchstart', (e) => {
-                const target = e.target.closest('.msg-attached-image, .msg-attached-gif');
-                if (!target) return;
-
-                const now = Date.now();
-                const timesince = now - lastTap;
-                if ((timesince < 300) && (timesince > 0)) {
-                    // Double Tap Detected
-                    e.preventDefault();
-                    triggerHeartPop(target);
-                }
-                lastTap = now;
-            }, { passive: false });
-
-            // Desktop Double Click
-            document.addEventListener('dblclick', (e) => {
-                const target = e.target.closest('.msg-attached-image, .msg-attached-gif');
-                if (target) triggerHeartPop(target);
-            });
-
-            function triggerHeartPop(container) {
-                const wrapper = container.parentElement;
-                if (!wrapper) return;
-                
-                const heart = document.createElement('div');
-                heart.className = 'heart-pop';
-                heart.innerHTML = '❤️';
-                wrapper.appendChild(heart);
-                
-                setTimeout(() => heart.remove(), 800);
-            }
-
-            // --- PREMIUM: Pinch-to-Zoom Logic ---
-            let zoomScale = 1;
-            let initialDistance = 0;
-            const modalImg = document.getElementById('modal-img');
-
-            modalImg.addEventListener('touchstart', (e) => {
-                if (e.touches.length === 2) {
-                    initialDistance = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                }
-            }, { passive: true });
-
-            modalImg.addEventListener('touchmove', (e) => {
-                if (e.touches.length === 2) {
-                    e.preventDefault();
-                    const distance = Math.hypot(
-                        e.touches[0].pageX - e.touches[1].pageX,
-                        e.touches[0].pageY - e.touches[1].pageY
-                    );
-                    const scale = distance / initialDistance;
-                    zoomScale = Math.min(Math.max(1, scale), 4);
-                    modalImg.style.transform = `scale(${zoomScale})`;
-                }
-            }, { passive: false });
-
-            modalImg.addEventListener('touchend', () => {
-                // Reset scale if needed or keep it
-            });
-
-            // Double Tap to Reset Zoom
-            modalImg.addEventListener('dblclick', () => {
-                zoomScale = zoomScale === 1 ? 2.5 : 1;
-                modalImg.style.transform = `scale(${zoomScale})`;
-            });
 
             // --- Reply Logic ---
             function setReply(text, sender, target) {
@@ -1146,14 +1053,20 @@
                         if (el.tagName === 'IMG') {
                             if (el.dataset.src) {
                                 el.src = el.dataset.src;
-                                el.onload = () => el.classList.add('loaded');
+                                el.onload = () => {
+                                    el.classList.add('loaded');
+                                    el.parentElement?.classList.add('loaded'); // Remove shimmer
+                                };
                             }
                         } else if (el.tagName === 'SOURCE') {
                             const video = el.closest('video');
                             el.src = el.dataset.src;
                             if (video) {
-                                video.load(); // Tell video to start loading now that source is set
-                                video.classList.add('loaded');
+                                video.load();
+                                video.onloadeddata = () => {
+                                    video.classList.add('loaded');
+                                    video.parentElement?.classList.add('loaded'); // Remove shimmer
+                                };
                             }
                         }
                         
@@ -1191,10 +1104,10 @@
                     `;
                 }
 
-                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onclick="openFullscreen(this.src || this.dataset.src)" loading="lazy" decoding="async"></div>` : '';
-                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline><source src="${data.videoUrl}"></video></div>` : '';
+                const imageHtml = data.imageUrl ? `<div class="msg-image-wrapper"><img data-src="${data.imageUrl}" class="msg-attached-image" onerror="this.src='https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg'; this.parentElement.innerHTML+='<span style=\'font-size:0.7rem;opacity:0.5\'>Media unavailable</span>';" loading="lazy" decoding="async"></div>` : '';
+                const videoHtml = data.videoUrl ? `<div class="msg-video-wrapper"><video controls class="msg-attached-video" preload="metadata" playsinline onplay="if(this.requestFullscreen) { this.requestFullscreen(); } else if(this.webkitRequestFullscreen) { this.webkitRequestFullscreen(); } else if(this.webkitEnterFullscreen) { this.webkitEnterFullscreen(); }"><source src="${data.videoUrl}"></video></div>` : '';
                 // GIFs now load instantly (no data-src) to fix blank message issue
-                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img src="${data.gifUrl}" class="msg-attached-gif" onclick="openFullscreen(this.src || this.dataset.src)" loading="eager" decoding="async"></div>` : '';
+                const gifHtml = data.gifUrl ? `<div class="msg-image-wrapper"><img src="${data.gifUrl}" class="msg-attached-gif" onerror="this.style.display='none'; this.parentElement.innerHTML+='<span style=\'font-size:0.7rem;opacity:0.5\'>GIF unavailable</span>';" loading="eager" decoding="async"></div>` : '';
                 // Note: Video is back to standard 'src' for 100% reliability.
 
                 msgDiv.innerHTML = `
