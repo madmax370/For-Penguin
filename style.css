@@ -448,6 +448,75 @@ section {
     }
 }
 
+/* Lyrics Styles */
+.lyrics-wrapper {
+    height: 0px;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    position: relative;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.music-card.playing .lyrics-wrapper {
+    height: 160px;
+    opacity: 1;
+    margin-top: 1.5rem;
+}
+
+.lyrics-container {
+    height: 100%;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 0; /* Padding to allow scrolling to the center */
+}
+
+.lyrics-container::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+}
+
+.lyrics-line {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 10px 15px;
+    width: 100%;
+    min-height: 28px;
+    filter: blur(1px);
+    transform: scale(0.95);
+    opacity: 0.5;
+    cursor: pointer;
+}
+
+.lyrics-line.active {
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 700;
+    filter: blur(0px);
+    transform: scale(1.08);
+    opacity: 1;
+}
+
+/* Pause State: Lyrics dim slightly when paused */
+.music-card:not(.playing) .lyrics-line.active {
+    opacity: 0.8;
+    text-shadow: none;
+}
+
+/* Play State: Deep aesthetic glow */
+.music-card.playing .lyrics-line.active {
+    text-shadow: 0 0 15px rgba(199, 125, 255, 0.8), 0 0 30px rgba(123, 44, 191, 0.4);
+}
+
 .music-card.playing {
     border-color: var(--accent-light);
     box-shadow: 0 0 20px rgba(199, 125, 255, 0.15);

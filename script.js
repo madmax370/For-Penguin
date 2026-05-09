@@ -1,3 +1,36 @@
+const SONG_LYRICS = {
+    "songs/song1.mp3": [
+        { time: 0, text: "Yeh duniya waqif hai" },
+        { time: 3, text: "Hum to NaQabil hai" },
+        { time: 6, text: "Kyu tu honga mera?" },
+        { time: 11, text: "Tujhpe jo marte hai" },
+        { time: 13.4, text: "Hum unme shaamil hai" },
+        { time: 16, text: "Hai badi baat kya!!!" }
+    ],
+    "songs/song2.mp3": [
+        { time: 0, text: "Agar Kabhi" },
+        { time: 1.6, text: "Main utar jaaun dil se bhi tere" },
+        { time: 4, text: "To kisi gair se behter hai" },
+        { time: 6, text: "Ke tum keh dena mujhe" },
+        { time: 7.5, text: "Main bhul jaaonga" },
+        { time: 9, text: "Yaad bhi na aaunga.." },
+        { time: 11, text: "Rounga tere liye.." },
+        { time: 12.9, text: "Par tujhe hasaunga" },
+        { time: 14.8, text: "Dhup tere pe lage" },
+        { time: 16.7, text: "To chaav me hojaunga " },
+        { time: 19, text: "Jo uthani kaanch ho to" },
+        { time: 20.6, text: "Haath main hojaunga.." },
+        { time: 22.4, text: "Saath bhi na chorunga.." },
+        { time: 24, text: "Paas bhi na aaunga" },
+        { time: 26, text: "Har safar me main tera" },
+        { time: 28, text: "Humsafar hojaaunga" },
+        { time: 30, text: "Tum to phir tum ho na..." },
+        { time: 32.4, text: "Tum aaon ya na aaon..." },
+        { time: 34, text: "Main bhi main hu phir..." },
+        { time: 35.7, text: "Main tumhe bulaunga!!!" }
+    ]
+};
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // 0. Password Logic
@@ -87,12 +120,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- NEW: Professional Inline PIN Unlocking ---
     window.focusPinInput = (lockElement) => {
         const input = lockElement.querySelector('.pin-input-hidden');
-        
+
         // Reset input state on every focus to avoid "already filled" bugs
         input.value = '';
         const dots = lockElement.querySelectorAll('.pin-dot');
         dots.forEach(dot => dot.classList.remove('filled'));
-        
+
         input.focus();
         lockElement.classList.add('focused');
 
@@ -100,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         input.onfocus = () => {
             lockElement.classList.add('focused');
             // Re-clear to be absolutely sure
-            input.value = ''; 
+            input.value = '';
             dots.forEach(dot => dot.classList.remove('filled'));
         };
     };
@@ -108,11 +141,11 @@ document.addEventListener('DOMContentLoaded', () => {
     window.handlePinInput = (inputElement) => {
         const lockElement = inputElement.closest('.component-lock');
         const dots = lockElement.querySelectorAll('.pin-dot');
-        
+
         // Robust value extraction for mobile browsers
         let value = inputElement.value;
         value = value.replace(/[^0-9]/g, '').slice(0, 4);
-        
+
         // Sync the internal value immediately
         inputElement.value = value;
 
@@ -130,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (value === '1102') {
                 lockElement.classList.add('unlocked');
                 lockElement.closest('.locked-container').classList.add('is-unlocked');
-                
+
                 // Success feedback: vibration
                 if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
 
@@ -144,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Wrong PIN feedback
                 lockElement.classList.add('shake');
                 if (navigator.vibrate) navigator.vibrate(200);
-                
+
                 setTimeout(() => {
                     lockElement.classList.remove('shake');
                     inputElement.value = '';
@@ -327,11 +360,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupAudio() {
         let currentAudio = null;
         let currentCard = null;
+        let timeUpdateHandler = null;
 
         const musicCards = document.querySelectorAll('.music-card');
 
         musicCards.forEach(card => {
             const btn = card.querySelector('.play-btn');
+            const lyricsWrapper = card.querySelector('.lyrics-wrapper');
+            const lyricsContainer = card.querySelector('.lyrics-container');
             if (!btn) return;
 
             const audioSrc = card.getAttribute('data-audio');
@@ -352,6 +388,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (currentAudio) {
                     currentAudio.pause();
+                    if (timeUpdateHandler) {
+                        currentAudio.removeEventListener('timeupdate', timeUpdateHandler);
+                    }
                     const prevBtn = currentCard.querySelector('.play-btn');
                     if (prevBtn) prevBtn.textContent = '▶ Play';
                     currentCard.classList.remove('playing');
@@ -362,6 +401,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 currentAudio = new Audio(audioSrc);
                 currentCard = card;
+
+                // --- Lyrics Setup ---
+                const songLyricsData = SONG_LYRICS[audioSrc];
+                if (lyricsWrapper && lyricsContainer && songLyricsData) {
+                    lyricsContainer.innerHTML = '';
+
+                    songLyricsData.forEach((lineData, index) => {
+                        const div = document.createElement('div');
+                        div.className = 'lyrics-line';
+                        div.dataset.time = lineData.time;
+                        div.dataset.index = index;
+                        div.textContent = lineData.text;
+                        lyricsContainer.appendChild(div);
+                    });
+
+                    timeUpdateHandler = () => {
+                        const currentTime = currentAudio.currentTime;
+                        const lines = lyricsContainer.querySelectorAll('.lyrics-line');
+
+                        let activeIndex = -1;
+                        for (let i = 0; i < songLyricsData.length; i++) {
+                            if (currentTime >= songLyricsData[i].time) {
+                                activeIndex = i;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        if (activeIndex !== -1) {
+                            const activeLine = lines[activeIndex];
+                            if (!activeLine.classList.contains('active')) {
+                                lines.forEach(l => l.classList.remove('active'));
+                                activeLine.classList.add('active');
+                                activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                        }
+                    };
+                    currentAudio.addEventListener('timeupdate', timeUpdateHandler);
+                } else if (lyricsWrapper) {
+                    // Optional fallback if no lyrics: just ensure it stays hidden
+                    // (already handled by CSS height:0 by default)
+                }
 
                 currentAudio.addEventListener('canplaythrough', () => {
                     if (currentCard === card) {
@@ -383,6 +464,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentAudio.addEventListener('ended', () => {
                     btn.textContent = '▶ Play';
                     card.classList.remove('playing');
+                    if (timeUpdateHandler) {
+                        currentAudio.removeEventListener('timeupdate', timeUpdateHandler);
+                    }
                     currentAudio = null;
                     currentCard = null;
                 });
@@ -434,8 +518,8 @@ document.addEventListener('DOMContentLoaded', () => {
             notifyBtn.style.animation = 'none';
             notifyBtn.textContent = "🚀 Notifying...";
 
-            const timeStr = new Date().toLocaleTimeString('en-US', { 
-                hour: 'numeric', minute: '2-digit', hour12: true 
+            const timeStr = new Date().toLocaleTimeString('en-US', {
+                hour: 'numeric', minute: '2-digit', hour12: true
             });
 
             const moods = ['💜', '✨', '🐧', '🌸', '💬', '🍭', '🎀'];
@@ -448,9 +532,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const CHAT_ID = "6219378525";
 
             const message = `🚀 *Bhandhari is Online!* ${randomMood}\n\n` +
-                            `✨ Status: *Waiting in Chat*\n` +
-                            `⏰ Time: _${timeStr}_\n\n` +
-                            `🐧 _Sent from Bhatari Comfort Space_`;
+                `✨ Status: *Waiting in Chat*\n` +
+                `⏰ Time: _${timeStr}_\n\n` +
+                `🐧 _Sent from Bhatari Comfort Space_`;
 
             try {
                 const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
