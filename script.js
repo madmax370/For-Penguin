@@ -420,59 +420,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Bhandhari Online Notification (Brevo Integration) ---
+    // --- Bhandhari Online Notification (Telegram Integration) ---
     const notifyBtn = document.getElementById('notify-online-btn');
     if (notifyBtn) {
         notifyBtn.addEventListener('click', async () => {
             if (sessionStorage.getItem('notified_madmax')) {
-                notifyBtn.style.animation = 'none'; // Stop pulse
+                notifyBtn.style.animation = 'none';
                 alert("You've already notified Bhatari! 🐧");
                 return;
             }
 
             notifyBtn.disabled = true;
-            notifyBtn.style.animation = 'none'; // Stop pulse immediately
-            notifyBtn.textContent = "⏳ Notifying...";
+            notifyBtn.style.animation = 'none';
+            notifyBtn.textContent = "🚀 Notifying...";
 
-            // Get human-readable time (e.g., 11:59 PM)
             const timeStr = new Date().toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
-                minute: '2-digit', 
-                hour12: true 
+                hour: 'numeric', minute: '2-digit', hour12: true 
             });
 
-            // Random emoji to ensure unique subject lines
             const moods = ['💜', '✨', '🐧', '🌸', '💬', '🍭', '🎀'];
             const randomMood = moods[Math.floor(Math.random() * moods.length)];
 
-            // Obfuscated key to deter simple bots
-            const k1 = "xkeysib-c79ba323f247914b1534019a4f8a93c51add92c444f";
-            const k2 = "010578a07a1aea00a53c3-Lnmk98xb1MHy5fyL";
-            const BREVO_KEY = k1 + k2;
+            // Obfuscated Telegram Token
+            const t1 = "8695269828:AAEa1pf";
+            const t2 = "fPXcEfXZJIWiSMvE3BIxJtqINV94";
+            const TG_TOKEN = t1 + t2;
+            const CHAT_ID = "6219378525";
 
-            const payload = {
-                sender: { name: "Bhandhari", email: "madmax801065@gmail.com" },
-                to: [{ email: "madmax801065@gmail.com", name: "MadMax" }],
-                subject: `Bhandhari is Online! (${timeStr}) ${randomMood}`,
-                htmlContent: `
-                    <div style="background:#0f0c29; color:white; padding:20px; border-radius:10px; font-family:sans-serif; border: 1px solid #c77dff;">
-                        <h2 style="color:#c77dff;">Hello MadMax!</h2>
-                        <p style="font-size:1.1rem;">Bhandhari is currently online and waiting in the chat! 🐧</p>
-                        <hr style="border:0; border-top:1px solid #333; margin: 20px 0;">
-                        <p style="font-size:0.8rem; opacity:0.6;">Sent from your Bhandhari Chat App</p>
-                    </div>
-                `
-            };
+            const message = `🚀 *Bhandhari is Online!* ${randomMood}\n\n` +
+                            `✨ Status: *Waiting in Chat*\n` +
+                            `⏰ Time: _${timeStr}_\n\n` +
+                            `🐧 _Sent from Bhatari Comfort Space_`;
 
             try {
-                const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
                     method: 'POST',
-                    headers: {
-                        'accept': 'application/json',
-                        'api-key': BREVO_KEY,
-                        'content-type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: CHAT_ID,
+                        text: message,
+                        parse_mode: 'Markdown'
+                    })
                 });
 
                 if (response.ok) {
@@ -482,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error();
                 }
             } catch (error) {
-                console.error("Notify failed");
+                console.error("Telegram notify failed");
                 notifyBtn.textContent = "❌ Failed. Retry?";
                 notifyBtn.disabled = false;
             }
