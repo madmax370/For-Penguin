@@ -8,6 +8,71 @@
     --glass-border: rgba(199, 125, 255, 0.2);
 }
 
+/* Update Notification Toast */
+.update-toast {
+    position: fixed;
+    top: -100px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100000;
+    background: rgba(15, 10, 30, 0.85);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5), 0 0 20px rgba(199, 125, 255, 0.2);
+    transition: all 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    width: 90%;
+    max-width: 400px;
+}
+
+.update-toast.show {
+    top: 25px;
+}
+
+.update-badge {
+    background: var(--accent-light);
+    color: #1a0f2e;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 4px 8px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.update-message {
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-weight: 500;
+    flex: 1;
+    line-height: 1.4;
+}
+
+.update-close {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: background 0.3s;
+}
+
+.update-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+
 * {
     margin: 0;
     padding: 0;

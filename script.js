@@ -31,6 +31,14 @@ const SONG_LYRICS = {
     ]
 };
 
+// --- Smart Update Notification System ---
+const UPDATE_CONFIG = {
+    // IMPORTANT: Update this timestamp whenever you change content (Music, Shayari, etc.)
+    // Format: YYYY-MM-DDTHH:MM:SSZ
+    lastUpdated: "2026-05-10T01:14:03Z",
+    message: "Both song cards have been updated, play them if you'd like to. 🎵✨"
+};
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // 0. Password Logic
@@ -355,6 +363,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 glow.style.transform = `translate3d(${e.clientX - 150}px, ${e.clientY - 150}px, 0)`;
             });
         }
+
+        // 7. Check for New Updates (24-hour window)
+        checkForUpdates();
+    }
+
+    function checkForUpdates() {
+        const lastUpdatedDate = new Date(UPDATE_CONFIG.lastUpdated);
+        const now = new Date();
+        const diffInHours = (now - lastUpdatedDate) / (1000 * 60 * 60);
+
+        // Logic: Show only if updated within last 24 hours AND not already dismissed
+        const storageKey = `update_seen_${UPDATE_CONFIG.lastUpdated}`;
+        if (diffInHours <= 24 && !localStorage.getItem(storageKey)) {
+            showUpdateToast(UPDATE_CONFIG.message, storageKey);
+        }
+    }
+
+    function showUpdateToast(msg, storageKey) {
+        const toast = document.createElement('div');
+        toast.className = 'update-toast';
+        toast.innerHTML = `
+            <span class="update-badge">New</span>
+            <span class="update-message">${msg}</span>
+            <button class="update-close">×</button>
+        `;
+        document.body.appendChild(toast);
+
+        // Slide in
+        setTimeout(() => toast.classList.add('show'), 1000);
+
+        toast.querySelector('.update-close').onclick = () => {
+            toast.classList.remove('show');
+            localStorage.setItem(storageKey, 'true');
+            setTimeout(() => toast.remove(), 600);
+        };
+
+        // Auto-hide after 15 seconds to keep UI clean
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 600);
+            }
+        }, 15000);
     }
 
     function setupAudio() {
