@@ -295,12 +295,28 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1. Core Systems (Optimized Restore: Very low count for perfect performance)
         createParticles();
 
-        // 2. Start Button Navigation
+        // 2. Button Navigations
         const startBtn = document.getElementById('start-btn');
         if (startBtn) {
             startBtn.addEventListener('click', () => {
                 const target = document.getElementById('s2-chart');
                 if (target) target.scrollIntoView({ behavior: 'smooth' });
+            });
+        }
+
+        const goToChatBtn = document.getElementById('go-to-chat-btn');
+        if (goToChatBtn) {
+            goToChatBtn.addEventListener('click', () => {
+                const target = document.getElementById('chat-container');
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Highlight the container slightly to show it's reached
+                    target.style.transition = 'box-shadow 0.5s ease';
+                    target.style.boxShadow = '0 0 30px rgba(199, 125, 255, 0.4)';
+                    setTimeout(() => {
+                        target.style.boxShadow = '';
+                    }, 2000);
+                }
             });
         }
 
@@ -456,6 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // --- Lyrics Setup ---
                 const songLyricsData = SONG_LYRICS[audioSrc];
                 if (lyricsWrapper && lyricsContainer && songLyricsData) {
+                    card.classList.add('has-lyrics'); // For CSS expansion
                     lyricsContainer.innerHTML = '';
 
                     songLyricsData.forEach((lineData, index) => {
@@ -464,10 +481,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         div.dataset.time = lineData.time;
                         div.dataset.index = index;
                         div.textContent = lineData.text;
+                        
+                        // NEW: Click to Seek
+                        div.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (currentAudio) {
+                                currentAudio.currentTime = parseFloat(lineData.time);
+                            }
+                        });
+
                         lyricsContainer.appendChild(div);
                     });
 
                     timeUpdateHandler = () => {
+                        if (!currentAudio) return;
                         const currentTime = currentAudio.currentTime;
                         const lines = lyricsContainer.querySelectorAll('.lyrics-line');
 
@@ -490,9 +517,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     };
                     currentAudio.addEventListener('timeupdate', timeUpdateHandler);
-                } else if (lyricsWrapper) {
-                    // Optional fallback if no lyrics: just ensure it stays hidden
-                    // (already handled by CSS height:0 by default)
+                } else {
+                    card.classList.remove('has-lyrics');
                 }
 
                 currentAudio.addEventListener('canplaythrough', () => {
@@ -503,6 +529,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 btn.textContent = '⏸ Pause';
                                 btn.disabled = false;
                                 card.classList.add('playing');
+                                // NEW: Immediate sync on play
+                                if (timeUpdateHandler) timeUpdateHandler();
                             }).catch(error => {
                                 btn.textContent = '▶ Play';
                                 btn.disabled = false;

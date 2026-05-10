@@ -340,6 +340,34 @@ section {
     transform: scale(0.95);
 }
 
+.secondary-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(199, 125, 255, 0.4);
+    color: var(--accent-light);
+    padding: 0.8rem 2.5rem;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-tap-highlight-color: transparent;
+    display: inline-block;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.secondary-btn:hover {
+    background: rgba(199, 125, 255, 0.15);
+    border-color: var(--accent-light);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(123, 44, 191, 0.2);
+}
+
+.secondary-btn:active {
+    transform: scale(0.95);
+}
+
+
 /* Glassmorphism Cards */
 .music-card,
 .shayari-card,
@@ -525,7 +553,7 @@ section {
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.music-card.playing .lyrics-wrapper {
+.music-card.playing.has-lyrics .lyrics-wrapper {
     height: 160px;
     opacity: 1;
     margin-top: 1.5rem;
@@ -541,6 +569,9 @@ section {
     flex-direction: column;
     align-items: center;
     padding: 60px 0; /* Padding to allow scrolling to the center */
+    /* Hardware Acceleration */
+    transform: translateZ(0);
+    will-change: transform;
 }
 
 .lyrics-container::-webkit-scrollbar {
@@ -552,34 +583,34 @@ section {
     color: rgba(255, 255, 255, 0.4);
     font-size: 1rem;
     font-weight: 500;
-    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Optimized transition: only transform and opacity */
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease;
     padding: 10px 15px;
     width: 100%;
     min-height: 28px;
-    filter: blur(1px);
     transform: scale(0.95);
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: pointer;
+    will-change: transform, opacity;
 }
 
 .lyrics-line.active {
     color: #fff;
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 700;
-    filter: blur(0px);
     transform: scale(1.08);
     opacity: 1;
 }
 
 /* Pause State: Lyrics dim slightly when paused */
 .music-card:not(.playing) .lyrics-line.active {
-    opacity: 0.8;
+    opacity: 0.7;
     text-shadow: none;
 }
 
-/* Play State: Deep aesthetic glow */
+/* Play State: Deep aesthetic glow (Using opacity-based glow for performance) */
 .music-card.playing .lyrics-line.active {
-    text-shadow: 0 0 15px rgba(199, 125, 255, 0.8), 0 0 30px rgba(123, 44, 191, 0.4);
+    text-shadow: 0 0 12px rgba(199, 125, 255, 0.6);
 }
 
 .music-card.playing {
