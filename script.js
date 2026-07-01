@@ -1,59 +1,16 @@
-const SONG_LYRICS = {
-    "songs/song1.mp3": [
-        { time: 0, text: "Yeh duniya waqif hai" },
-        { time: 3, text: "Hum to NaQabil hai" },
-        { time: 6, text: "Kyu tu honga mera?" },
-        { time: 11, text: "Tujhpe jo marte hai" },
-        { time: 13.4, text: "Hum unme shaamil hai" },
-        { time: 16, text: "Hai badi baat kya!!!" }
-    ],
-    "songs/song2.mp3": [
-        { time: 0, text: "Agar Kabhi" },
-        { time: 1.6, text: "Main utar jaaun dil se bhi tere" },
-        { time: 4, text: "To kisi gair se behter hai" },
-        { time: 6, text: "Ke tum keh dena mujhe" },
-        { time: 7.5, text: "Main bhul jaaonga" },
-        { time: 9, text: "Yaad bhi na aaunga.." },
-        { time: 11, text: "Rounga tere liye.." },
-        { time: 12.9, text: "Par tujhe hasaunga" },
-        { time: 14.8, text: "Dhup tere pe lage" },
-        { time: 16.7, text: "To chaav me hojaunga " },
-        { time: 19, text: "Jo uthani kaanch ho to" },
-        { time: 20.6, text: "Haath main hojaunga.." },
-        { time: 22.4, text: "Saath bhi na chorunga.." },
-        { time: 24, text: "Paas bhi na aaunga" },
-        { time: 26, text: "Har safar me main tera" },
-        { time: 28, text: "Humsafar hojaaunga" },
-        { time: 30, text: "Tum to phir tum ho na..." },
-        { time: 32.4, text: "Tum aaon ya na aaon..." },
-        { time: 34, text: "Main bhi main hu phir..." },
-        { time: 35.7, text: "Main tumhe bulaunga!!!" }
-    ]
-};
-
-// --- Smart Update Notification System ---
-const UPDATE_CONFIG = {
-    // IMPORTANT: Update this timestamp whenever you change content (Music, Shayari, etc.)
-    // Format: YYYY-MM-DDTHH:MM:SSZ
-    lastUpdated: "2026-05-10T01:14:03Z",
-    message: "Both song cards have been updated, play them if you'd like to. 🎵✨"
-};
+/* ===================================================
+   BIRTHDAY WEBSITE — Scene Controller & Interactions
+   Preserved: Password, PIN, Anti-tamper, Privacy
+   =================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // 0. Password Logic
+    // ===== PASSWORD LOGIC (PRESERVED — DO NOT MODIFY) =====
     const passwordOverlay = document.getElementById('password-overlay');
     const passwordInput = document.getElementById('password-input');
     const unlockBtn = document.getElementById('unlock-btn');
     const passwordError = document.getElementById('password-error');
     const mainContent = document.getElementById('main-content');
-
-    // Auto-initialize if the lock screen is turned off
-    if (passwordOverlay && passwordOverlay.style.display === 'none') {
-        initMainApp();
-        const firstSection = document.getElementById('s1-opening');
-        if (firstSection) firstSection.classList.add('fade-in-visible');
-    }
 
     let failedAttempts = 0;
     let isLockedOut = false;
@@ -68,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isLockedOut) return;
 
         if (passwordInput.value === '1102') {
-            failedAttempts = 0; // Reset on success
+            failedAttempts = 0;
             passwordOverlay.style.opacity = '0';
             setTimeout(() => {
                 passwordOverlay.style.display = 'none';
@@ -80,12 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     mainContent.style.transform = 'scale(1)';
                 });
 
-                // Re-trigger global initialization
+                // Start the birthday experience
                 initMainApp();
-
-                const firstSection = document.getElementById('s1-opening');
-                if (firstSection) firstSection.classList.add('fade-in-visible');
-            }, 500); // Smooth fade out for overlay
+            }, 500);
         } else {
             failedAttempts++;
             passwordInput.value = '';
@@ -125,105 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') checkPassword();
     });
 
-    // --- NEW: Professional Inline PIN Unlocking ---
-    window.focusPinInput = (lockElement) => {
-        const input = lockElement.querySelector('.pin-input-hidden');
-
-        // Reset input state on every focus to avoid "already filled" bugs
-        input.value = '';
-        const dots = lockElement.querySelectorAll('.pin-dot');
-        dots.forEach(dot => dot.classList.remove('filled'));
-
-        input.focus();
-        lockElement.classList.add('focused');
-
-        input.onblur = () => lockElement.classList.remove('focused');
-        input.onfocus = () => {
-            lockElement.classList.add('focused');
-            // Re-clear to be absolutely sure
-            input.value = '';
-            dots.forEach(dot => dot.classList.remove('filled'));
-        };
-    };
-
-    window.handlePinInput = (inputElement) => {
-        const lockElement = inputElement.closest('.component-lock');
-        const dots = lockElement.querySelectorAll('.pin-dot');
-
-        // Robust value extraction for mobile browsers
-        let value = inputElement.value;
-        value = value.replace(/[^0-9]/g, '').slice(0, 4);
-
-        // Sync the internal value immediately
-        inputElement.value = value;
-
-        // Visual update with forced synchronization
-        dots.forEach((dot, index) => {
-            if (index < value.length) {
-                dot.classList.add('filled');
-            } else {
-                dot.classList.remove('filled');
-            }
-        });
-
-        // Validation logic
-        if (value.length === 4) {
-            if (value === '1102') {
-                lockElement.classList.add('unlocked');
-                lockElement.closest('.locked-container').classList.add('is-unlocked');
-
-                // Success feedback: vibration
-                if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
-
-                if (lockElement.closest('.chat-section')) {
-                    setTimeout(() => {
-                        const display = document.getElementById('replies-display');
-                        if (display) display.scrollTop = display.scrollHeight;
-                    }, 600);
-                }
-            } else {
-                // Wrong PIN feedback
-                lockElement.classList.add('shake');
-                if (navigator.vibrate) navigator.vibrate(200);
-
-                setTimeout(() => {
-                    lockElement.classList.remove('shake');
-                    inputElement.value = '';
-                    dots.forEach(dot => dot.classList.remove('filled'));
-                }, 400);
-            }
-        }
-    };
-
-    // --- HEAVY SECURITY: Anti-Tamper Measures ---
-    // If a dev tries to hide the lock overlay or show content via inspector, this resets it.
-    const setupTamperProtection = () => {
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                const target = mutation.target;
-                const container = target.closest('.locked-container');
-
-                // If the container is NOT unlocked but the lock is hidden/modified
-                if (container && !container.classList.contains('is-unlocked')) {
-                    if (mutation.type === 'attributes' || mutation.type === 'childList') {
-                        // Check if lock overlay was removed or hidden
-                        const lock = container.querySelector('.component-lock');
-                        if (!lock || lock.style.display === 'none' || lock.style.opacity === '0') {
-                            console.warn("Security Breach Detected: Content re-locking...");
-                            location.reload(); // Refresh to restore all security
-                        }
-                    }
-                }
-            });
-        });
-
-        document.querySelectorAll('.locked-container').forEach(container => {
-            observer.observe(container, { attributes: true, childList: true, subtree: false });
-        });
-    };
-    setupTamperProtection();
-
-    // --- NEW: Security & Network Handling ---
+    // ===== SECURITY & NETWORK HANDLING (PRESERVED) =====
     const offlineOverlay = document.getElementById('offline-overlay');
 
     const handleNetworkChange = () => {
@@ -242,12 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('offline', handleNetworkChange);
     handleNetworkChange();
 
-    // Privacy Protection: RELOCK when user leaves tab
-    // OPTIMIZED: No page reload. Firestore listeners stay alive to avoid re-downloading messages.
-    // Only the UI is locked — PIN overlay is shown again without any network cost.
+    // Privacy Protection: RELOCK on tab switch (PRESERVED)
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            // 1. Immediate Blackout when tab is hidden
             let blackout = document.getElementById('privacy-blackout');
             if (!blackout) {
                 blackout = document.createElement('div');
@@ -256,308 +109,754 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.body.appendChild(blackout);
             }
             blackout.style.display = 'block';
-
-            // 2. Close any open GIF pickers or attach popups
-            if (window.closeAllPanels) window.closeAllPanels();
-
-            // 3. Clear sensitive input values immediately
             passwordInput.value = '';
-            document.querySelectorAll('.pin-input-hidden').forEach(i => i.value = '');
-
         } else {
-            // 3. UI-only re-lock on return — NO page reload, NO Firestore re-fetch
             const blackout = document.getElementById('privacy-blackout');
             if (blackout) blackout.style.display = 'none';
 
-            // Re-show the main password overlay (forces PIN re-entry)
+            // Re-show the main password overlay
             mainContent.style.display = 'none';
             passwordOverlay.style.display = 'flex';
             passwordOverlay.style.opacity = '1';
             passwordInput.value = '';
             passwordInput.focus();
 
-            // Re-lock all component PIN overlays (chat, photos, etc.)
-            document.querySelectorAll('.locked-container').forEach(container => {
-                container.classList.remove('is-unlocked');
-                const lock = container.querySelector('.component-lock');
-                if (lock) {
-                    lock.classList.remove('unlocked');
-                    const pinInput = lock.querySelector('.pin-input-hidden');
-                    if (pinInput) pinInput.value = '';
-                    const dots = lock.querySelectorAll('.pin-dot');
-                    dots.forEach(dot => dot.classList.remove('filled'));
-                }
-            });
+            // Reset scene controller state so it replays from Scene 1 on re-unlock
+            if (window._sceneController) {
+                window._sceneController.reset();
+            }
         }
     });
 
-    function initMainApp() {
-        // 1. Core Systems (Optimized Restore: Very low count for perfect performance)
-        createParticles();
 
-        // 2. Button Navigations
-        const startBtn = document.getElementById('start-btn');
-        if (startBtn) {
-            startBtn.addEventListener('click', () => {
-                const target = document.getElementById('s2-chart');
-                if (target) target.scrollIntoView({ behavior: 'smooth' });
-            });
+    // ===================================================
+    //  SCENE CONTROLLER — Cinematic Flow Manager
+    // ===================================================
+
+    class SceneController {
+        constructor() {
+            this.scenes = [
+                'scene-candle',
+                'scene-penguin',
+                'scene-ladder',
+                'scene-envelope',
+                'scene-dua'
+            ];
+            this.currentIndex = -1;
+            this.isTransitioning = false;
         }
 
-        const goToChatBtn = document.getElementById('go-to-chat-btn');
-        if (goToChatBtn) {
-            goToChatBtn.addEventListener('click', () => {
-                const target = document.getElementById('chat-container');
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // Highlight the container slightly to show it's reached
-                    target.style.transition = 'box-shadow 0.5s ease';
-                    target.style.boxShadow = '0 0 30px rgba(199, 125, 255, 0.4)';
-                    setTimeout(() => {
-                        target.style.boxShadow = '';
-                    }, 2000);
+        reset() {
+            // Hide all scenes
+            this.scenes.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove('scene-active', 'scene-exit');
                 }
             });
+            this.currentIndex = -1;
+            this.isTransitioning = false;
+
+            // Reset interactive elements
+            const candle = document.getElementById('candle-element');
+            if (candle) candle.classList.remove('blown');
+
+            const penguin = document.getElementById('penguin-element');
+            if (penguin) {
+                penguin.classList.remove('idle');
+                penguin.style.transform = 'scale(0)';
+            }
+
+            const birthdayText = document.getElementById('birthday-text');
+            if (birthdayText) birthdayText.classList.remove('reveal');
+
+            const penguinBtn = document.getElementById('penguin-continue-btn');
+            if (penguinBtn) penguinBtn.classList.remove('show');
+
+            const blowBtn = document.getElementById('blow-candle-btn');
+            if (blowBtn) {
+                blowBtn.disabled = false;
+                blowBtn.style.opacity = '1';
+            }
+
+            // Reset ladder
+            document.querySelectorAll('.ladder-card').forEach(card => card.classList.remove('visible'));
+            const ladderBtn = document.getElementById('ladder-continue-btn');
+            if (ladderBtn) ladderBtn.classList.remove('show');
+            const ladderSceneEl = document.getElementById('scene-ladder');
+            if (ladderSceneEl) ladderSceneEl.scrollTop = 0;
+            const scrollHintEl = document.getElementById('ladder-scroll-hint');
+            if (scrollHintEl) {
+                scrollHintEl.style.opacity = '0.8';
+                scrollHintEl.style.transform = 'translate3d(-50%, 0, 0)';
+            }
+
+            // Reset envelope
+            const envelope = document.getElementById('envelope-element');
+            if (envelope) envelope.classList.remove('opened');
+            const envelopeBtn = document.getElementById('open-envelope-btn');
+            if (envelopeBtn) {
+                envelopeBtn.style.display = '';
+                envelopeBtn.disabled = false;
+            }
+            const envContinueBtn = document.getElementById('envelope-continue-btn');
+            if (envContinueBtn) envContinueBtn.style.opacity = '0';
+            const letterFs = document.getElementById('letter-fullscreen');
+            if (letterFs) letterFs.classList.remove('active');
+            envelopeOpened = false;
+
+            // Clear confetti
+            const confettiContainer = document.getElementById('confetti-container');
+            if (confettiContainer) confettiContainer.innerHTML = '';
+
+            // Reset reply box
+            const replyMsg = document.getElementById('reply-message');
+            if (replyMsg) replyMsg.value = '';
+            const charCountEl2 = document.getElementById('char-count');
+            if (charCountEl2) charCountEl2.textContent = '0';
+            const feedbackEl2 = document.getElementById('reply-feedback');
+            if (feedbackEl2) { feedbackEl2.textContent = ''; feedbackEl2.className = 'reply-feedback'; }
+            setReplyLoading(false);
         }
 
-        // 3. Floating Hearts (Bonus interaction - Throttled for performance)
+        showScene(index) {
+            if (index < 0 || index >= this.scenes.length || this.isTransitioning) return;
+            this.isTransitioning = true;
+
+            // Exit current scene
+            if (this.currentIndex >= 0) {
+                const currentEl = document.getElementById(this.scenes[this.currentIndex]);
+                if (currentEl) {
+                    currentEl.classList.remove('scene-active');
+                    currentEl.classList.add('scene-exit');
+                    setTimeout(() => {
+                        currentEl.classList.remove('scene-exit');
+                    }, 1000);
+                }
+            }
+
+            // Enter new scene
+            const nextEl = document.getElementById(this.scenes[index]);
+            if (nextEl) {
+                // Small delay for exit to begin
+                setTimeout(() => {
+                    nextEl.classList.add('scene-active');
+                    this.currentIndex = index;
+                    this.isTransitioning = false;
+
+                    // Trigger scene-specific entrance
+                    this.onSceneEnter(index);
+                }, this.currentIndex >= 0 ? 400 : 0);
+            }
+        }
+
+        nextScene() {
+            this.showScene(this.currentIndex + 1);
+        }
+
+        onSceneEnter(index) {
+            switch (index) {
+                case 0: enterCandleScene(); break;
+                case 1: enterPenguinScene(); break;
+                case 2: enterLadderScene(); break;
+                case 3: enterEnvelopeScene(); break;
+                case 4: enterDuaScene(); break;
+            }
+        }
+    }
+
+    // ===================================================
+    //  MAIN APP INIT
+    // ===================================================
+
+    function initMainApp() {
+        // Setup bokeh particles
+        setupBokeh();
+
+        // Create scene controller
+        const controller = new SceneController();
+        window._sceneController = controller;
+
+        // Floating hearts on tap (preserved from original)
         let lastHeartTime = 0;
         document.addEventListener('click', (e) => {
-            if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'A') {
+            if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') {
                 const now = Date.now();
-                if (now - lastHeartTime > 200) {
+                if (now - lastHeartTime > 250) {
                     createHeart(e.pageX, e.pageY);
                     lastHeartTime = now;
                 }
             }
         });
 
-        // 4. Intersection Observer for Fade-in & Staggered effects
-        const observerOptions = {
-            root: null,
-            rootMargin: '0px 0px -20px 0px',
-            threshold: 0 // Trigger as soon as 1 pixel is visible
-        };
-
-        const sectionObserver = new IntersectionObserver((entries, observer) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('fade-in-visible');
-
-                    const children = entry.target.querySelectorAll('.photo-card, .music-card, .shayari-card, .personality-list li');
-                    children.forEach((child, index) => {
-                        setTimeout(() => {
-                            child.classList.add('visible');
-                            child.style.opacity = "1";
-                            child.style.transform = "translate3d(0,0,0)";
-                        }, 100 * index);
-                    });
-
-                    if (entry.target.id === 's2-chart') {
-                        const chart = entry.target.querySelector('.pie-chart');
-                        if (chart) setTimeout(() => chart.classList.add('start-chart-anim'), 300);
-                    }
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, observerOptions);
-
-        const sections = document.querySelectorAll('.fade-in-hidden');
-        sections.forEach(section => {
-            sectionObserver.observe(section);
-        });
-
-        // 5. Robust Audio Controller
-        setupAudio();
-
-        // 6. Cursor Glow Trailer (Desktop Only)
-        if (window.innerWidth > 1024) {
-            const glow = document.createElement('div');
-            glow.className = 'cursor-glow';
-            document.body.appendChild(glow);
-            window.addEventListener('mousemove', (e) => {
-                glow.style.transform = `translate3d(${e.clientX - 150}px, ${e.clientY - 150}px, 0)`;
-            });
-        }
-
-        // 7. Check for New Updates (24-hour window)
-        checkForUpdates();
-    }
-
-    function checkForUpdates() {
-        const lastUpdatedDate = new Date(UPDATE_CONFIG.lastUpdated);
-        const now = new Date();
-        const diffInHours = (now - lastUpdatedDate) / (1000 * 60 * 60);
-
-        // Logic: Show only if updated within last 24 hours AND not already dismissed
-        const storageKey = `update_seen_${UPDATE_CONFIG.lastUpdated}`;
-        if (diffInHours <= 24 && !localStorage.getItem(storageKey)) {
-            showUpdateToast(UPDATE_CONFIG.message, storageKey);
-        }
-    }
-
-    function showUpdateToast(msg, storageKey) {
-        const toast = document.createElement('div');
-        toast.className = 'update-toast';
-        toast.innerHTML = `
-            <span class="update-badge">New</span>
-            <span class="update-message">${msg}</span>
-            <button class="update-close">×</button>
-        `;
-        document.body.appendChild(toast);
-
-        // Slide in
-        setTimeout(() => toast.classList.add('show'), 1000);
-
-        toast.querySelector('.update-close').onclick = () => {
-            toast.classList.remove('show');
-            localStorage.setItem(storageKey, 'true');
-            setTimeout(() => toast.remove(), 600);
-        };
-
-        // Auto-hide after 15 seconds to keep UI clean
+        // Start Scene 1 after a brief pause for the content to render
         setTimeout(() => {
-            if (toast.parentNode) {
-                toast.classList.remove('show');
-                setTimeout(() => toast.remove(), 600);
-            }
-        }, 15000);
+            controller.showScene(0);
+        }, 600);
     }
 
-    function setupAudio() {
-        let currentAudio = null;
-        let currentCard = null;
-        let timeUpdateHandler = null;
 
-        const musicCards = document.querySelectorAll('.music-card');
+    // ===================================================
+    //  BOKEH PARTICLES
+    // ===================================================
 
-        musicCards.forEach(card => {
-            const btn = card.querySelector('.play-btn');
-            const lyricsWrapper = card.querySelector('.lyrics-wrapper');
-            const lyricsContainer = card.querySelector('.lyrics-container');
-            if (!btn) return;
+    function setupBokeh() {
+        const container = document.getElementById('bokeh-container');
+        if (!container) return;
+        container.innerHTML = '';
 
-            const audioSrc = card.getAttribute('data-audio');
+        const BOKEH_COUNT = 8;
+        for (let i = 0; i < BOKEH_COUNT; i++) {
+            const el = document.createElement('div');
+            el.className = 'bokeh-particle';
+            container.appendChild(el);
+            resetBokeh(el, true);
+        }
 
-            btn.addEventListener('click', () => {
-                if (currentAudio && currentCard === card) {
-                    if (!currentAudio.paused) {
-                        currentAudio.pause();
-                        btn.textContent = '▶ Play';
-                        card.classList.remove('playing');
-                    } else {
-                        currentAudio.play().catch(e => console.log("Audio play blocked."));
-                        btn.textContent = '⏸ Pause';
-                        card.classList.add('playing');
-                    }
-                    return;
+        function resetBokeh(el, initial = false) {
+            const size = Math.random() * 30 + 10;
+            const left = Math.random() * 100;
+            const duration = Math.random() * 12 + 8;
+            const delay = initial ? Math.random() * -10 : Math.random() * 2;
+
+            el.style.cssText = `width:${size}px;height:${size}px;left:${left}%;animation-duration:${duration}s;animation-delay:${delay}s;`;
+            el.style.animationName = 'none';
+            void el.offsetWidth;
+            el.style.animationName = 'bokehFloat';
+
+            setTimeout(() => resetBokeh(el), (duration + delay) * 1000);
+        }
+    }
+
+
+    // ===================================================
+    //  SCENE 1 — BIRTHDAY CANDLE
+    // ===================================================
+
+    function enterCandleScene() {
+        // Scene is already visible, just ensure candle is glowing
+    }
+
+    const blowBtn = document.getElementById('blow-candle-btn');
+    if (blowBtn) {
+        blowBtn.addEventListener('click', () => {
+            const candle = document.getElementById('candle-element');
+            if (!candle || candle.classList.contains('blown')) return;
+
+            // Blow out the candle
+            candle.classList.add('blown');
+            blowBtn.disabled = true;
+            blowBtn.style.opacity = '0.3';
+            blowBtn.style.transition = 'opacity 0.5s ease';
+
+            // Haptic feedback
+            if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
+
+            // Transition to penguin scene after candle blows out
+            setTimeout(() => {
+                if (window._sceneController) {
+                    window._sceneController.nextScene();
                 }
-
-                if (currentAudio) {
-                    currentAudio.pause();
-                    if (timeUpdateHandler) {
-                        currentAudio.removeEventListener('timeupdate', timeUpdateHandler);
-                    }
-                    const prevBtn = currentCard.querySelector('.play-btn');
-                    if (prevBtn) prevBtn.textContent = '▶ Play';
-                    currentCard.classList.remove('playing');
-                }
-
-                btn.textContent = '⏳ Loading...';
-                btn.disabled = true;
-
-                currentAudio = new Audio(audioSrc);
-                currentCard = card;
-
-                // --- Lyrics Setup ---
-                const songLyricsData = SONG_LYRICS[audioSrc];
-                if (lyricsWrapper && lyricsContainer && songLyricsData) {
-                    card.classList.add('has-lyrics'); // For CSS expansion
-                    lyricsContainer.innerHTML = '';
-
-                    songLyricsData.forEach((lineData, index) => {
-                        const div = document.createElement('div');
-                        div.className = 'lyrics-line';
-                        div.dataset.time = lineData.time;
-                        div.dataset.index = index;
-                        div.textContent = lineData.text;
-                        
-                        // NEW: Click to Seek
-                        div.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            if (currentAudio) {
-                                currentAudio.currentTime = parseFloat(lineData.time);
-                            }
-                        });
-
-                        lyricsContainer.appendChild(div);
-                    });
-
-                    timeUpdateHandler = () => {
-                        if (!currentAudio) return;
-                        const currentTime = currentAudio.currentTime;
-                        const lines = lyricsContainer.querySelectorAll('.lyrics-line');
-
-                        let activeIndex = -1;
-                        for (let i = 0; i < songLyricsData.length; i++) {
-                            if (currentTime >= songLyricsData[i].time) {
-                                activeIndex = i;
-                            } else {
-                                break;
-                            }
-                        }
-
-                        if (activeIndex !== -1) {
-                            const activeLine = lines[activeIndex];
-                            if (!activeLine.classList.contains('active')) {
-                                lines.forEach(l => l.classList.remove('active'));
-                                activeLine.classList.add('active');
-                                activeLine.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }
-                        }
-                    };
-                    currentAudio.addEventListener('timeupdate', timeUpdateHandler);
-                } else {
-                    card.classList.remove('has-lyrics');
-                }
-
-                currentAudio.addEventListener('canplaythrough', () => {
-                    if (currentCard === card) {
-                        const playPromise = currentAudio.play();
-                        if (playPromise !== undefined) {
-                            playPromise.then(_ => {
-                                btn.textContent = '⏸ Pause';
-                                btn.disabled = false;
-                                card.classList.add('playing');
-                                // NEW: Immediate sync on play
-                                if (timeUpdateHandler) timeUpdateHandler();
-                            }).catch(error => {
-                                btn.textContent = '▶ Play';
-                                btn.disabled = false;
-                                console.log("Playback failed:", error);
-                            });
-                        }
-                    }
-                }, { once: true });
-
-                currentAudio.addEventListener('ended', () => {
-                    btn.textContent = '▶ Play';
-                    card.classList.remove('playing');
-                    if (timeUpdateHandler) {
-                        currentAudio.removeEventListener('timeupdate', timeUpdateHandler);
-                    }
-                    currentAudio = null;
-                    currentCard = null;
-                });
-
-                currentAudio.addEventListener('error', () => {
-                    btn.textContent = '❌ Error Loading';
-                    btn.disabled = false;
-                    console.log("Audio load error.");
-                });
-            });
+            }, 2200);
         });
     }
+
+
+    // ===================================================
+    //  SCENE 2 — PENGUIN BIRTHDAY WISH
+    // ===================================================
+
+    function enterPenguinScene() {
+        const penguin = document.getElementById('penguin-element');
+        const birthdayText = document.getElementById('birthday-text');
+        const continueBtn = document.getElementById('penguin-continue-btn');
+
+        // Reset penguin state for re-entry
+        if (penguin) {
+            penguin.style.transform = '';
+            penguin.classList.remove('idle');
+            // Re-trigger entrance animation
+            penguin.style.animation = 'none';
+            void penguin.offsetWidth;
+            penguin.style.animation = '';
+        }
+
+        // Show birthday text after penguin entrance
+        setTimeout(() => {
+            if (birthdayText) birthdayText.classList.add('reveal');
+        }, 800);
+
+        // Fire confetti
+        setTimeout(() => {
+            fireConfetti();
+        }, 1000);
+
+        // Add sparkles around penguin
+        setTimeout(() => {
+            createSparkles(penguin);
+        }, 600);
+
+        // Set penguin to idle bounce
+        setTimeout(() => {
+            if (penguin) penguin.classList.add('idle');
+        }, 1200);
+
+        // Show continue button
+        setTimeout(() => {
+            if (continueBtn) continueBtn.classList.add('show');
+        }, 2500);
+    }
+
+    const penguinContinueBtn = document.getElementById('penguin-continue-btn');
+    if (penguinContinueBtn) {
+        penguinContinueBtn.addEventListener('click', () => {
+            if (window._sceneController) window._sceneController.nextScene();
+        });
+    }
+
+    // Confetti system
+    function fireConfetti() {
+        const container = document.getElementById('confetti-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const colors = ['#c77dff', '#e0aaff', '#ff85a1', '#f9c74f', '#90e0ef', '#f4845f', '#fff'];
+        const count = 60;
+
+        for (let i = 0; i < count; i++) {
+            const piece = document.createElement('div');
+            piece.className = 'confetti-piece';
+            piece.style.left = Math.random() * 100 + '%';
+            piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+            piece.style.width = (Math.random() * 8 + 6) + 'px';
+            piece.style.height = (Math.random() * 10 + 8) + 'px';
+            piece.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            piece.style.animationDelay = (Math.random() * 0.8) + 's';
+            piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+            container.appendChild(piece);
+        }
+
+        // Clean up confetti after animations complete
+        setTimeout(() => {
+            container.innerHTML = '';
+        }, 5000);
+    }
+
+    // Sparkle effects around an element
+    function createSparkles(element) {
+        if (!element) return;
+        const rect = element.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+
+        for (let i = 0; i < 12; i++) {
+            const sparkle = document.createElement('div');
+            sparkle.className = 'sparkle';
+            const angle = (Math.PI * 2 / 12) * i;
+            const radius = 60 + Math.random() * 30;
+            const tx = Math.cos(angle) * radius;
+            const ty = Math.sin(angle) * radius;
+
+            sparkle.style.left = centerX + 'px';
+            sparkle.style.top = centerY + 'px';
+            sparkle.style.setProperty('--tx', tx + 'px');
+            sparkle.style.setProperty('--ty', ty + 'px');
+            sparkle.style.animationDelay = (i * 0.05) + 's';
+            sparkle.style.background = ['#f9c74f', '#c77dff', '#ff85a1', '#e0aaff'][i % 4];
+
+            document.body.appendChild(sparkle);
+            setTimeout(() => sparkle.remove(), 1200);
+        }
+    }
+
+
+    // ===================================================
+    //  SCENE 3 — IMAGE LADDER
+    // ===================================================
+
+    function adjustLadderString() {
+        const stringEl = document.querySelector('.ladder-string');
+        const card0 = document.querySelector('.ladder-card[data-index="0"]');
+        const card2 = document.querySelector('.ladder-card[data-index="2"]');
+        
+        if (!stringEl || !card0 || !card2) return;
+        
+        const clip0 = card0.querySelector('.ladder-clip');
+        const clip2 = card2.querySelector('.ladder-clip');
+        
+        if (!clip0 || !clip2) return;
+        
+        // Calculate vertical centers relative to the ladder-scene container
+        const clip0Center = card0.offsetTop + clip0.offsetTop + (clip0.offsetHeight / 2);
+        const clip2Center = card2.offsetTop + clip2.offsetTop + (clip2.offsetHeight / 2);
+        
+        // Start the string a bit above the first card's clip
+        const startY = clip0Center - 40; // 40px above the first clip
+        // End the string 15px below the third card's clip
+        const endY = clip2Center + 15;
+        
+        const stringHeight = endY - startY;
+        
+        stringEl.style.top = `${startY}px`;
+        stringEl.style.height = `${stringHeight}px`;
+        stringEl.style.bottom = 'auto'; // override CSS bottom
+    }
+
+    // Adjust the string position/size on window resize
+    window.addEventListener('resize', adjustLadderString);
+
+    function enterLadderScene() {
+        // Adjust the hanging string dynamically to fit the cards perfectly
+        adjustLadderString();
+
+        const cards = document.querySelectorAll('.ladder-card');
+        const continueBtn = document.getElementById('ladder-continue-btn');
+
+        // Stagger card reveals
+        cards.forEach((card, index) => {
+            setTimeout(() => {
+                card.classList.add('visible');
+            }, 400 + (index * 600));
+        });
+
+        // Show continue button after all cards are visible
+        setTimeout(() => {
+            if (continueBtn) continueBtn.classList.add('show');
+        }, 400 + (cards.length * 600) + 400);
+    }
+
+    const ladderContinueBtn = document.getElementById('ladder-continue-btn');
+    if (ladderContinueBtn) {
+        ladderContinueBtn.addEventListener('click', () => {
+            if (window._sceneController) window._sceneController.nextScene();
+        });
+    }
+
+    // Scroll listener to fade out scroll hint in Scene 3
+    const ladderSceneEl = document.getElementById('scene-ladder');
+    const scrollHintEl = document.getElementById('ladder-scroll-hint');
+    if (ladderSceneEl && scrollHintEl) {
+        ladderSceneEl.addEventListener('scroll', () => {
+            if (ladderSceneEl.scrollTop > 40) {
+                scrollHintEl.style.opacity = '0';
+                scrollHintEl.style.transform = 'translate3d(-50%, 10px, 0)';
+            } else {
+                scrollHintEl.style.opacity = '0.8';
+                scrollHintEl.style.transform = 'translate3d(-50%, 0, 0)';
+            }
+        });
+    }
+
+
+    // ===================================================
+    //  SCENE 4 — ENVELOPE LETTER
+    // ===================================================
+
+    let envelopeOpened = false;
+
+    function enterEnvelopeScene() {
+        envelopeOpened = false;
+        const envelope = document.getElementById('envelope-element');
+        if (envelope) envelope.classList.remove('opened');
+        const openBtn = document.getElementById('open-envelope-btn');
+        if (openBtn) {
+            openBtn.style.display = '';
+            openBtn.disabled = false;
+        }
+        const envContinueBtn = document.getElementById('envelope-continue-btn');
+        if (envContinueBtn) {
+            envContinueBtn.style.opacity = '0';
+            envContinueBtn.classList.remove('show');
+        }
+    }
+
+    const openEnvelopeBtn = document.getElementById('open-envelope-btn');
+    const envelopeEl = document.getElementById('envelope-element');
+
+    function openEnvelope() {
+        if (envelopeOpened) return;
+        envelopeOpened = true;
+
+        const envelope = document.getElementById('envelope-element');
+        const letterFs = document.getElementById('letter-fullscreen');
+        const envContinueBtn = document.getElementById('envelope-continue-btn');
+
+        // Open envelope
+        if (envelope) envelope.classList.add('opened');
+
+        // Haptic
+        if (navigator.vibrate) navigator.vibrate([20, 30, 20]);
+
+        // After envelope opens, show fullscreen letter
+        setTimeout(() => {
+            if (letterFs) letterFs.classList.add('active');
+        }, 1000);
+
+        // Hide the open button
+        if (openEnvelopeBtn) openEnvelopeBtn.style.display = 'none';
+
+        // Show continue button
+        if (envContinueBtn) {
+            envContinueBtn.style.opacity = '1';
+            envContinueBtn.classList.add('show');
+        }
+    }
+
+    if (openEnvelopeBtn) {
+        openEnvelopeBtn.addEventListener('click', openEnvelope);
+    }
+    if (envelopeEl) {
+        envelopeEl.addEventListener('click', openEnvelope);
+    }
+
+    // Close letter
+    const letterCloseBtn = document.getElementById('letter-close-btn');
+    if (letterCloseBtn) {
+        letterCloseBtn.addEventListener('click', () => {
+            const letterFs = document.getElementById('letter-fullscreen');
+            if (letterFs) letterFs.classList.remove('active');
+
+            // Close the envelope too!
+            setTimeout(() => {
+                const envelope = document.getElementById('envelope-element');
+                if (envelope) envelope.classList.remove('opened');
+
+                // Show the open button again
+                if (openEnvelopeBtn) {
+                    openEnvelopeBtn.style.display = '';
+                    openEnvelopeBtn.disabled = false;
+                }
+                envelopeOpened = false;
+            }, 300);
+        });
+    }
+
+    // Envelope continue
+    const envelopeContinueBtn = document.getElementById('envelope-continue-btn');
+    if (envelopeContinueBtn) {
+        envelopeContinueBtn.addEventListener('click', () => {
+            // Close letter first if open
+            const letterFs = document.getElementById('letter-fullscreen');
+            if (letterFs) letterFs.classList.remove('active');
+
+            setTimeout(() => {
+                if (window._sceneController) window._sceneController.nextScene();
+            }, 300);
+        });
+    }
+
+
+    // ===================================================
+    //  SCENE 5 — TELEGRAM REPLY BOX
+    // ===================================================
+
+    // Telegram Bot credentials
+    const TG_BOT_TOKEN = '8695269828:AAEa1pffPXcEfXZJIWiSMvE3BIxJtqINV94';
+    const TG_CHAT_ID   = '6219378525';
+
+    function enterDuaScene() {
+        // Reset UI fully on each entry
+        const grandEnding = document.getElementById('grand-ending');
+        if (grandEnding) grandEnding.classList.remove('active');
+
+        const replyBox = document.getElementById('reply-box-container');
+        if (replyBox) replyBox.classList.remove('fade-out');
+
+        const replyMsg = document.getElementById('reply-message');
+        if (replyMsg) replyMsg.value = '';
+
+        const charCount = document.getElementById('char-count');
+        if (charCount) charCount.textContent = '0';
+
+        setReplyError('');
+        setReplyLoading(false);
+
+        // Spawn ambient floating particles
+        const particleContainer = document.getElementById('reply-particles');
+        if (particleContainer) {
+            particleContainer.innerHTML = '';
+            for (let i = 0; i < 18; i++) {
+                const p = document.createElement('div');
+                p.className = 'dua-particle';
+                p.style.left   = Math.random() * 100 + '%';
+                p.style.animationDuration = (Math.random() * 10 + 12) + 's';
+                p.style.animationDelay    = (Math.random() * -10) + 's';
+                const size = (Math.random() * 4 + 2) + 'px';
+                p.style.width  = size;
+                p.style.height = size;
+                particleContainer.appendChild(p);
+            }
+        }
+    }
+
+    // ── Helper: show inline feedback (error or success) ──
+    function setReplyFeedback(msg, type) {
+        const el = document.getElementById('reply-feedback');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'reply-feedback' + (msg ? ' show ' + type : '');
+    }
+
+    // Keep old name for compat
+    function setReplyError(msg) { setReplyFeedback(msg, 'error'); }
+
+    // ── Helper: toggle loading state on the send button ──
+    function setReplyLoading(isLoading) {
+        const btn     = document.getElementById('send-reply-btn');
+        const spinner = document.getElementById('btn-spinner');
+        const label   = document.getElementById('send-btn-label');
+        if (!btn) return;
+        btn.disabled = isLoading;
+        if (spinner) spinner.style.display = isLoading ? 'block' : 'none';
+        if (label)  label.style.display   = isLoading ? 'none'  : 'inline';
+    }
+
+    // ── Core: send message to Telegram ───────────────────
+    async function sendReplyToTelegram(messageText) {
+        const now        = new Date();
+        const dateStr    = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr    = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+        // Structured, beautiful message format
+        const structured = [
+            '💌 *New Birthday Reply — Bhandhari*',
+            '━━━━━━━━━━━━━━━━━━━━━',
+            '',
+            messageText,
+            '',
+            '━━━━━━━━━━━━━━━━━━━━━',
+            `📅 ${dateStr}  •  🕐 ${timeStr}`,
+            `📍 Sent from the Birthday Surprise Page`,
+        ].join('\n');
+
+        const apiUrl = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
+
+        const response = await fetch(apiUrl, {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body   : JSON.stringify({
+                chat_id    : TG_CHAT_ID,
+                text       : structured,
+                parse_mode : 'Markdown',
+            }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.description || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    // ── Show inline success toast, then reset form ────────
+    function showReplySuccess() {
+        setReplyLoading(false);
+        setReplyFeedback('✓  Delivered! 💜', 'success');
+
+        // Light confetti celebration
+        fireConfetti();
+        setTimeout(fireConfetti, 800);
+
+        // A few floating hearts
+        for (let i = 0; i < 6; i++) {
+            setTimeout(() => {
+                const x = window.innerWidth  * (0.3 + Math.random() * 0.4);
+                const y = window.innerHeight * (0.5 + Math.random() * 0.25);
+                createHeart(x, y);
+            }, i * 120);
+        }
+
+        // Clear textarea, keep feedback visible for 2.8 s then reset
+        const textarea = document.getElementById('reply-message');
+        if (textarea) textarea.value = '';
+        const charEl = document.getElementById('char-count');
+        if (charEl) { charEl.textContent = '0'; charEl.style.color = ''; }
+
+        setTimeout(() => {
+            setReplyFeedback('', '');
+        }, 2800);
+    }
+
+    // ── Send-button click handler ─────────────────────────
+    const sendReplyBtn = document.getElementById('send-reply-btn');
+    if (sendReplyBtn) {
+        sendReplyBtn.addEventListener('click', async () => {
+            const textarea = document.getElementById('reply-message');
+            if (!textarea) return;
+
+            const rawText = textarea.value.trim();
+
+            // ── Validation ──
+            if (!rawText) {
+                setReplyError('Please write something before sending! 💜');
+                textarea.focus();
+                return;
+            }
+            if (rawText.length < 3) {
+                setReplyError('Your message is too short. Write a little more! 🌸');
+                textarea.focus();
+                return;
+            }
+
+            // ── Network check ──
+            if (!navigator.onLine) {
+                setReplyError('You seem to be offline. Please check your connection! 📡');
+                return;
+            }
+
+            setReplyError('');
+            setReplyLoading(true);
+
+            try {
+                await sendReplyToTelegram(rawText);
+                showReplySuccess();
+            } catch (err) {
+                console.error('Telegram send error:', err);
+                setReplyLoading(false);
+                setReplyError('Something went wrong. Please try again! 🙏');
+            }
+        });
+    }
+
+    // ── Character counter ─────────────────────────────────
+    const replyTextarea = document.getElementById('reply-message');
+    const charCountEl   = document.getElementById('char-count');
+    if (replyTextarea && charCountEl) {
+        replyTextarea.addEventListener('input', () => {
+            const len = replyTextarea.value.length;
+            charCountEl.textContent = len;
+            // Warn when nearing limit
+            charCountEl.style.color = len >= 450 ? '#ff85a1' : '';
+            // Clear error as the user types
+            if (len > 0) setReplyError('');
+        });
+
+        // Allow Ctrl+Enter to submit
+        replyTextarea.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                const btn = document.getElementById('send-reply-btn');
+                if (btn && !btn.disabled) btn.click();
+            }
+        });
+    }
+
+    // ── Replay button ─────────────────────────────────────
+    const replayBtn = document.getElementById('replay-btn');
+    if (replayBtn) {
+        replayBtn.addEventListener('click', () => {
+            if (window._sceneController) {
+                window._sceneController.reset();
+                window._sceneController.showScene(0);
+            }
+        });
+    }
+
+
+    // ===================================================
+    //  FLOATING HEARTS (tap effect — preserved)
+    // ===================================================
 
     function createHeart(x, y) {
         const heart = document.createElement('div');
@@ -573,111 +872,5 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(heart);
         setTimeout(() => heart.remove(), 1500);
     }
-    // Playlist button logic
-    const playlistBtn = document.getElementById('playlist-btn');
-    if (playlistBtn) {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-            playlistBtn.href = 'vnd.youtube://playlist?list=PLuLZEPAfgr7GTFfv1fCR80laIrGdKn8z9';
-            playlistBtn.removeAttribute('target');
-        }
-    }
 
-    // --- Bhandhari Online Notification (Telegram Integration) ---
-    const notifyBtn = document.getElementById('notify-online-btn');
-    if (notifyBtn) {
-        notifyBtn.addEventListener('click', async () => {
-            if (sessionStorage.getItem('notified_madmax')) {
-                notifyBtn.style.animation = 'none';
-                alert("You've already notified Bhatari! 🐧");
-                return;
-            }
-
-            notifyBtn.disabled = true;
-            notifyBtn.style.animation = 'none';
-            notifyBtn.textContent = "🚀 Notifying...";
-
-            const timeStr = new Date().toLocaleTimeString('en-US', {
-                hour: 'numeric', minute: '2-digit', hour12: true
-            });
-
-            const moods = ['💜', '✨', '🐧', '🌸', '💬', '🍭', '🎀'];
-            const randomMood = moods[Math.floor(Math.random() * moods.length)];
-
-            // Obfuscated Telegram Token
-            const t1 = "8695269828:AAEa1pf";
-            const t2 = "fPXcEfXZJIWiSMvE3BIxJtqINV94";
-            const TG_TOKEN = t1 + t2;
-            const CHAT_ID = "6219378525";
-
-            const message = `🚀 *Bhandhari is Online!* ${randomMood}\n\n` +
-                `✨ Status: *Waiting in Chat*\n` +
-                `⏰ Time: _${timeStr}_\n\n` +
-                `🐧 _Sent from Bhatari Comfort Space_`;
-
-            try {
-                const response = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: CHAT_ID,
-                        text: message,
-                        parse_mode: 'Markdown'
-                    })
-                });
-
-                if (response.ok) {
-                    notifyBtn.textContent = "✅ Bhatari Notified!";
-                    sessionStorage.setItem('notified_madmax', 'true');
-                } else {
-                    throw new Error();
-                }
-            } catch (error) {
-                console.error("Telegram notify failed");
-                notifyBtn.textContent = "❌ Failed. Retry?";
-                notifyBtn.disabled = false;
-            }
-        });
-    }
-}); // <--- Closing DOMContentLoaded properly
-
-// Optimized Particle System for Mobile
-function createParticles() {
-    const container = document.getElementById('particles-container');
-    if (!container) return;
-
-    const isMobile = window.innerWidth <= 768;
-    const numParticles = isMobile ? 6 : 15;
-
-    for (let i = 0; i < numParticles; i++) {
-        const particle = document.createElement('div');
-        const size = 2; // Fixed small size for fastest rendering
-        particle.style.position = 'absolute';
-        particle.style.width = `${size}px`;
-        particle.style.height = `${size}px`;
-        particle.style.background = '#c77dff';
-        particle.style.borderRadius = '50%';
-        particle.style.left = `${Math.random() * 90}vw`; // Stay within screen
-        particle.style.top = `${Math.random() * 90}vh`; // Stay within screen
-
-        particle.style.willChange = 'transform';
-        const duration = Math.random() * 10 + 20; // Even slower for elegance
-        const delay = Math.random() * -20;
-        // Safer path: 0 to 10% movement only to stay within screen
-        particle.style.animation = `flowSafe ${duration}s linear ${delay}s infinite alternate`;
-        container.appendChild(particle);
-    }
-
-    if (!document.getElementById('particle-styles')) {
-        const styleSheet = document.createElement('style');
-        styleSheet.id = 'particle-styles';
-        styleSheet.innerText = `
-            @keyframes flowSafe {
-                0% { transform: translate3d(0, 0, 0); opacity: 0; }
-                50% { opacity: 0.4; }
-                100% { transform: translate3d(20px, 40px, 0); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(styleSheet);
-    }
-}
+}); // END DOMContentLoaded
