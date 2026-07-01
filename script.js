@@ -478,25 +478,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const stringEl = document.querySelector('.ladder-string');
         const card0 = document.querySelector('.ladder-card[data-index="0"]');
         const card2 = document.querySelector('.ladder-card[data-index="2"]');
-        
+
         if (!stringEl || !card0 || !card2) return;
-        
+
         const clip0 = card0.querySelector('.ladder-clip');
         const clip2 = card2.querySelector('.ladder-clip');
-        
+
         if (!clip0 || !clip2) return;
-        
+
         // Calculate vertical centers relative to the ladder-scene container
         const clip0Center = card0.offsetTop + clip0.offsetTop + (clip0.offsetHeight / 2);
         const clip2Center = card2.offsetTop + clip2.offsetTop + (clip2.offsetHeight / 2);
-        
+
         // Start the string a bit above the first card's clip
         const startY = clip0Center - 40; // 40px above the first clip
         // End the string 15px below the third card's clip
         const endY = clip2Center + 15;
-        
+
         const stringHeight = endY - startY;
-        
+
         stringEl.style.top = `${startY}px`;
         stringEl.style.height = `${stringHeight}px`;
         stringEl.style.bottom = 'auto'; // override CSS bottom
@@ -652,7 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Telegram Bot credentials
     const TG_BOT_TOKEN = '8695269828:AAEa1pffPXcEfXZJIWiSMvE3BIxJtqINV94';
-    const TG_CHAT_ID   = '6219378525';
+    const TG_CHAT_ID = '6219378525';
 
     function enterDuaScene() {
         // Reset UI fully on each entry
@@ -678,11 +678,11 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let i = 0; i < 18; i++) {
                 const p = document.createElement('div');
                 p.className = 'dua-particle';
-                p.style.left   = Math.random() * 100 + '%';
+                p.style.left = Math.random() * 100 + '%';
                 p.style.animationDuration = (Math.random() * 10 + 12) + 's';
-                p.style.animationDelay    = (Math.random() * -10) + 's';
+                p.style.animationDelay = (Math.random() * -10) + 's';
                 const size = (Math.random() * 4 + 2) + 'px';
-                p.style.width  = size;
+                p.style.width = size;
                 p.style.height = size;
                 particleContainer.appendChild(p);
             }
@@ -702,20 +702,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Helper: toggle loading state on the send button ──
     function setReplyLoading(isLoading) {
-        const btn     = document.getElementById('send-reply-btn');
+        const btn = document.getElementById('send-reply-btn');
         const spinner = document.getElementById('btn-spinner');
-        const label   = document.getElementById('send-btn-label');
+        const label = document.getElementById('send-btn-label');
         if (!btn) return;
         btn.disabled = isLoading;
         if (spinner) spinner.style.display = isLoading ? 'block' : 'none';
-        if (label)  label.style.display   = isLoading ? 'none'  : 'inline';
+        if (label) label.style.display = isLoading ? 'none' : 'inline';
     }
 
     // ── Core: send message to Telegram ───────────────────
     async function sendReplyToTelegram(messageText) {
-        const now        = new Date();
-        const dateStr    = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-        const timeStr    = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 
         // Structured, beautiful message format
         const structured = [
@@ -732,12 +732,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const apiUrl = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
 
         const response = await fetch(apiUrl, {
-            method : 'POST',
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body   : JSON.stringify({
-                chat_id    : TG_CHAT_ID,
-                text       : structured,
-                parse_mode : 'Markdown',
+            body: JSON.stringify({
+                chat_id: TG_CHAT_ID,
+                text: structured,
+                parse_mode: 'Markdown',
             }),
         });
 
@@ -761,7 +761,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // A few floating hearts
         for (let i = 0; i < 6; i++) {
             setTimeout(() => {
-                const x = window.innerWidth  * (0.3 + Math.random() * 0.4);
+                const x = window.innerWidth * (0.3 + Math.random() * 0.4);
                 const y = window.innerHeight * (0.5 + Math.random() * 0.25);
                 createHeart(x, y);
             }, i * 120);
@@ -821,13 +821,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Character counter ─────────────────────────────────
     const replyTextarea = document.getElementById('reply-message');
-    const charCountEl   = document.getElementById('char-count');
+    const charCountEl = document.getElementById('char-count');
     if (replyTextarea && charCountEl) {
         replyTextarea.addEventListener('input', () => {
             const len = replyTextarea.value.length;
             charCountEl.textContent = len;
             // Warn when nearing limit
-            charCountEl.style.color = len >= 450 ? '#ff85a1' : '';
+            charCountEl.style.color = len >= 1950 ? '#ff85a1' : '';
             // Clear error as the user types
             if (len > 0) setReplyError('');
         });
