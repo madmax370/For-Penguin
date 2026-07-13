@@ -907,6 +907,7 @@ body::-webkit-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch; /* Buttery smooth scrolling on iOS */
+    scroll-behavior: smooth; /* Enable smooth scrolling */
 }
 
 .ladder-scene::-webkit-scrollbar {
@@ -980,6 +981,7 @@ body::-webkit-scrollbar {
     margin-bottom: 3.5rem;
     z-index: 2;
     will-change: transform, opacity; /* Force hardware acceleration */
+    overflow: hidden; /* Prevent content from spilling out during sway */
 }
 
 /* Inner sway container to prevent transform collision during reveal */
@@ -990,6 +992,8 @@ body::-webkit-scrollbar {
     align-items: center;
     transform-origin: top center; /* Pivot point at top center */
     will-change: transform;
+    /* Keep sway subtle to stay within card bounds */
+    transform-box: fill-box;
 }
 
 /* Initial and active states - Outer card handles reveal, inner handles sway */
@@ -1016,19 +1020,19 @@ body::-webkit-scrollbar {
     animation: swayLeft 6s ease-in-out infinite alternate;
 }
 
-.ladder-card:nth-child(3) { transition-delay: 0.2s; }
-.ladder-card:nth-child(4) { transition-delay: 0.5s; }
-.ladder-card:nth-child(5) { transition-delay: 0.8s; }
+.ladder-card:nth-of-type(2) { transition-delay: 0.2s; }
+.ladder-card:nth-of-type(3) { transition-delay: 0.5s; }
+.ladder-card:nth-of-type(4) { transition-delay: 0.8s; }
 
-/* Sway keyframes */
+/* Sway keyframes - Reduced angles to keep content within card bounds */
 @keyframes swayLeft {
-    0% { transform: rotate(-4deg); }
-    100% { transform: rotate(-1deg); }
+    0% { transform: rotate(-2deg); }
+    100% { transform: rotate(-0.5deg); }
 }
 
 @keyframes swayRight {
-    0% { transform: rotate(1deg); }
-    100% { transform: rotate(4deg); }
+    0% { transform: rotate(0.5deg); }
+    100% { transform: rotate(2deg); }
 }
 
 /* The clip/heart holding the photo to the string */
@@ -1058,13 +1062,14 @@ body::-webkit-scrollbar {
 /* Transparent container with no black bars */
 .ladder-img-container {
     width: 100%;
-    height: 240px; /* consistent height */
+    height: 200px; /* consistent height - optimized for better fit */
     display: flex;
     align-items: center;
     justify-content: center;
     background: transparent; /* NO dark background/black bars! */
     border-radius: 8px;
     overflow: hidden;
+    position: relative;
 }
 
 .ladder-card img {
@@ -1077,6 +1082,8 @@ body::-webkit-scrollbar {
     border-radius: 6px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     transition: transform 0.5s ease;
+    /* Ensure image stays centered and doesn't overflow */
+    margin: 0 auto;
 }
 
 .ladder-card:hover img {
@@ -1795,8 +1802,13 @@ body::-webkit-scrollbar {
         height: 180px;
     }
 
+    .ladder-img-container {
+        height: 180px; /* Optimized for mobile */
+    }
+
     .ladder-card img {
-        height: 240px;
+        height: auto;
+        max-height: 180px;
     }
 
     .dua-card-main {
@@ -1819,11 +1831,12 @@ body::-webkit-scrollbar {
     }
 
     .ladder-img-container {
-        height: 340px;
+        height: 280px; /* Optimized for desktop */
     }
 
     .ladder-card img {
-        height: 340px;
+        height: auto;
+        max-height: 280px;
     }
 
     .letter-full-content {
