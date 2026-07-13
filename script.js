@@ -342,17 +342,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const stringEl = document.querySelector('.ladder-string');
         const card0 = document.querySelector('.ladder-card[data-index="0"]');
         const card2 = document.querySelector('.ladder-card[data-index="2"]');
+        const container = document.getElementById('ladder-container');
 
-        if (!stringEl || !card0 || !card2) return;
+        if (!stringEl || !card0 || !card2 || !container) return;
 
         const clip0 = card0.querySelector('.ladder-clip');
         const clip2 = card2.querySelector('.ladder-clip');
 
         if (!clip0 || !clip2) return;
 
-        // Calculate vertical centers relative to the ladder-scene container
-        const clip0Center = card0.offsetTop + clip0.offsetTop + (clip0.offsetHeight / 2);
-        const clip2Center = card2.offsetTop + clip2.offsetTop + (clip2.offsetHeight / 2);
+        const containerRect = container.getBoundingClientRect();
+        const clip0Rect = clip0.getBoundingClientRect();
+        const clip2Rect = clip2.getBoundingClientRect();
+
+        // Calculate positions relative to the container top using viewport-relative bounding rects
+        const clip0Center = (clip0Rect.top + clip0Rect.height / 2) - containerRect.top;
+        const clip2Center = (clip2Rect.top + clip2Rect.height / 2) - containerRect.top;
 
         // Start the string a bit above the first card's clip
         const startY = clip0Center - 40; // 40px above the first clip
