@@ -47,92 +47,15 @@
         </div>
     </div>
 
-    <!-- Hidden Content Root — 5 Scene Experience -->
+    <!-- Hidden Content Root — 3 Scene Experience -->
     <div id="main-content" class="content-root"
         style="display: none; opacity: 0; transform: scale(0.98); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);">
 
         <!-- Bokeh Particles Container -->
         <div id="bokeh-container"></div>
 
-        <!-- =========================================
-             SCENE 1 — BIRTHDAY CANDLE
-             ========================================= -->
-        <div id="scene-candle" class="scene">
-            <div class="candle-wrapper">
-                <p class="candle-title">Make a wish…</p>
-
-                <div class="candle-holder">
-                    <div class="candle" id="candle-element">
-                        <div class="candle-wick"></div>
-
-                        <!-- Wax drips -->
-                        <div class="wax-drip"></div>
-                        <div class="wax-drip"></div>
-
-                        <!-- Flame -->
-                        <div class="flame-container">
-                            <div class="flame">
-                                <div class="flame-outer"></div>
-                                <div class="flame-inner"></div>
-                            </div>
-                        </div>
-                        <div class="flame-glow"></div>
-
-                        <!-- Smoke (hidden until blown) -->
-                        <div class="smoke"></div>
-                        <div class="smoke"></div>
-                        <div class="smoke"></div>
-                    </div>
-                    <div class="candle-base"></div>
-                    <div class="candle-plate"></div>
-                </div>
-
-                <button id="blow-candle-btn" class="blow-btn pulse-anim">
-                    🌬️ Blow the candle
-                </button>
-            </div>
-        </div>
-
-        <!-- =========================================
-             SCENE 2 — PENGUIN BIRTHDAY WISH
-             ========================================= -->
-        <div id="scene-penguin" class="scene">
-            <div class="penguin-scene">
-                <!-- CSS Penguin -->
-                <div class="penguin" id="penguin-element">
-                    <div class="penguin-hat"></div>
-                    <div class="penguin-hat-band"></div>
-                    <div class="penguin-body">
-                        <div class="penguin-belly"></div>
-                        <div class="penguin-eye left"></div>
-                        <div class="penguin-eye right"></div>
-                        <div class="penguin-beak"></div>
-                        <div class="penguin-blush left"></div>
-                        <div class="penguin-blush right"></div>
-                        <div class="penguin-wing left"></div>
-                        <div class="penguin-wing right"></div>
-                    </div>
-                    <div class="penguin-feet">
-                        <div class="penguin-foot"></div>
-                        <div class="penguin-foot"></div>
-                    </div>
-                </div>
-
-                <!-- Birthday Message -->
-                <div class="birthday-text" id="birthday-text">
-                    <h1>Happy Birthday<br>My Bhandhari 💜</h1>
-                    <p class="subtitle">🎂 Your special day is here! 🎂</p>
-                </div>
-
-                <!-- Continue Button -->
-                <button id="penguin-continue-btn" class="continue-btn">
-                    Continue →
-                </button>
-            </div>
-
-            <!-- Confetti Container (injected by JS) -->
-            <div id="confetti-container" class="confetti-container"></div>
-        </div>
+        <!-- Confetti Container (injected by JS) -->
+        <div id="confetti-container" class="confetti-container"></div>
 
         <!-- =========================================
              SCENE 3 — IMAGE LADDER (Growth Story)
@@ -228,35 +151,12 @@
                     <div class="letter-date">02 July 💜</div>
                     <div class="letter-greeting">Dear Bhandhari!</div>
                     <div class="letter-body">
-                        <p>Assalamualaikum. 🌸</p>
-                        <p>Happiest Birthday, Bhandhari. ❤️</p>
-                        <p>Aaj ka din mere liye bhi bahut special hai, kyunki aaj us insaan ka birthday hai jiski
-                            muskurahat dekh kar mujhe duniya me sabse zyada sukoon milta hai. Sach kahu, tujhe khush aur
-                            haste hue dekh kar jo ehsaas hota hai, usse main kabhi lafzon mein bayan nahi kar sakta.</p>
-                        <p>Main dil se dua karta hu ke Allah tujhe hamesha khush rakhe, sehatmand rakhe, lambi aur
-                            barkat wali zindagi ata farmaye, aur har qadam par tera saath de. Main chahta hu ke tu apni
-                            life mein itna aage badhe ke ek din tujhe khud par fakhr ho. Kabhi kisi cheez se darna mat.
-                            Allah tere dil ki har achhi dua aur har nek khwahish ko poora kare. Main chahta hu ke tu jis
-                            field mein bhi jaaye, usmein bahut kamyab ho, aur apne Ammi Abba ke har sapne ko poora kare.
-                            Mujhe yakeen hai ke tu ek din bahut aage jayegi, In Sha Allah.</p>
-                        <p>Aur agar kabhi bhi life mein kisi cheez mein meri zarurat pade, chahe studies ho, koi problem
-                            ho, ya bas kisi se baat karni ho, to yaad rakhna, main hamesha apni taraf se tere saath
-                            khada rahunga. Main hamesha teri khushi aur kamyabi ki dua karta rahunga.</p>
-                        <p>Agar maine kabhi bhi jaane ya anjaane mein tera dil dukhaya ho, to dil se maafi chahta hu.
-                            Kabhi mera irada tujhe dukh pahunchane ka nahi tha.</p>
-                        <p>Ek baat jo shayad main kabhi theek se bol nahi paaya. Shayad main teri life mein utni
-                            importance na rakhta hu jitni tu meri life mein rakhti hai. Lekin mere liye tu hamesha meri
-                            life ke sabse khaas aur special logon mein se ek rahegi.</p>
-                        <p>Meri bas itni si dua hai ke Allah tujhe har buri nazar se mehfooz rakhe. Kabhi tere chehre ki
-                            muskurahat kam na ho, kabhi teri aankhon mein gham ke aansu na aaye. Allah tujhe hamesha
-                            sukoon, izzat, kamyabi aur barakah se nawaze. Chahe meri jagah teri zindagi mein ho ya na
-                            ho, main hamesha Allah se yehi dua karunga ke tu hamesha khush rahe, sehatmand rahe, aur har
-                            din pehle se zyada kamyab hoti rahe.</p>
-                        <p>Allah tujhe duniya aur aakhirat dono ki har khair, har khushi aur har barkat ata farmaye.
-                            Ameen. 🤲</p>
-                        <p>Once again, Happiest Birthday, Bhandhari. 🤍</p>
-                        <p><strong>Apna hamesha khayal rakhna, aur hamesha isi tarah muskurati rehna. Teri muskurahat
-                                mere liye duniya ki sabse khoobsurat cheezon mein se ek hai. ✨</strong></p>
+                        <p>Assalamualaikum.</p>
+                        <p>Please mujhe bata na kya hua hai. Tu theek hai na? Kya mujhse koi galti hui hai? Agar hui hai to I'm really, really sorry.</p>
+                        <p>Main tujhe kabhi disturb nahi karunga, bas ek baar bata de kya hua. Kya kisi ne kuch bola, koi problem hui hai, ya meri hi koi galti hai? Phir tu mujhse baat kyun nahi kar rahi?</p>
+                        <p>Please yaar, mujhe bas reason jaan'na hai. I'm really sorry.</p>
+                        <p>Agar meri wajah se tera dil dukha hai, to I'm really, really sorry. Meri saza ye rahegi ke main tujhe kabhi apna chehra nazar nahi aane dunga. Main kabhi nahi chahta ke meri wajah se tujhe koi bhi takleef ho.</p>
+                        <p>I'm really sorry for everything. Tu apna khayal rakhna.</p>
                     </div>
                     <div class="letter-signature">~ Tera Apna Bhatari 🤍</div>
                 </div>

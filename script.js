@@ -136,8 +136,6 @@ document.addEventListener('DOMContentLoaded', () => {
     class SceneController {
         constructor() {
             this.scenes = [
-                'scene-candle',
-                'scene-penguin',
                 'scene-ladder',
                 'scene-envelope',
                 'scene-dua'
@@ -158,26 +156,6 @@ document.addEventListener('DOMContentLoaded', () => {
             this.isTransitioning = false;
 
             // Reset interactive elements
-            const candle = document.getElementById('candle-element');
-            if (candle) candle.classList.remove('blown');
-
-            const penguin = document.getElementById('penguin-element');
-            if (penguin) {
-                penguin.classList.remove('idle');
-                penguin.style.transform = 'scale(0)';
-            }
-
-            const birthdayText = document.getElementById('birthday-text');
-            if (birthdayText) birthdayText.classList.remove('reveal');
-
-            const penguinBtn = document.getElementById('penguin-continue-btn');
-            if (penguinBtn) penguinBtn.classList.remove('show');
-
-            const blowBtn = document.getElementById('blow-candle-btn');
-            if (blowBtn) {
-                blowBtn.disabled = false;
-                blowBtn.style.opacity = '1';
-            }
 
             // Reset ladder
             document.querySelectorAll('.ladder-card').forEach(card => card.classList.remove('visible'));
@@ -256,11 +234,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         onSceneEnter(index) {
             switch (index) {
-                case 0: enterCandleScene(); break;
-                case 1: enterPenguinScene(); break;
-                case 2: enterLadderScene(); break;
-                case 3: enterEnvelopeScene(); break;
-                case 4: enterDuaScene(); break;
+                case 0: enterLadderScene(); break;
+                case 1: enterEnvelopeScene(); break;
+                case 2: enterDuaScene(); break;
             }
         }
     }
@@ -329,91 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // ===================================================
-    //  SCENE 1 — BIRTHDAY CANDLE
-    // ===================================================
-
-    function enterCandleScene() {
-        // Scene is already visible, just ensure candle is glowing
-    }
-
-    const blowBtn = document.getElementById('blow-candle-btn');
-    if (blowBtn) {
-        blowBtn.addEventListener('click', () => {
-            const candle = document.getElementById('candle-element');
-            if (!candle || candle.classList.contains('blown')) return;
-
-            // Blow out the candle
-            candle.classList.add('blown');
-            blowBtn.disabled = true;
-            blowBtn.style.opacity = '0.3';
-            blowBtn.style.transition = 'opacity 0.5s ease';
-
-            // Haptic feedback
-            if (navigator.vibrate) navigator.vibrate([30, 50, 30]);
-
-            // Transition to penguin scene after candle blows out
-            setTimeout(() => {
-                if (window._sceneController) {
-                    window._sceneController.nextScene();
-                }
-            }, 2200);
-        });
-    }
-
-
-    // ===================================================
-    //  SCENE 2 — PENGUIN BIRTHDAY WISH
-    // ===================================================
-
-    function enterPenguinScene() {
-        const penguin = document.getElementById('penguin-element');
-        const birthdayText = document.getElementById('birthday-text');
-        const continueBtn = document.getElementById('penguin-continue-btn');
-
-        // Reset penguin state for re-entry
-        if (penguin) {
-            penguin.style.transform = '';
-            penguin.classList.remove('idle');
-            // Re-trigger entrance animation
-            penguin.style.animation = 'none';
-            void penguin.offsetWidth;
-            penguin.style.animation = '';
-        }
-
-        // Show birthday text after penguin entrance
-        setTimeout(() => {
-            if (birthdayText) birthdayText.classList.add('reveal');
-        }, 800);
-
-        // Fire confetti
-        setTimeout(() => {
-            fireConfetti();
-        }, 1000);
-
-        // Add sparkles around penguin
-        setTimeout(() => {
-            createSparkles(penguin);
-        }, 600);
-
-        // Set penguin to idle bounce
-        setTimeout(() => {
-            if (penguin) penguin.classList.add('idle');
-        }, 1200);
-
-        // Show continue button
-        setTimeout(() => {
-            if (continueBtn) continueBtn.classList.add('show');
-        }, 2500);
-    }
-
-    const penguinContinueBtn = document.getElementById('penguin-continue-btn');
-    if (penguinContinueBtn) {
-        penguinContinueBtn.addEventListener('click', () => {
-            if (window._sceneController) window._sceneController.nextScene();
-        });
-    }
-
     // Confetti system
     function fireConfetti() {
         const container = document.getElementById('confetti-container');
@@ -440,33 +331,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             container.innerHTML = '';
         }, 5000);
-    }
-
-    // Sparkle effects around an element
-    function createSparkles(element) {
-        if (!element) return;
-        const rect = element.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        for (let i = 0; i < 12; i++) {
-            const sparkle = document.createElement('div');
-            sparkle.className = 'sparkle';
-            const angle = (Math.PI * 2 / 12) * i;
-            const radius = 60 + Math.random() * 30;
-            const tx = Math.cos(angle) * radius;
-            const ty = Math.sin(angle) * radius;
-
-            sparkle.style.left = centerX + 'px';
-            sparkle.style.top = centerY + 'px';
-            sparkle.style.setProperty('--tx', tx + 'px');
-            sparkle.style.setProperty('--ty', ty + 'px');
-            sparkle.style.animationDelay = (i * 0.05) + 's';
-            sparkle.style.background = ['#f9c74f', '#c77dff', '#ff85a1', '#e0aaff'][i % 4];
-
-            document.body.appendChild(sparkle);
-            setTimeout(() => sparkle.remove(), 1200);
-        }
     }
 
 
