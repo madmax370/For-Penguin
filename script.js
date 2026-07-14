@@ -356,13 +356,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const clip2Rect = clip2.getBoundingClientRect();
 
         // Calculate positions relative to the container top using viewport-relative bounding rects
-        const clip0Center = (clip0Rect.top + clip0Rect.height / 2) - containerRect.top;
-        const clip2Center = (clip2Rect.top + clip2Rect.height / 2) - containerRect.top;
+        const clip0Top = clip0Rect.top - containerRect.top;
+        const clip2Bottom = clip2Rect.bottom - containerRect.top;
 
-        // Start the string a bit above the first card's clip
-        const startY = clip0Center - 40; // 40px above the first clip
-        // End the string 15px below the third card's clip
-        const endY = clip2Center + 15;
+        // Start the string at the first card's clip center
+        const startY = clip0Top + (clip0Rect.height / 2);
+        // End the string at the third card's clip center
+        const endY = clip2Bottom - (clip2Rect.height / 2);
 
         const stringHeight = endY - startY;
 
@@ -408,10 +408,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ladderSceneEl.addEventListener('scroll', () => {
             if (ladderSceneEl.scrollTop > 40) {
                 scrollHintEl.style.opacity = '0';
-                scrollHintEl.style.transform = 'translate3d(-50%, 10px, 0)';
+                scrollHintEl.style.transform = 'translateY(10px)';
             } else {
                 scrollHintEl.style.opacity = '0.8';
-                scrollHintEl.style.transform = 'translate3d(-50%, 0, 0)';
+                scrollHintEl.style.transform = 'translateY(0)';
             }
         });
     }

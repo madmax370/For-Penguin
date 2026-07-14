@@ -1124,6 +1124,7 @@ body::-webkit-scrollbar {
     pointer-events: none;
     animation: bounceScroll 2s infinite ease-in-out;
     transition: opacity 0.4s ease, transform 0.4s ease;
+    will-change: transform, opacity;
 }
 
 .scroll-hint-icon {
