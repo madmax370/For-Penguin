@@ -1860,3 +1860,65 @@ body::-webkit-scrollbar {
    =================================================== */
 
 /* nothing extra needed, hearts are created via JS inline styles */
+
+/* ===================================================
+   MESSAGE GALAXY STYLES
+   =================================================== */
+
+.message-galaxy {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 40%;
+    height: 300px;
+    pointer-events: none;
+    z-index: 9997;
+    overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    .message-galaxy {
+        width: 50%;
+        height: 250px;
+    }
+}
+
+.paper-plane {
+    will-change: transform, opacity;
+    filter: drop-shadow(0 4px 8px rgba(123, 44, 191, 0.4));
+}
+
+.galaxy-star {
+    will-change: transform, opacity;
+    filter: drop-shadow(0 0 8px rgba(249, 199, 79, 0.6));
+    transition: transform 0.3s ease;
+}
+
+@keyframes twinkle {
+    0%, 100% {
+        opacity: 0.6;
+        transform: scale(1);
+        filter: drop-shadow(0 0 8px rgba(249, 199, 79, 0.6));
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.15);
+        filter: drop-shadow(0 0 12px rgba(249, 199, 79, 0.9));
+    }
+}
+
+.star-message-preview {
+    animation: previewFadeIn 0.4s ease forwards;
+    will-change: opacity, transform;
+}
+
+@keyframes previewFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}

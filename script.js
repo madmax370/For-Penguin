@@ -732,6 +732,205 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 2800);
     }
 
+    // ===================================================
+    //  MESSAGE GALAXY - Paper Plane Animation & Star Creation
+    // ===================================================
+    
+    const messageGalaxy = document.getElementById('message-galaxy');
+    const storedStars = JSON.parse(localStorage.getItem('messageGalaxyStars') || '[]');
+    
+    // Load existing stars from localStorage
+    storedStars.forEach(starData => {
+        createGalaxyStar(starData.message, starData.timestamp, true);
+    });
+
+    function createPaperPlaneAnimation(message) {
+        // Create paper plane element
+        const plane = document.createElement('div');
+        plane.className = 'paper-plane';
+        plane.innerHTML = '✈️';
+        plane.style.position = 'absolute';
+        plane.style.fontSize = '32px';
+        plane.style.zIndex = '10000';
+        plane.style.pointerEvents = 'none';
+        plane.style.willChange = 'transform, opacity';
+        
+        // Start position (near reply box)
+        const replyBox = document.getElementById('reply-box-container');
+        const replyRect = replyBox.getBoundingClientRect();
+        const startX = replyRect.left + replyRect.width / 2;
+        const startY = replyRect.top;
+        
+        plane.style.left = startX + 'px';
+        plane.style.top = startY + 'px';
+        document.body.appendChild(plane);
+        
+        // Animate to top-right corner
+        const endX = window.innerWidth - 100;
+        const endY = 80;
+        
+        // Calculate angle for rotation
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+        
+        // Animate with smooth easing
+        const duration = 2000;
+        const startTime = performance.now();
+        
+        function animatePlane(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Ease-out cubic
+            const eased = 1 - Math.pow(1 - progress, 3);
+            
+            const currentX = startX + deltaX * eased;
+            const currentY = startY + deltaY * eased;
+            
+            plane.style.transform = `translate(${currentX - startX}px, ${currentY - startY}px) rotate(${angle}deg) scale(${1 - eased * 0.3})`;
+            plane.style.opacity = 1 - eased * 0.3;
+            
+            if (progress < 1) {
+                requestAnimationFrame(animatePlane);
+            } else {
+                // Plane reached destination - transform into star
+                plane.remove();
+                createGalaxyStar(message, Date.now());
+            }
+        }
+        
+        requestAnimationFrame(animatePlane);
+    }
+
+    function createGalaxyStar(message, timestamp, isInitial = false) {
+        if (!messageGalaxy) return;
+        
+        const star = document.createElement('div');
+        star.className = 'galaxy-star';
+        star.innerHTML = '⭐';
+        star.style.position = 'absolute';
+        star.style.fontSize = '20px';
+        star.style.cursor = 'pointer';
+        star.style.zIndex = '9998';
+        star.style.willChange = 'transform, opacity';
+        star.dataset.message = message;
+        star.dataset.timestamp = timestamp;
+        
+        // Random position in top-right galaxy area
+        const maxX = messageGalaxy.offsetWidth || window.innerWidth * 0.4;
+        const maxY = messageGalaxy.offsetHeight || 300;
+        
+        const randomX = Math.random() * maxX;
+        const randomY = Math.random() * maxY;
+        
+        star.style.left = randomX + 'px';
+        star.style.top = randomY + 'px';
+        
+        // Twinkle animation
+        const twinkleDuration = 2 + Math.random() * 2;
+        star.style.animation = `twinkle ${twinkleDuration}s infinite ease-in-out`;
+        
+        // Click/hover to show message preview
+        star.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showStarMessagePreview(star, message, timestamp);
+        });
+        
+        star.addEventListener('mouseenter', () => {
+            star.style.transform = 'scale(1.3)';
+        });
+        
+        star.addEventListener('mouseleave', () => {
+            star.style.transform = 'scale(1)';
+        });
+        
+        messageGalaxy.appendChild(star);
+        
+        // Save to localStorage if not initial load
+        if (!isInitial) {
+            const newStarData = { message, timestamp };
+            storedStars.push(newStarData);
+            // Keep only last 50 messages
+            if (storedStars.length > 50) storedStars.shift();
+            localStorage.setItem('messageGalaxyStars', JSON.stringify(storedStars));
+        }
+        
+        // Fade in animation
+        star.style.opacity = '0';
+        star.style.transform = 'scale(0)';
+        setTimeout(() => {
+            star.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            star.style.opacity = '1';
+            star.style.transform = 'scale(1)';
+        }, 50);
+    }
+
+    function showStarMessagePreview(starElement, message, timestamp) {
+        // Remove any existing previews
+        const existingPreview = document.querySelector('.star-message-preview');
+        if (existingPreview) existingPreview.remove();
+        
+        const preview = document.createElement('div');
+        preview.className = 'star-message-preview glass-card';
+        preview.style.position = 'absolute';
+        preview.style.background = 'rgba(255, 255, 255, 0.95)';
+        preview.style.backdropFilter = 'blur(10px)';
+        preview.style.borderRadius = '12px';
+        preview.style.padding = '16px';
+        preview.style.maxWidth = '280px';
+        preview.style.boxShadow = '0 8px 32px rgba(0,0,0,0.2)';
+        preview.style.zIndex = '10001';
+        preview.style.fontSize = '0.9rem';
+        preview.style.lineHeight = '1.5';
+        preview.style.color = '#2b1d11';
+        
+        const date = new Date(timestamp);
+        const dateStr = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        
+        preview.innerHTML = `
+            <div style="font-size: 0.75rem; color: #888; margin-bottom: 8px;">${dateStr}</div>
+            <div style="white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(message)}</div>
+        `;
+        
+        // Position near the star
+        const starRect = starElement.getBoundingClientRect();
+        const galaxyRect = messageGalaxy.getBoundingClientRect();
+        
+        let previewX = starRect.left - galaxyRect.left;
+        let previewY = starRect.bottom - galaxyRect.top + 10;
+        
+        // Prevent overflow
+        if (previewX + 280 > galaxyRect.width) {
+            previewX = galaxyRect.width - 280 - 10;
+        }
+        if (previewY + 150 > galaxyRect.height) {
+            previewY = starRect.top - galaxyRect.top - 150 - 10;
+        }
+        
+        preview.style.left = Math.max(10, previewX) + 'px';
+        preview.style.top = Math.max(10, previewY) + 'px';
+        
+        messageGalaxy.appendChild(preview);
+        
+        // Close on click outside
+        setTimeout(() => {
+            const closeHandler = (e) => {
+                if (!preview.contains(e.target) && !starElement.contains(e.target)) {
+                    preview.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
+            document.addEventListener('click', closeHandler);
+        }, 10);
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // ── Send-button click handler ─────────────────────────
     const sendReplyBtn = document.getElementById('send-reply-btn');
     if (sendReplyBtn) {
@@ -765,6 +964,10 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await sendReplyToTelegram(rawText);
                 showReplySuccess();
+                // Trigger paper plane animation AFTER successful send
+                setTimeout(() => {
+                    createPaperPlaneAnimation(rawText);
+                }, 500);
             } catch (err) {
                 console.error('Telegram send error:', err);
                 setReplyLoading(false);
