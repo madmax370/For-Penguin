@@ -362,26 +362,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
         container.innerHTML = '';
 
+        // Reduced count for mobile performance (60 -> 40)
         const colors = ['#c77dff', '#e0aaff', '#ff85a1', '#f9c74f', '#90e0ef', '#f4845f', '#fff'];
-        const count = 60;
+        const isMobile = window.innerWidth < 768;
+        const count = isMobile ? 30 : 50;
 
         for (let i = 0; i < count; i++) {
             const piece = document.createElement('div');
             piece.className = 'confetti-piece';
             piece.style.left = Math.random() * 100 + '%';
             piece.style.background = colors[Math.floor(Math.random() * colors.length)];
-            piece.style.width = (Math.random() * 8 + 6) + 'px';
-            piece.style.height = (Math.random() * 10 + 8) + 'px';
+            // Smaller sizes for better performance
+            piece.style.width = (Math.random() * 6 + 5) + 'px';
+            piece.style.height = (Math.random() * 8 + 6) + 'px';
             piece.style.animationDuration = (Math.random() * 2 + 2) + 's';
             piece.style.animationDelay = (Math.random() * 0.8) + 's';
             piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+            piece.style.willChange = 'transform, opacity'; // GPU acceleration
             container.appendChild(piece);
         }
 
         // Clean up confetti after animations complete
         setTimeout(() => {
             container.innerHTML = '';
-        }, 5000);
+        }, 4000); // Reduced cleanup time
     }
 
 
@@ -817,7 +821,7 @@ document.addEventListener('DOMContentLoaded', () => {
         heart.style.fontSize = '20px';
         heart.style.pointerEvents = 'none';
         heart.style.animation = 'floatUp 1.5s ease-out forwards';
-        heart.style.zIndex = '1000';
+        heart.style.zIndex = '9999'; // Ensure hearts always appear above all content
         heart.style.willChange = 'transform, opacity';
         document.body.appendChild(heart);
         setTimeout(() => heart.remove(), 1500);

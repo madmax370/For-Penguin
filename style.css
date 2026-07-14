@@ -1289,10 +1289,10 @@ body::-webkit-scrollbar {
 }
 
 .letter-inner {
-    background: linear-gradient(180deg, #faf3e8, #f5ead6);
+    background: linear-gradient(180deg, #ffffff, #f9f3e8);
     border-radius: 8px;
     padding: 1.2rem;
-    color: #3d2b1f;
+    color: #2b1d11;
     font-family: 'Lora', serif;
     font-size: 0.95rem;
     line-height: 1.7;
@@ -1301,6 +1301,20 @@ body::-webkit-scrollbar {
     overflow-y: auto;
     -ms-overflow-style: none;
     scrollbar-width: none;
+    /* Enhanced readability with subtle white overlay */
+    position: relative;
+}
+
+.letter-inner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    pointer-events: none;
 }
 
 .letter-inner::-webkit-scrollbar {
