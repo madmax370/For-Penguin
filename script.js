@@ -5,15 +5,55 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // ===== PASSWORD LOGIC (PRESERVED — DO NOT MODIFY) =====
+    // ===== PASSWORD LOGIC (FIXED LOCKOUT PERSISTENCE) =====
     const passwordOverlay = document.getElementById('password-overlay');
     const passwordInput = document.getElementById('password-input');
     const unlockBtn = document.getElementById('unlock-btn');
     const passwordError = document.getElementById('password-error');
     const mainContent = document.getElementById('main-content');
 
-    let failedAttempts = 0;
+    // Initialize from session storage safely
+    let failedAttempts = parseInt(sessionStorage.getItem('pwd_attempts') || '0');
+    let lockoutEndTime = parseInt(sessionStorage.getItem('pwd_lockout_end') || '0');
     let isLockedOut = false;
+
+    // Check if still locked out on page load
+    const now = Date.now();
+    if (lockoutEndTime > now) {
+        isLockedOut = true;
+        const remainingSeconds = Math.ceil((lockoutEndTime - now) / 1000);
+        passwordInput.disabled = true;
+        unlockBtn.disabled = true;
+        
+        // Start countdown timer for remaining lockout time
+        const lockTimer = setInterval(() => {
+            const remaining = Math.ceil((lockoutEndTime - Date.now()) / 1000);
+            if (remaining <= 0) {
+                clearInterval(lockTimer);
+                isLockedOut = false;
+                failedAttempts = 0;
+                passwordInput.disabled = false;
+                unlockBtn.disabled = false;
+                sessionStorage.removeItem('pwd_attempts');
+                sessionStorage.removeItem('pwd_lockout_end');
+                passwordInput.focus();
+            } else {
+                const lockoutMsg = document.querySelector('.lockout-msg');
+                if (lockoutMsg) {
+                    lockoutMsg.textContent = `Too many attempts. Locked out for ${remaining} seconds.`;
+                    lockoutMsg.style.display = 'block';
+                }
+            }
+        }, 1000);
+    } else {
+        // Clear stale lockout data
+        sessionStorage.removeItem('pwd_lockout_end');
+        if (failedAttempts > 0 && failedAttempts < 3) {
+            // Reset partial attempts on new session
+            failedAttempts = 0;
+            sessionStorage.removeItem('pwd_attempts');
+        }
+    }
 
     // Create lockout message element dynamically
     const lockoutMsg = document.createElement('p');
@@ -46,6 +86,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (failedAttempts >= 3) {
                 isLockedOut = true;
+                const lockoutDuration = 15000; // 15 seconds
+                const lockoutEndTime = Date.now() + lockoutDuration;
+                
+                // Save to session storage
+                sessionStorage.setItem('pwd_attempts', '3');
+                sessionStorage.setItem('pwd_lockout_end', lockoutEndTime.toString());
+                
                 passwordInput.disabled = true;
                 unlockBtn.disabled = true;
                 passwordError.style.display = 'none';
@@ -63,10 +110,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         passwordInput.disabled = false;
                         unlockBtn.disabled = false;
                         lockoutMsg.style.display = 'none';
+                        sessionStorage.removeItem('pwd_attempts');
+                        sessionStorage.removeItem('pwd_lockout_end');
                         passwordInput.focus();
                     }
                 }, 1000);
             } else {
+                // Save current attempt count to session storage
+                sessionStorage.setItem('pwd_attempts', failedAttempts.toString());
                 passwordError.textContent = `Incorrect code. ${3 - failedAttempts} attempts remaining. 🐧`;
                 passwordError.style.display = 'block';
                 setTimeout(() => { passwordError.style.display = 'none'; }, 2000);
