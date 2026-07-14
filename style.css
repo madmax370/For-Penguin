@@ -1234,9 +1234,11 @@ body::-webkit-scrollbar {
     transform-origin: top center;
     transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: rotateX(0deg); /* Ensure flap starts completely flat and closed */
+    pointer-events: none; /* Let clicks pass through to the seal */
 }
 
-/* Heart seal */
+/* Heart seal - the actual clickable element */
 .envelope-seal {
     position: absolute;
     top: 25%;
@@ -1253,6 +1255,9 @@ body::-webkit-scrollbar {
     font-size: 18px;
     box-shadow: 0 2px 8px rgba(199, 125, 255, 0.4);
     transition: opacity 0.4s ease, transform 0.4s ease;
+    pointer-events: auto; /* Make seal clickable */
+    cursor: pointer;
+    touch-action: manipulation; /* Remove tap delay on mobile */
 }
 
 /* Envelope opened state */
