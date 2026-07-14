@@ -381,17 +381,47 @@ document.addEventListener('DOMContentLoaded', () => {
         const cards = document.querySelectorAll('.ladder-card');
         const continueBtn = document.getElementById('ladder-continue-btn');
 
-        // Stagger card reveals
+        // Stagger card reveals with image load synchronization
+        let loadedCount = 0;
+        const totalImages = cards.length;
+        
         cards.forEach((card, index) => {
-            setTimeout(() => {
-                card.classList.add('visible');
-            }, 400 + (index * 600));
+            const img = card.querySelector('img');
+            
+            // Function to reveal card after image loads or timeout
+            const revealCard = () => {
+                setTimeout(() => {
+                    card.classList.add('visible');
+                    loadedCount++;
+                    
+                    // If all images loaded (or timed out), show continue button
+                    if (loadedCount >= totalImages) {
+                        setTimeout(() => {
+                            if (continueBtn) continueBtn.classList.add('show');
+                        }, 400);
+                    }
+                }, 400 + (index * 600));
+            };
+            
+            if (img && img.complete) {
+                // Image already loaded
+                revealCard();
+            } else if (img) {
+                // Wait for image to load with timeout fallback
+                const timeout = setTimeout(revealCard, 2000); // 2s fallback
+                img.addEventListener('load', () => {
+                    clearTimeout(timeout);
+                    revealCard();
+                });
+                img.addEventListener('error', () => {
+                    clearTimeout(timeout);
+                    revealCard(); // Still reveal even if image fails
+                });
+            } else {
+                // No image, just reveal
+                revealCard();
+            }
         });
-
-        // Show continue button after all cards are visible
-        setTimeout(() => {
-            if (continueBtn) continueBtn.classList.add('show');
-        }, 400 + (cards.length * 600) + 400);
     }
 
     const ladderContinueBtn = document.getElementById('ladder-continue-btn');
