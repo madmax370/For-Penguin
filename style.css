@@ -1556,7 +1556,7 @@ body::-webkit-scrollbar {
     width: 100%;
 }
 
-#reply-message {
+.textarea-wrapper textarea {
     width: 100%;
     height: 140px;
     background: rgba(255, 255, 255, 0.04);
@@ -1574,13 +1574,13 @@ body::-webkit-scrollbar {
     caret-color: #c77dff;
 }
 
-#reply-message:focus {
+.textarea-wrapper textarea:focus {
     border-color: rgba(199, 125, 255, 0.55);
     background: rgba(255, 255, 255, 0.07);
     box-shadow: 0 0 0 3px rgba(199, 125, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 
-#reply-message::placeholder {
+.textarea-wrapper textarea::placeholder {
     color: rgba(255, 255, 255, 0.28);
     font-style: italic;
 }
@@ -1862,63 +1862,76 @@ body::-webkit-scrollbar {
 /* nothing extra needed, hearts are created via JS inline styles */
 
 /* ===================================================
-   MESSAGE GALAXY STYLES
+   QUESTION SCENE STYLES
    =================================================== */
 
-.message-galaxy {
-    position: absolute;
-    top: 0;
-    right: 0;
-    width: 40%;
-    height: 300px;
-    pointer-events: none;
-    z-index: 9997;
-    overflow: hidden;
+.question-card {
+    gap: 1.5rem;
 }
 
-@media (max-width: 768px) {
-    .message-galaxy {
-        width: 50%;
-        height: 250px;
+.question-box {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(199, 125, 255, 0.2);
+    border-radius: 16px;
+    padding: 1.2rem;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    margin-bottom: 0.5rem;
+}
+
+.question-box p {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.95);
+    font-weight: 300;
+}
+
+.nav-buttons-row {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+/* If there's only one child, align it to the center */
+.nav-buttons-row button:first-child:last-child {
+    margin: 0 auto;
+}
+
+.nav-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(199, 125, 255, 0.3);
+    color: var(--accent-light);
+    padding: 10px 20px;
+    border-radius: 12px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+    max-width: 150px;
+    text-align: center;
+}
+
+.nav-btn:hover {
+    background: rgba(199, 125, 255, 0.15);
+    transform: translateY(-2px);
+}
+
+@media (max-width: 480px) {
+    .question-box {
+        padding: 1rem;
+    }
+    .question-box p {
+        font-size: 0.9rem;
+    }
+    .nav-buttons-row {
+        gap: 0.5rem;
+    }
+    .nav-btn {
+        padding: 8px 12px;
+        font-size: 0.85rem;
     }
 }
 
-.paper-plane {
-    will-change: transform, opacity;
-    filter: drop-shadow(0 4px 8px rgba(123, 44, 191, 0.4));
-}
-
-.galaxy-star {
-    will-change: transform, opacity;
-    filter: drop-shadow(0 0 8px rgba(249, 199, 79, 0.6));
-    transition: transform 0.3s ease;
-}
-
-@keyframes twinkle {
-    0%, 100% {
-        opacity: 0.6;
-        transform: scale(1);
-        filter: drop-shadow(0 0 8px rgba(249, 199, 79, 0.6));
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.15);
-        filter: drop-shadow(0 0 12px rgba(249, 199, 79, 0.9));
-    }
-}
-
-.star-message-preview {
-    animation: previewFadeIn 0.4s ease forwards;
-    will-change: opacity, transform;
-}
-
-@keyframes previewFadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(-10px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}

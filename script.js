@@ -189,6 +189,11 @@ document.addEventListener('DOMContentLoaded', () => {
             this.scenes = [
                 'scene-ladder',
                 'scene-envelope',
+                'scene-q1',
+                'scene-q2',
+                'scene-q3',
+                'scene-q4',
+                'scene-q5',
                 'scene-dua'
             ];
             this.currentIndex = -1;
@@ -283,11 +288,15 @@ document.addEventListener('DOMContentLoaded', () => {
             this.showScene(this.currentIndex + 1);
         }
 
+        previousScene() {
+            this.showScene(this.currentIndex - 1);
+        }
+
         onSceneEnter(index) {
             switch (index) {
                 case 0: enterLadderScene(); break;
                 case 1: enterEnvelopeScene(); break;
-                case 2: enterDuaScene(); break;
+                case 7: enterDuaScene(); break;
             }
         }
     }
@@ -733,271 +742,153 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ===================================================
-    //  MESSAGE GALAXY - Paper Plane Animation & Star Creation
+    //  QUESTION / REPLY HANDLING
     // ===================================================
-    
-    const messageGalaxy = document.getElementById('message-galaxy');
-    const storedStars = JSON.parse(localStorage.getItem('messageGalaxyStars') || '[]');
-    
-    // Load existing stars from localStorage
-    storedStars.forEach(starData => {
-        createGalaxyStar(starData.message, starData.timestamp, true);
+
+    // ===================================================
+    //  QUESTION / REPLY HANDLING
+    // ===================================================
+
+    // Handle Previous/Next navigation buttons
+    const navButtons = document.querySelectorAll('.nav-btn');
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window._sceneController) {
+                if (btn.id.startsWith('prev-btn-')) {
+                    window._sceneController.previousScene();
+                } else if (btn.id.startsWith('next-btn-')) {
+                    window._sceneController.nextScene();
+                }
+            }
+        });
     });
 
-    function createPaperPlaneAnimation(message) {
-        // Create paper plane element
-        const plane = document.createElement('div');
-        plane.className = 'paper-plane';
-        plane.innerHTML = '✈️';
-        plane.style.position = 'absolute';
-        plane.style.fontSize = '32px';
-        plane.style.zIndex = '10000';
-        plane.style.pointerEvents = 'none';
-        plane.style.willChange = 'transform, opacity';
-        
-        // Start position (near reply box)
-        const replyBox = document.getElementById('reply-box-container');
-        const replyRect = replyBox.getBoundingClientRect();
-        const startX = replyRect.left + replyRect.width / 2;
-        const startY = replyRect.top;
-        
-        plane.style.left = startX + 'px';
-        plane.style.top = startY + 'px';
-        document.body.appendChild(plane);
-        
-        // Animate to top-right corner
-        const endX = window.innerWidth - 100;
-        const endY = 80;
-        
-        // Calculate angle for rotation
-        const deltaX = endX - startX;
-        const deltaY = endY - startY;
-        const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-        
-        // Animate with smooth easing
-        const duration = 2000;
-        const startTime = performance.now();
-        
-        function animatePlane(currentTime) {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            
-            // Ease-out cubic
-            const eased = 1 - Math.pow(1 - progress, 3);
-            
-            const currentX = startX + deltaX * eased;
-            const currentY = startY + deltaY * eased;
-            
-            plane.style.transform = `translate(${currentX - startX}px, ${currentY - startY}px) rotate(${angle}deg) scale(${1 - eased * 0.3})`;
-            plane.style.opacity = 1 - eased * 0.3;
-            
-            if (progress < 1) {
-                requestAnimationFrame(animatePlane);
-            } else {
-                // Plane reached destination - transform into star
-                plane.remove();
-                createGalaxyStar(message, Date.now());
-            }
-        }
-        
-        requestAnimationFrame(animatePlane);
-    }
+    // Helper for per-screen send handling
+    const setupSendHandler = (config) => {
+        const sendBtn = document.getElementById(config.btnId);
+        const textarea = document.getElementById(config.textId);
+        const feedbackEl = document.getElementById(config.feedbackId);
+        const btnLabel = document.getElementById(config.labelId);
+        const btnSpinner = document.getElementById(config.spinnerId);
+        const charCountEl = document.getElementById(config.charId);
 
-    function createGalaxyStar(message, timestamp, isInitial = false) {
-        if (!messageGalaxy) return;
-        
-        const star = document.createElement('div');
-        star.className = 'galaxy-star';
-        star.innerHTML = '⭐';
-        star.style.position = 'absolute';
-        star.style.fontSize = '20px';
-        star.style.cursor = 'pointer';
-        star.style.zIndex = '9998';
-        star.style.willChange = 'transform, opacity';
-        star.dataset.message = message;
-        star.dataset.timestamp = timestamp;
-        
-        // Random position in top-right galaxy area
-        const maxX = messageGalaxy.offsetWidth || window.innerWidth * 0.4;
-        const maxY = messageGalaxy.offsetHeight || 300;
-        
-        const randomX = Math.random() * maxX;
-        const randomY = Math.random() * maxY;
-        
-        star.style.left = randomX + 'px';
-        star.style.top = randomY + 'px';
-        
-        // Twinkle animation
-        const twinkleDuration = 2 + Math.random() * 2;
-        star.style.animation = `twinkle ${twinkleDuration}s infinite ease-in-out`;
-        
-        // Click/hover to show message preview
-        star.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showStarMessagePreview(star, message, timestamp);
-        });
-        
-        star.addEventListener('mouseenter', () => {
-            star.style.transform = 'scale(1.3)';
-        });
-        
-        star.addEventListener('mouseleave', () => {
-            star.style.transform = 'scale(1)';
-        });
-        
-        messageGalaxy.appendChild(star);
-        
-        // Save to localStorage if not initial load
-        if (!isInitial) {
-            const newStarData = { message, timestamp };
-            storedStars.push(newStarData);
-            // Keep only last 50 messages
-            if (storedStars.length > 50) storedStars.shift();
-            localStorage.setItem('messageGalaxyStars', JSON.stringify(storedStars));
-        }
-        
-        // Fade in animation
-        star.style.opacity = '0';
-        star.style.transform = 'scale(0)';
-        setTimeout(() => {
-            star.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-            star.style.opacity = '1';
-            star.style.transform = 'scale(1)';
-        }, 50);
-    }
+        if (!sendBtn || !textarea) return;
 
-    function showStarMessagePreview(starElement, message, timestamp) {
-        // Remove any existing previews
-        const existingPreview = document.querySelector('.star-message-preview');
-        if (existingPreview) existingPreview.remove();
-        
-        const preview = document.createElement('div');
-        preview.className = 'star-message-preview glass-card';
-        preview.style.position = 'absolute';
-        preview.style.background = 'rgba(255, 255, 255, 0.95)';
-        preview.style.backdropFilter = 'blur(10px)';
-        preview.style.borderRadius = '12px';
-        preview.style.padding = '16px';
-        preview.style.maxWidth = '280px';
-        preview.style.boxShadow = '0 8px 32px rgba(0,0,0,0.2)';
-        preview.style.zIndex = '10001';
-        preview.style.fontSize = '0.9rem';
-        preview.style.lineHeight = '1.5';
-        preview.style.color = '#2b1d11';
-        
-        const date = new Date(timestamp);
-        const dateStr = date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-        
-        preview.innerHTML = `
-            <div style="font-size: 0.75rem; color: #888; margin-bottom: 8px;">${dateStr}</div>
-            <div style="white-space: pre-wrap; word-wrap: break-word;">${escapeHtml(message)}</div>
-        `;
-        
-        // Position near the star
-        const starRect = starElement.getBoundingClientRect();
-        const galaxyRect = messageGalaxy.getBoundingClientRect();
-        
-        let previewX = starRect.left - galaxyRect.left;
-        let previewY = starRect.bottom - galaxyRect.top + 10;
-        
-        // Prevent overflow
-        if (previewX + 280 > galaxyRect.width) {
-            previewX = galaxyRect.width - 280 - 10;
-        }
-        if (previewY + 150 > galaxyRect.height) {
-            previewY = starRect.top - galaxyRect.top - 150 - 10;
-        }
-        
-        preview.style.left = Math.max(10, previewX) + 'px';
-        preview.style.top = Math.max(10, previewY) + 'px';
-        
-        messageGalaxy.appendChild(preview);
-        
-        // Close on click outside
-        setTimeout(() => {
-            const closeHandler = (e) => {
-                if (!preview.contains(e.target) && !starElement.contains(e.target)) {
-                    preview.remove();
-                    document.removeEventListener('click', closeHandler);
+        // Character counter logic
+        if (charCountEl) {
+            textarea.addEventListener('input', () => {
+                const len = textarea.value.length;
+                charCountEl.textContent = len;
+                charCountEl.style.color = len >= 1950 ? '#ff85a1' : '';
+                if (len > 0 && feedbackEl) {
+                    feedbackEl.textContent = '';
+                    feedbackEl.className = 'reply-feedback';
                 }
-            };
-            document.addEventListener('click', closeHandler);
-        }, 10);
-    }
+            });
+            // Allow Ctrl+Enter to submit
+            textarea.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!sendBtn.disabled) sendBtn.click();
+                }
+            });
+        }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // ── Send-button click handler ─────────────────────────
-    const sendReplyBtn = document.getElementById('send-reply-btn');
-    if (sendReplyBtn) {
-        sendReplyBtn.addEventListener('click', async () => {
-            const textarea = document.getElementById('reply-message');
-            if (!textarea) return;
-
+        // Send logic
+        sendBtn.addEventListener('click', async () => {
             const rawText = textarea.value.trim();
 
-            // ── Validation ──
             if (!rawText) {
-                setReplyError('Please write something before sending! 💜');
-                textarea.focus();
-                return;
-            }
-            if (rawText.length < 3) {
-                setReplyError('Your message is too short. Write a little more! 🌸');
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'Please write something before sending! 💜';
+                    feedbackEl.className = 'reply-feedback error';
+                }
                 textarea.focus();
                 return;
             }
 
-            // ── Network check ──
             if (!navigator.onLine) {
-                setReplyError('You seem to be offline. Please check your connection! 📡');
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'You seem to be offline. Please check your connection! 📡';
+                    feedbackEl.className = 'reply-feedback error';
+                }
                 return;
             }
 
-            setReplyError('');
-            setReplyLoading(true);
+            // Set loading state
+            if (feedbackEl) {
+                feedbackEl.textContent = '';
+                feedbackEl.className = 'reply-feedback';
+            }
+            sendBtn.disabled = true;
+            if (btnLabel) btnLabel.style.display = 'none';
+            if (btnSpinner) btnSpinner.style.display = 'inline-block';
 
             try {
-                await sendReplyToTelegram(rawText);
-                showReplySuccess();
-                // Trigger paper plane animation AFTER successful send
-                setTimeout(() => {
-                    createPaperPlaneAnimation(rawText);
-                }, 500);
+                // Formatting telegram message to be readable and elegant
+                const messageText = `🔹 *Question:*\n_${config.questionText}_\n\n💬 *Her Answer:*\n${rawText}`;
+                await sendReplyToTelegram(messageText);
+                
+                // Show success
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'Sent beautifully! ✨';
+                    feedbackEl.className = 'reply-feedback success';
+                }
+                if (typeof fireConfetti === 'function') fireConfetti();
+                
+                // Optional: We can choose to not clear the text in case she wants to see what she sent, 
+                // but clearing it indicates success more robustly.
+                textarea.value = '';
+                if (charCountEl) charCountEl.textContent = '0';
             } catch (err) {
                 console.error('Telegram send error:', err);
-                setReplyLoading(false);
-                setReplyError('Something went wrong. Please try again! 🙏');
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'Something went wrong. Please try again! 🙏';
+                    feedbackEl.className = 'reply-feedback error';
+                }
+            } finally {
+                // Restore button
+                sendBtn.disabled = false;
+                if (btnLabel) btnLabel.style.display = 'inline';
+                if (btnSpinner) btnSpinner.style.display = 'none';
+                
+                // Clear success message after delay
+                setTimeout(() => {
+                    if (feedbackEl && feedbackEl.classList.contains('success')) {
+                        feedbackEl.textContent = '';
+                        feedbackEl.className = 'reply-feedback';
+                    }
+                }, 3000);
             }
+        });
+    };
+
+    // Setup for Q1 to Q5
+    for(let i=1; i<=5; i++) {
+        const pTag = document.querySelector(`#scene-q${i} .question-box p`);
+        const qText = pTag ? pTag.innerText : `Question ${i}`;
+        
+        setupSendHandler({
+            btnId: `send-reply-btn-q${i}`,
+            textId: `reply-q${i}`,
+            feedbackId: `reply-feedback-q${i}`,
+            labelId: `send-btn-label-q${i}`,
+            spinnerId: `btn-spinner-q${i}`,
+            charId: `char-count-q${i}`,
+            questionText: qText
         });
     }
 
-    // ── Character counter ─────────────────────────────────
-    const replyTextarea = document.getElementById('reply-message');
-    const charCountEl = document.getElementById('char-count');
-    if (replyTextarea && charCountEl) {
-        replyTextarea.addEventListener('input', () => {
-            const len = replyTextarea.value.length;
-            charCountEl.textContent = len;
-            // Warn when nearing limit
-            charCountEl.style.color = len >= 1950 ? '#ff85a1' : '';
-            // Clear error as the user types
-            if (len > 0) setReplyError('');
-        });
-
-        // Allow Ctrl+Enter to submit
-        replyTextarea.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                e.preventDefault();
-                const btn = document.getElementById('send-reply-btn');
-                if (btn && !btn.disabled) btn.click();
-            }
-        });
-    }
+    // Setup for Final Screen
+    setupSendHandler({
+        btnId: 'send-reply-btn',
+        textId: 'reply-message',
+        feedbackId: 'reply-feedback',
+        labelId: 'send-btn-label',
+        spinnerId: 'btn-spinner',
+        charId: 'char-count',
+        questionText: 'Any Questions for me?'
+    });
 
     // ── Replay button ─────────────────────────────────────
     const replayBtn = document.getElementById('replay-btn');
