@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>For Penguin 💜</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐧</text></svg>">
+    <meta name="description" content="A special birthday surprise for my bestfriend">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Caveat:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Persistent Background Layer -->
+    <div class="background-canvas">
+        <div class="bg-orb orb-1"></div>
+        <div class="bg-orb orb-2"></div>
+        <div class="bg-orb orb-3"></div>
+    </div>
+
+    <!-- Password Protection Overlay -->
+    <div id="password-overlay" class="password-screen">
+        <div class="password-box glass-card">
+            <div class="lock-icon">🔒</div>
+            <h2 class="glow-text mb-4">My Comfort Space… 💜</h2>
+            <p class="body-text mb-2" style="font-size: 0.9rem;">Please enter the 4-digit code to unlock.</p>
+            <div class="input-group">
+                <input type="password" id="password-input" maxlength="4" placeholder="••••" autocomplete="off">
+            </div>
+            <button id="unlock-btn" class="primary-btn mt-6">Unlock ✨</button>
+            <p id="password-error" class="error-msg mt-3" style="display: none;">Incorrect code. Try again! 🐧</p>
+        </div>
+    </div>
+
+    <!-- Offline Protection Overlay -->
+    <div id="offline-overlay" class="password-screen" style="display: none; background: #000; z-index: 10000;">
+        <div class="password-box glass-card">
+            <div class="lock-icon">📡</div>
+            <h2 class="glow-text mb-4">Connection Required</h2>
+            <p class="body-text mb-2">Please connect to the internet to access this space.</p>
+            <p class="text-xs opacity-50 mt-4" style="font-size: 0.75rem; opacity: 0.5;">Security verification requires
+                an active network.</p>
+        </div>
+    </div>
+
+    <!-- Hidden Content Root — 3 Scene Experience -->
+    <div id="main-content" class="content-root"
+        style="display: none; opacity: 0; transform: scale(0.98); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);">
+
+        <!-- Bokeh Particles Container -->
+        <div id="bokeh-container"></div>
+
+        <!-- Confetti Container (injected by JS) -->
+        <div id="confetti-container" class="confetti-container"></div>
+
+        <!-- =========================================
+             SCENE 3 — IMAGE LADDER (Growth Story)
+             ========================================= -->
+        <div id="scene-ladder" class="scene">
+            <div class="ladder-scene" id="ladder-container">
+                <div class="ladder-string" aria-hidden="true"></div>
+                <header class="ladder-header">
+                    <span class="ladder-kicker">Then · Now · Always</span>
+                    <h1 class="ladder-title">A little journey…</h1>
+                    <p class="ladder-subtitle">Three little frames of someone very special.</p>
+                </header>
+
+                <!-- Image 1: Childhood -->
+                <div class="ladder-card" data-index="0">
+                    <div class="ladder-card-sway">
+                        <div class="ladder-clip"></div>
+                        <div class="ladder-img-container">
+                            <picture>
+                                <source srcset="images/image1.webp" type="image/webp">
+                                <img src="images/image1.png" alt="Childhood" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
+                            </picture>
+                        </div>
+                        <div class="ladder-caption">
+                            Cuteness Level: 100%
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Image 2: Later Childhood -->
+                <div class="ladder-card" data-index="1">
+                    <div class="ladder-card-sway">
+                        <div class="ladder-clip"></div>
+                        <div class="ladder-img-container">
+                            <picture>
+                                <source srcset="images/image2.webp" type="image/webp">
+                                <img src="images/image2.png" alt="Growing up" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
+                            </picture>
+                        </div>
+                        <div class="ladder-caption">
+                            Cuteness Level: 1000%
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Image 3: Recent -->
+                <div class="ladder-card" data-index="2">
+                    <div class="ladder-card-sway">
+                        <div class="ladder-clip"></div>
+                        <div class="ladder-img-container">
+                            <picture>
+                                <source srcset="images/image3.webp" type="image/webp">
+                                <img src="images/image3.png" alt="Recent" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
+                            </picture>
+                        </div>
+                        <div class="ladder-caption">
+                            Cuteness Level: Infinity ✨
+                        </div>
+                    </div>
+                </div>
+
+                <p class="ladder-ending">And somehow, you keep getting more special.</p>
+
+                <!-- Continue -->
+                <button id="ladder-continue-btn" class="continue-btn ladder-continue-btn">
+                    Continue →
+                </button>
+
+                <!-- Direct Jump to Chat -->
+                <button id="ladder-jump-chat-btn" class="continue-btn ladder-jump-btn" type="button">
+                    Go to Chat Screen
+                </button>
+            </div>
+
+            <!-- Creative Scroll Hint -->
+            <div class="scroll-hint" id="ladder-scroll-hint" aria-hidden="true">
+                <span>Scroll to wander</span>
+                <div class="scroll-hint-icon">↓</div>
+            </div>
+        </div>
+
+        <!-- =========================================
+             SCENE 4 — ENVELOPE LETTER
+             ========================================= -->
+        <div id="scene-envelope" class="scene">
+            <div class="envelope-scene">
+                <p class="envelope-title">A letter for you…</p>
+
+                <!-- Interactive Envelope -->
+                <div class="envelope" id="envelope-element">
+                    <div class="envelope-back"></div>
+                    <div class="envelope-left"></div>
+                    <div class="envelope-right"></div>
+
+                    <!-- Letter inside -->
+                    <div class="letter-card">
+                        <div class="letter-inner">
+                            <div class="letter-date">29 July 💜</div>
+                            <div class="letter-greeting">Dear Bhandhari!</div>
+                        </div>
+                    </div>
+
+                    <div class="envelope-flap"></div>
+                    <button id="open-envelope-btn" class="envelope-seal" type="button" aria-label="Open the letter">
+                        <span class="seal-heart">💜</span>
+                    </button>
+                    <div class="envelope-front"></div>
+                </div>
+                <p class="envelope-cue" id="envelope-cue">Tap the seal to open</p>
+
+                <button id="envelope-continue-btn" class="continue-btn" style="opacity: 0;">
+                    Continue →
+                </button>
+            </div>
+
+            <!-- Fullscreen Letter View -->
+            <div id="letter-fullscreen" class="letter-fullscreen">
+                <div class="letter-full-content" id="letter-full-content">
+                    <div class="letter-date">29 July 💜</div>
+                    <div class="letter-greeting">Dear Bhandhari!</div>
+                    <div class="letter-body">
+                        <!-- Letter body content - personal message -->
+                        <p>Assalamualaikum.</p>
+
+<p>Thank you so much tune mere liye jitna kuch bhi kiya hai uske liye. Aur sorry agar maine tujhe kabhi dukh pahunchaya ho toh.</p>
+
+<p>Dekh, tu baat nahi kar sakti, chalenga. Maine tujhse dosti isliye nahi ki thi ke tu roz mujhse baat kare ya mujhe bataye ke tu kya kar rahi hai. Mere liye woh sab matter nahi karta. Mere liye sabse zyada teri khushi aur teri safety matter karti hai. Mujhe pata hai tu pehle hi kitni mushkilon ke saath baat karti hai. Main teri mushkile aur nahi badhaunga.</p>
+
+<p>Bas ek baat ka dukh rehta hai. Jab bhi koi problem hoti hai, tu hamesha sab khatam karne ki baat kyun karti hai? Itni jaldi sab khatam ho jaata hai kya? Mujhe woh baat samajh nahi aati. Kabhi kabhi lagta hai, tu chahti hai main teri life se chala jaaun. Khair, jaane de.</p>
+
+<p>Hamari baat na ho, iska matlab ye toh nahi na ke hamari dosti khatam ho gayi? Ya phir tu mere liye important nahi rahi? Mere liye tu pehle bhi meri sabse important person thi aur hamesha rahengi, chahe main teri life mein rahun ya na rahun.</p>
+
+<p>Bas tu khush reh, apni studies par dhyan de. Main hamesha dil se tere saath rahunga. Aur jo project app main bana raha hu na, woh khaas tere liye hi bana raha hu. Mujhe umeed hai woh teri studies mein help karega, phir tujhe kisi ki help ki zarurat nahi padegi.</p>
+
+<p>Please, I am really sorry. Tu mujhse naraz mat reh. Teri narazgi sach mein mujhe bahut takleef deti hai.</p>
+
+<p>Aur last mein, tu mujhe yaad kare ya na kare. 😅 Kabhi meri yaad aa jaaye toh AUR ke ye do songs zaroor sunna.</p>
+
+<p>Kabhi Kabhi<br>
+You</p>
+
+<p>Jab bhi main tujhe miss karta hu na, main yehi dono songs sunta hu.</p>
+
+<p>Chal, bye. Apna khayal rakh. Aur kabhi bahar milu na, toh saamne se ek baar awaaz de dena yaar. Mujhme itni himmat hi nahi hoti tujhe pehle awaaz dene ki.</p>
+
+<p>Aur main window ki taraf bhi isliye nahi dekhta, kyunki dar lagta hai. Agar main dekhu aur tere badle koi aur wahan khada ho, toh pata nahi kaisa lagega. Isliye main dekhna hi avoid karta hu. Main kabhi nahi chahta ke meri wajah se teri life mein koi problem aaye.</p>
+
+<p>Aur kal Isha ke time mujhe laga maine teri awaaz suni. Shayad tu keh rahi thi, "Mumma, yahan nahi hai." Shayad tu apni Ammi se baat kar rahi thi. Main galat bhi ho sakta hu.</p>
+
+<p>Bye, take care Bhandhari. 💜</p>
+                    </div>
+                    <div class="letter-signature">~ Bhatari 🤍</div>
+                </div>
+                <button id="letter-close-btn" class="letter-close-btn">Close Letter ✉️</button>
+            </div>
+        </div>
+
+        <!-- =========================================
+             SCENE 5 — CHAT SCREEN (Grand Finale)
+             ========================================= -->
+        <div id="scene-chat" class="scene">
+            <!-- Chat Security Lock Overlay -->
+            <div id="chat-lock-overlay" class="chat-lock-overlay">
+                <div class="chat-lock-box glass-card">
+                    <div class="chat-lock-icon">🔒</div>
+                    <h2 class="chat-lock-title glow-text">Chat Locked 💜</h2>
+                    <p class="chat-lock-subtitle">Enter 4-digit PIN to unlock chat</p>
+                    <!-- Hidden input to prevent browser autofill -->
+                    <input type="text" id="chat-pin-input-field" style="position:absolute;left:-9999px;top:-9999px;" tabindex="-1" aria-hidden="true">
+                    <div class="chat-pin-display" id="chat-pin-display">
+                        <span class="pin-dot"></span>
+                        <span class="pin-dot"></span>
+                        <span class="pin-dot"></span>
+                        <span class="pin-dot"></span>
+                    </div>
+                    <div class="chat-pin-pad" id="chat-pin-pad">
+                        <button type="button" class="pin-key" data-digit="1">1</button>
+                        <button type="button" class="pin-key" data-digit="2">2</button>
+                        <button type="button" class="pin-key" data-digit="3">3</button>
+                        <button type="button" class="pin-key" data-digit="4">4</button>
+                        <button type="button" class="pin-key" data-digit="5">5</button>
+                        <button type="button" class="pin-key" data-digit="6">6</button>
+                        <button type="button" class="pin-key" data-digit="7">7</button>
+                        <button type="button" class="pin-key" data-digit="8">8</button>
+                        <button type="button" class="pin-key" data-digit="9">9</button>
+                        <button type="button" class="pin-key pin-key-clear" data-action="clear">✕</button>
+                        <button type="button" class="pin-key" data-digit="0">0</button>
+                        <button type="button" class="pin-key pin-key-back" data-action="back">⌫</button>
+                    </div>
+                    <p id="chat-pin-error" class="chat-pin-error" style="display: none;">Incorrect PIN. Try again! 🐧</p>
+                </div>
+            </div>
+            
+            <div class="chat-scene">
+                <!-- Header -->
+                <header class="chat-header">
+                    <div class="chat-header-title-wrap">
+                        <h2 class="chat-title">Chat Screen</h2>
+                        <button type="button" class="notify-btn" id="notify-bhatari-btn" title="Notify Bhatari on Telegram">
+                            <span class="notify-icon">🔔</span> Notify Bhatari
+                        </button>
+                    </div>
+                    <div class="chat-identity-toggle" id="chat-identity-toggle" role="radiogroup" aria-label="Identity Selector">
+                        <button type="button" class="toggle-btn active" data-identity="Bhatari" aria-checked="true">
+                            <span class="toggle-dot bhatari-dot"></span> Bhatari
+                        </button>
+                        <button type="button" class="toggle-btn" data-identity="Bhandhari" aria-checked="false">
+                            <span class="toggle-dot bhandhari-dot"></span> Bhandhari
+                        </button>
+                    </div>
+                </header>
+
+                <!-- Messages Area -->
+                <div class="chat-messages" id="chat-messages">
+                    <!-- Messages will be dynamically inserted here -->
+                </div>
+
+                <!-- Reply Container (Hidden by default) -->
+                <div class="chat-reply-container" id="chat-reply-container" style="display: none;">
+                    <div class="chat-reply-quote" id="chat-reply-quote"></div>
+                    <button class="chat-reply-cancel" id="chat-reply-cancel" type="button" aria-label="Cancel reply">✖</button>
+                </div>
+
+                <!-- Input Bar -->
+                <div class="chat-input-bar">
+                    <textarea class="chat-input" id="chat-input" placeholder="Type a message..." autocomplete="off" autocapitalize="sentences" rows="1"></textarea>
+                    <button class="chat-send-btn" id="chat-send-btn" type="button" aria-label="Send message">
+                        <span class="send-icon">➤</span>
+                    </button>
+                    <div class="chat-status" id="chat-status">⏳ Reconnecting...</div>
+                </div>
+            </div>
+        </div>
+
+    </div> <!-- End main-content -->
+
+    <!-- Firebase SDK (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
