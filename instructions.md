@@ -101,6 +101,44 @@ For every Git commit and push:
 
 ---
 
+# CRITICAL: Commit Identity & Co-Author Prohibition
+
+**NEVER** include a `Co-authored-by` trailer in any commit message.
+**NEVER** use `git commit --amend` unless explicitly instructed to rewrite history.
+**ALWAYS** ensure the commit author is strictly the configured global user.
+
+## Mandatory Pre-Commit Protocol
+
+Before running ANY `git commit` command, you MUST execute the following sequence to guarantee identity purity:
+
+1. **Force Identity Reset**:
+   ```bash
+   git config user.name "$(git config --global user.name)"
+   git config user.email "$(git config --global user.email)"
+   ```
+   *(This overrides any repo-specific or cached bot identities)*
+
+2. **Standard Commit Only**:
+   Use ONLY `git commit -m "message"`. 
+   - Do NOT add trailers.
+   - Do NOT use `--amend`.
+   - Do NOT use `-s` (sign-off) unless requested.
+
+3. **Verification Step**:
+   After committing, you MUST verify the author before pushing:
+   ```bash
+   git log -1 --format="%an <%ae>"
+   ```
+   If the output does NOT match the global user exactly, **ABORT** the push, reset the commit (`git reset --soft HEAD~1`), and retry the protocol.
+
+## Violation Consequence
+
+If a commit is pushed with a `Co-authored-by` line or wrong author:
+1. It is considered a **failed task**.
+2. You must immediately guide the user to rewrite the history (`git commit --amend --reset-author`) and force push (`git push --force-with-lease`).
+
+---
+
 # Command Output Requirements
 
 For every terminal command:
