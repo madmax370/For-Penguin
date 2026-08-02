@@ -958,6 +958,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Toast notification ──────────────────────────────
+    // XSS Protection: Escape HTML special characters
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     function showToast(message, isError = false, type = 'default') {
         let toast = document.getElementById('chat-toast');
         if (!toast) {
@@ -995,7 +1002,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Chat State ──────────────────────────────────────
     const chatState = {
-        currentIdentity: 'Bhatari',
+        currentIdentity: 'Bhandhari',  // Default to Bhandhari
         messages: [],
         unsubMessages: null,
         unsubTyping: null,
@@ -1208,6 +1215,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!chatMessages || !chatInput || !chatSendBtn) return;
 
+        // Initialize keyboard handling for mobile
+        initKeyboardHandling();
+
         // Initialize chat lock overlay
         initChatLockOverlay();
 
@@ -1261,9 +1271,9 @@ document.addEventListener('DOMContentLoaded', () => {
             chatInput.addEventListener('input', handleOutgoingTyping);
             if (chatReplyCancel) chatReplyCancel.addEventListener('click', cancelReply);
 
-            // Notify button (Bhandhari only)
+            // Notify button (Bhandhari only) - visible by default since Bhandhari is default identity
             if (notifyBtn) {
-                notifyBtn.style.display = 'none'; // hidden by default (Bhatari is default identity)
+                notifyBtn.style.display = 'inline-flex'; // Show by default for Bhandhari
                 notifyBtn.addEventListener('click', notifyBhatari);
             }
 
@@ -1439,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Update actions row visibility based on current identity toggle
-        const actionsRow = bubble.querySelector('.chat-actions-row');
+        const actionsRow = bubble.querySelector('.chat-bubble-actions');
         if (actionsRow) {
             const editBtn = actionsRow.querySelector('.chat-action-btn');
             if (editBtn && editBtn.textContent.includes('Edit')) {
@@ -1586,7 +1596,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         input.addEventListener('input', () => {
-            charCounter.textContent = `${input.value.length}/2000`;
             autoResize();
         });
 
@@ -1736,7 +1745,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('chat-reply-container');
         const quote     = document.getElementById('chat-reply-quote');
         if (container && quote) {
-            quote.innerHTML = `<span class="reply-preview-sender">${sender}</span><span class="reply-preview-text">${text.substring(0, 70)}${text.length > 70 ? '…' : ''}</span>`;
+            quote.innerHTML = `<span class="reply-preview-sender">${escapeHtml(sender)}</span><span class="reply-preview-text">${escapeHtml(text.substring(0, 70))}${text.length > 70 ? '…' : ''}</span>`;
             container.style.display = 'flex';
             // Trigger slide-in animation
             container.classList.remove('reply-anim');
@@ -1836,6 +1845,43 @@ document.addEventListener('DOMContentLoaded', () => {
     function resizeChatInput(el) {
         el.style.height = 'auto';
         el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    }
+
+    // ─── Keyboard Handling for Mobile ─────────────────────
+    // Adjust chat layout when keyboard appears on mobile
+    function initKeyboardHandling() {
+        if (typeof window.visualViewport !== 'undefined') {
+            const chatScene = document.getElementById('scene-chat');
+            const chatMessages = document.getElementById('chat-messages');
+            
+            if (!chatScene || !chatMessages) return;
+            
+            let initialViewportHeight = window.visualViewport.height;
+            
+            window.visualViewport.addEventListener('resize', () => {
+                const currentHeight = window.visualViewport.height;
+                const keyboardHeight = initialViewportHeight - currentHeight;
+                
+                // If keyboard is visible (viewport shrunk significantly)
+                if (keyboardHeight > 100) {
+                    // Add keyboard-visible class for CSS adjustments
+                    chatScene.classList.add('keyboard-visible');
+                    
+                    // Scroll to bottom of messages when keyboard appears
+                    setTimeout(() => {
+                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                    }, 100);
+                } else {
+                    // Keyboard hidden
+                    chatScene.classList.remove('keyboard-visible');
+                }
+            });
+            
+            // Update initial height on orientation change
+            window.visualViewport.addEventListener('scroll', () => {
+                initialViewportHeight = window.visualViewport.height;
+            });
+        }
     }
 
     // ─── Connection Status ────────────────────────────────

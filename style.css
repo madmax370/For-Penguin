@@ -1890,6 +1890,9 @@ body::-webkit-scrollbar {
     max-height: 100vh;
     position: relative;
     overflow: hidden;
+    /* iOS Safe Area Support */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Chat Header - Fixed at top */
@@ -1998,7 +2001,6 @@ body::-webkit-scrollbar {
     gap: var(--chat-spacing-sm);
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
-    will-change: scroll-position;
 }
 
 .chat-messages::-webkit-scrollbar {
@@ -2027,7 +2029,7 @@ body::-webkit-scrollbar {
     backdrop-filter: blur(var(--chat-blur-strength));
     -webkit-backdrop-filter: blur(var(--chat-blur-strength));
     transition: transform 0.2s var(--transition-smooth), box-shadow 0.2s var(--transition-smooth);
-    will-change: transform, opacity;
+    will-change: auto; /* Removed memory-heavy scroll-position hint */
 }
 
 @keyframes bubbleSlideIn {
@@ -2035,6 +2037,21 @@ body::-webkit-scrollbar {
         opacity: 1;
         transform: translateY(0) scale(1);
     }
+}
+
+/* Premium Grouped Bubbles - Consecutive messages from same sender */
+.chat-bubble + .chat-bubble.left:not(.grouped-start) {
+    margin-top: 2px;
+    border-top-left-radius: var(--chat-radius-sm);
+}
+
+.chat-bubble + .chat-bubble.right:not(.grouped-start) {
+    margin-top: 2px;
+    border-top-right-radius: var(--chat-radius-sm);
+}
+
+.chat-bubble.grouped-end {
+    margin-bottom: var(--chat-spacing-sm);
 }
 
 /* Left Bubble - Bhatari (Premium Glassmorphism) */
@@ -2454,6 +2471,16 @@ body::-webkit-scrollbar {
     }
 }
 
+}
+
+/* Keyboard Visible State - Adjust layout when mobile keyboard appears */
+.keyboard-visible .chat-messages {
+    padding-bottom: 0.5rem;
+    flex: 1 1 auto;
+}
+
+.keyboard-visible .chat-input-bar {
+    /* Let CSS handle the positioning with flexbox */
 }
 
 /* Reduced Motion Preference */

@@ -1,7 +1,7 @@
 # Project Context
 
-> **Last verified**: against the single-commit history on `test-branch` (HEAD `8099600`).
-> This document supersedes all earlier versions and reflects the **current** state of the code (post "premium chat UI" refactor).
+> **Last verified**: against commit `4fbe8c8` on `test-branch`.
+> This document supersedes all earlier versions and reflects the **current** state of the code (post "critical fixes + mobile + premium polish" update).
 
 ---
 
