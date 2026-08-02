@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last verified**: against commit `4fbe8c8` on `test-branch`.
+> **Last verified**: against commit `4f136b1` on `test-branch`.
 > This document supersedes all earlier versions and reflects the **current** state of the code (post "critical fixes + mobile + premium polish" update).
 
 ---
