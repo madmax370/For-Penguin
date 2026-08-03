@@ -1046,6 +1046,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Scene Init ───────────────────────────────────────
     let chatSceneInited = false;
+    // Guards against duplicate listener registration when the chat scene is re-entered
+    let chatLockOverlayInited = false;
+    let keyboardHandlingInited = false;
 
     // ─── Chat Lock / PIN Logic ────────────────────────────
     function initChatLockOverlay() {
@@ -1084,41 +1087,46 @@ document.addEventListener('DOMContentLoaded', () => {
             }, remaining * 1000);
         }
 
-        // Handle PIN key clicks
-        pinPad.addEventListener('click', (e) => {
-            const key = e.target.closest('.pin-key');
-            if (!key) return;
+        // Handle PIN key clicks — attach the listener only once; re-entering the
+        // chat scene must not stack duplicate handlers (a single tap would otherwise
+        // add multiple digits and the 4-digit check would never fire)
+        if (!chatLockOverlayInited) {
+            chatLockOverlayInited = true;
+            pinPad.addEventListener('click', (e) => {
+                const key = e.target.closest('.pin-key');
+                if (!key) return;
 
-            // Haptic feedback
-            if (navigator.vibrate) navigator.vibrate(10);
+                // Haptic feedback
+                if (navigator.vibrate) navigator.vibrate(10);
 
-            const digit = key.dataset.digit;
-            const action = key.dataset.action;
+                const digit = key.dataset.digit;
+                const action = key.dataset.action;
 
-            if (action === 'clear') {
-                chatState.pinInput = '';
-                updatePinDots();
-                pinError.style.display = 'none';
-                return;
-            }
-
-            if (action === 'back') {
-                chatState.pinInput = chatState.pinInput.slice(0, -1);
-                updatePinDots();
-                pinError.style.display = 'none';
-                return;
-            }
-
-            if (digit && chatState.pinInput.length < 4) {
-                chatState.pinInput += digit;
-                updatePinDots();
-
-                // Check if PIN is complete
-                if (chatState.pinInput.length === 4) {
-                    verifyPin();
+                if (action === 'clear') {
+                    chatState.pinInput = '';
+                    updatePinDots();
+                    pinError.style.display = 'none';
+                    return;
                 }
-            }
-        });
+
+                if (action === 'back') {
+                    chatState.pinInput = chatState.pinInput.slice(0, -1);
+                    updatePinDots();
+                    pinError.style.display = 'none';
+                    return;
+                }
+
+                if (digit && chatState.pinInput.length < 4) {
+                    chatState.pinInput += digit;
+                    updatePinDots();
+
+                    // Check if PIN is complete
+                    if (chatState.pinInput.length === 4) {
+                        verifyPin();
+                    }
+                }
+            });
+        }
 
         function updatePinDots() {
             const dots = pinDisplay.querySelectorAll('.pin-dot');
@@ -1165,7 +1173,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         
                         // Show identity notification toast AFTER unlocking
                         setTimeout(() => {
-                            showToast(`You are chatting as ${chatState.currentIdentity}`, 'info');
+                            showToast(`You are chatting as ${chatState.currentIdentity}`, false, 'info');
                         }, 600);
                     } else {
                         // Failed attempt
@@ -1258,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     
                     // Show identity switch toast
-                    showToast(`Switched to ${chatState.currentIdentity}`, 'info');
+                    showToast(`Switched to ${chatState.currentIdentity}`, false, 'info');
                 });
             });
             
@@ -1850,6 +1858,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─── Keyboard Handling for Mobile ─────────────────────
     // Adjust chat layout when keyboard appears on mobile
     function initKeyboardHandling() {
+        // Attach visualViewport listeners only once — re-entering the chat scene must
+        // not stack duplicate resize/scroll handlers that force repeated scroll-to-bottom
+        if (keyboardHandlingInited) return;
+        keyboardHandlingInited = true;
+
         if (typeof window.visualViewport !== 'undefined') {
             const chatScene = document.getElementById('scene-chat');
             const chatMessages = document.getElementById('chat-messages');

@@ -66,6 +66,6 @@ htmlcov/
 *.lzo
 *.tar.gz
 *.tar.bz2
-*.tar.xz
-*.tar.zst
+# Freebuff workspace data
+.freebuff/
 ```

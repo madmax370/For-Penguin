@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last verified**: against commit `86efed0` on `test-branch`.
+> **Last verified**: working tree on `test-branch` (latest commit `db78c5f`, plus **uncommitted** fixes — see §21.I).
 > This document supersedes all earlier versions and reflects the **current** state of the code (post "critical fixes + mobile + premium polish + git workflow hardening" update).
 
 ---
@@ -168,32 +168,34 @@ Notify: Button click → POST to Telegram Bot API → cooldown countdown → toa
   - Countdown timer and disabled input/button during lockout; auto-clear on expiry
   - 4-digit input (`maxlength=4`), Enter key and button both submit
 
-### Chat PIN Lock (`script.js:1043-1198`)
+### Chat PIN Lock (`script.js:1054-1213`)
 - **Responsibility**: Second access gate on the chat scene
 - **Details**:
   - On-screen keypad (`.pin-key`) with clear `✕` and backspace `⌫`; dots UI; haptic feedback via `navigator.vibrate`
-  - Verifies SHA-256 of the entered 4-digit PIN against the same hash as the main lock
+  - Verifies SHA-256 of the entered 4-digit PIN against the same hash as the main lock (`script.js:1144`)
   - 3 failures → 15s lockout (in-memory `chatState`; resets on re-entry)
   - Randomized input field name/id to defeat browser autofill recognition
-  - On success: hides overlay, shows identity toast ("You are chatting as …")
+  - PIN keypad click listener attached **exactly once** (guarded by `chatLockOverlayInited`, `script.js:1050`/`1093`) — re-entering the chat scene no longer stacks duplicate handlers
+  - On success: hides overlay, shows identity toast ("You are chatting as …", `script.js:1176`)
 
-### Firestore Chat System (`script.js:864-1833`)
+### Firestore Chat System (`script.js:864-1911`)
 - **Firebase config**: `script.js:867-874` (project `web-app-511d5`)
 - **Collection**: `CHATS_COL = 'web_chat_v2'` (`script.js:896`)
 - **Typing doc**: `TYPING_DOC = db.doc('typing/status')` (`script.js:897`)
 - **Offline persistence**: `db.enablePersistence()` with graceful multi-tab handling (`script.js:881-894`)
 - **Sub-modules**:
-  - `initChatScene()` (`1200-1274`) — wires listeners once, defaults identity to **Bhandhari**
-  - `startMessageListener()` (`1277-1311`) — `orderBy('timestamp','asc').limitToLast(20)` real-time snapshot
-  - `startTypingListener()` (`1313-1338`) — reads `typing/status` doc for the *other* identity, shows/hides typing bubble
-  - `reconcileMessages()` (`1341-1415`) — smart DOM reconciliation with date dividers, no full rebuild
-  - `createBubble()` / `updateBubble()` (`1418-1547`) — bubble rendering incl. reply quote, edited tag, Reply/Edit actions
-  - `startEdit()` / `cancelEdit()` (`1550-1700`) — inline editing of own messages (max 2000 chars)
-  - `handleSend()` / `sendMessage()` (`1703-1731`) — writes to Firestore with `serverTimestamp`
-  - `handleReply()` / `cancelReply()` (`1734-1754`) — reply preview bar + quote box
-  - Typing in/out (`1757-1786`) — debounced 3s typing heartbeat, 4s reset
-  - Remote typing indicator (`1789-1833`) — auto-hide after 6s
-  - `updateConnectionStatus()` (`1842-1852`) — "✅ Connected" / "⏳ Reconnecting…"
+  - `initChatScene()` (`1215-1290`) — wires listeners once, defaults identity to **Bhandhari**
+  - `startMessageListener()` (`1295-1329`) — `orderBy('timestamp','asc').limitToLast(20)` real-time snapshot
+  - `startTypingListener()` (`1331-1357`) — reads `typing/status` doc for the *other* identity, shows/hides typing bubble
+  - `reconcileMessages()` (`1359-1433`) — smart DOM reconciliation with date dividers, no full rebuild
+  - `createBubble()` / `updateBubble()` (`1436-1566`) — bubble rendering incl. reply quote, edited tag, Reply/Edit actions
+  - `startEdit()` / `cancelEdit()` (`1568-1719`) — inline editing of own messages (max 2000 chars)
+  - `handleSend()` / `sendMessage()` (`1720-1748`) — writes to Firestore with `serverTimestamp`
+  - `handleReply()` / `cancelReply()` (`1751-1769`) — reply preview bar + quote box
+  - Typing in/out (`1774-1803`) — debounced 3s typing heartbeat, 4s reset
+  - Remote typing indicator (`1806-1850`) — auto-hide after 6s
+  - `initKeyboardHandling()` (`1860-1898`) — mobile `visualViewport` listeners attached **exactly once** (guarded by `keyboardHandlingInited`, `script.js:1051`/`1863`)
+  - `updateConnectionStatus()` (`1901-1911`) — "✅ Connected" / "⏳ Reconnecting…"
 
 ### Telegram Integration (`script.js:620-622`, `904-958`)
 - **Credentials** (hardcoded): `TG_BOT_TOKEN` (`script.js:621`), `TG_CHAT_ID = '6219378525'` (`script.js:622`)
@@ -358,7 +360,7 @@ None (monolithic frontend application). Shared helpers: `normalizeSender`, `form
 
 ### Authentication Flow
 - **Main lock**: SHA-256 hash comparison (`script.js:17`); hash `277375b99e186c72ac38ac47b03199038342fe0389be8765476fa2be0c5b5649`
-- **Chat lock**: same hash reused as PIN verification (`script.js:1129`)
+- **Chat lock**: same hash reused as PIN verification (`script.js:1144`)
 - **Session management**: sessionStorage attempt/lockout tracking
 
 ### Authorization Model
@@ -399,7 +401,7 @@ None. All configuration is hardcoded in `script.js`.
 None.
 
 ### Runtime Configuration (hardcoded)
-- `CORRECT_PASSWORD_HASH` / `CORRECT_PIN_HASH`: `script.js:17` & `1129`
+- `CORRECT_PASSWORD_HASH` / `CORRECT_PIN_HASH`: `script.js:17` & `1144`
 - `TG_BOT_TOKEN`, `TG_CHAT_ID`: `script.js:621-622`
 - `FIREBASE_CONFIG`: `script.js:867-874`
 - `CHATS_COL = 'web_chat_v2'`: `script.js:896`
@@ -630,7 +632,7 @@ None (no build process; static files served directly).
 ### Recommended Order for Implementing New Features
 1. Update `chatState` and DOM IDs in HTML
 2. Add CSS following the chat scene patterns
-3. Implement JS with proper listener wiring (guard with `chatSceneInited`)
+3. Implement JS with proper listener wiring (guard with `chatSceneInited`; wrap one-shot window/DOM listeners in their own flags, e.g. `chatLockOverlayInited` / `keyboardHandlingInited`)
 4. Update Firestore rules in the console
 5. Test on mobile + offline + multi-tab
 
@@ -702,9 +704,13 @@ This section documents everything that differs from the previous `project-contex
 
 ### G. Suggested next steps (awaiting your decision)
 - Decide whether to remove the dead legacy reply/question code + CSS (large cleanup) or keep for reference.
-- Decide whether to fix the three latent JS bugs (§E) — **requires a code change**, so deferred per the read-only constraint.
+- Decide whether to fix the three latent JS bugs (§E) — still open as of the working-tree fixes in §21.I.
 - Decide what to do with the orphaned `songs/song1.mp3` (reintegrate a music player or remove).
 - Consider moving secrets to env-var-style config (would require a small build step or hosted config file).
+
+### I. Recent fixes (working tree — uncommitted)
+1. **Duplicate chat-scene listeners fixed** (`script.js:1048-1051`, `1093`, `1860-1864`) — `initChatLockOverlay()` and `initKeyboardHandling()` re-ran on every chat-scene entry, stacking N copies of the PIN-pad click handler and the `visualViewport` resize/scroll listeners (a single PIN tap could add multiple digits so the 4-digit check never fired; every keyboard handler forced scroll-to-bottom). Both are now one-shot via `chatLockOverlayInited` / `keyboardHandlingInited`; the per-entry lockout re-check inside `initChatLockOverlay()` is preserved.
+2. **Info toasts styled as errors fixed** (`script.js:1176`, `1269`) — `showToast(msg, 'info')` placed `'info'` in the `isError` slot, yielding red error styling. Both calls now pass `showToast(msg, false, 'info')`, so info toasts render blue.
 
 ---
 
