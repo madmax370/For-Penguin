@@ -1,7 +1,7 @@
 # Project Context
 
-> **Last verified**: working tree on `test-branch` (latest commit `db78c5f`, plus **uncommitted** fixes — see §21.I).
-> This document supersedes all earlier versions and reflects the **current** state of the code (post "critical fixes + mobile + premium polish + git workflow hardening" update).
+> **Last verified**: working tree on `test-branch` (latest commit `ac8a5b6`).
+> This document supersedes all earlier versions and reflects the **current** state of the code (post "duplicate date dividers fix + inline edit crash + keyboard overlap + safe areas + alignment constraints" update).
 
 ---
 
@@ -689,13 +689,12 @@ This section documents everything that differs from the previous `project-contex
 
 ### D. Dead CSS (style.css)
 - `SCENE 5 — REPLY BOX` (`1321-1588`), `QUESTION SCENE STYLES` (`1665-1737`), `MUSIC PLAYER SCENE STYLES` (`1873-1877`, empty) — orphaned
-- `.chat-edit-char-counter` (`2672-2677`) — CSS exists but the element/JS is missing (see `charCounter` bug)
 
-### E. Latent bugs flagged (need your input)
-1. **`charCounter` is undefined** (`script.js:1589`) → `ReferenceError` on each keystroke inside the inline edit box; auto-resize in edit breaks. The `.chat-edit-char-counter` element is never created.
-2. **`updateBubble` queries `.chat-actions-row`** (`1442`) but bubbles use class `.chat-bubble-actions` (`1523`) → edit-button visibility refresh on identity switch is ineffective there; the toggle handler (`1245-1248`) compensates.
-3. **`updateBubble` edit check targets the wrong button** (`1445`) — reads the first `.chat-action-btn` (the Reply button) instead of the Edit button.
-4. **Notify button initially hidden with Bhandhari default** (`1266` vs `1219-1220`) — stale comment and mismatch: on first chat entry, identity is Bhandhari but "Notify Bhatari" is hidden until the toggle is re-clicked.
+### E. Resolved Latent Bugs (Completed)
+1. **`charCounter` is undefined (Fixed)** — Now fully resolved. Created the `.chat-edit-char-counter` element inside `startEdit()` and updated its value dynamically in the input listener, eliminating the `ReferenceError` crashes.
+2. **`updateBubble` queries incorrect class (Fixed)** — Now targets `.chat-edit-btn` directly inside the bubble rather than `.chat-actions-row` or generic `.chat-action-btn`, making edit-button toggles fully functional.
+3. **`updateBubble` targets wrong button (Fixed)** — Resolved by specifically selecting the `.chat-edit-btn` instead of the first `.chat-action-btn` (the Reply button).
+4. **Notify button default mismatch (Fixed)** — Aligned the initial state of the identity toggle in `index.html` (making Bhandhari the default active identity in the HTML markup as well as in `script.js`) to match initial JS defaults, eliminating initial flicker and showing "Notify Bhatari" properly on load.
 
 ### F. Security concerns (need your input)
 - Telegram bot token is a live credential in client code; consider rotating/restricting if exposed beyond this personal project.
@@ -704,13 +703,16 @@ This section documents everything that differs from the previous `project-contex
 
 ### G. Suggested next steps (awaiting your decision)
 - Decide whether to remove the dead legacy reply/question code + CSS (large cleanup) or keep for reference.
-- Decide whether to fix the three latent JS bugs (§E) — still open as of the working-tree fixes in §21.I.
 - Decide what to do with the orphaned `songs/song1.mp3` (reintegrate a music player or remove).
 - Consider moving secrets to env-var-style config (would require a small build step or hosted config file).
 
-### I. Recent fixes (working tree — uncommitted)
-1. **Duplicate chat-scene listeners fixed** (`script.js:1048-1051`, `1093`, `1860-1864`) — `initChatLockOverlay()` and `initKeyboardHandling()` re-ran on every chat-scene entry, stacking N copies of the PIN-pad click handler and the `visualViewport` resize/scroll listeners (a single PIN tap could add multiple digits so the 4-digit check never fired; every keyboard handler forced scroll-to-bottom). Both are now one-shot via `chatLockOverlayInited` / `keyboardHandlingInited`; the per-entry lockout re-check inside `initChatLockOverlay()` is preserved.
-2. **Info toasts styled as errors fixed** (`script.js:1176`, `1269`) — `showToast(msg, 'info')` placed `'info'` in the `isError` slot, yielding red error styling. Both calls now pass `showToast(msg, false, 'info')`, so info toasts render blue.
+### I. Recent Fixes (Committed)
+1. **Duplicate chat-scene listeners fixed** (`script.js`) — `initChatLockOverlay()` and `initKeyboardHandling()` are now guarded via initialization flags, preventing handlers from stacking when re-entering the scene.
+2. **Info toasts styled as errors fixed** (`script.js`) — Pass `false` into `isError` parameter for blue info toasts.
+3. **Duplicate and orphaned date dividers fixed** (`script.js`) — Restructured date dividers to use stable calendar-day keys (e.g. `divider-2026-8-8`) rather than milliseconds, preventing duplicates when server timestamp updates, and added active cleanup for orphaned dividers in the DOM reconciliation.
+4. **Layout constraints & padding fixed** (`style.css`) — Overrode general `.scene` padding/centering styles on `#scene-chat` to let the chat scene expand edge-to-edge.
+5. **iOS Safe Areas and Keyboard overlap fixed** (`script.js` & `style.css`) — Utilized `window.visualViewport.height` to dynamically size `.chat-scene` in pixels on mobile, preventing overlap. Configured `padding-bottom` on `.chat-input-bar` with safe-area calculations, dynamically resetting it when the keyboard is open.
+6. **XSS risk in reply preview resolved** (`script.js`) — Replaced direct `innerHTML` injection with programmatic `document.createElement()` and `textContent` assignments in the reply preview window.
 
 ---
 
