@@ -1376,6 +1376,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Build expected divider keys for current messages to remove orphaned dividers
+        const expectedDividerKeys = new Set();
+        let tempLastDateTs = null;
+        for (const msg of chatState.messages) {
+            if (tempLastDateTs === null || !sameDay(tempLastDateTs, msg.timestamp)) {
+                const d = new Date(msg.timestamp);
+                const dividerKey = `divider-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+                expectedDividerKeys.add(dividerKey);
+                tempLastDateTs = msg.timestamp;
+            }
+        }
+
+        // Remove any date dividers in DOM that are no longer expected
+        const allDividers = chatMessages.querySelectorAll('.chat-date-divider');
+        for (const div of allDividers) {
+            const key = div.dataset.dividerKey;
+            if (!expectedDividerKeys.has(key)) {
+                div.remove();
+            }
+        }
+
         // Step 2: Append ONLY new messages at the end (no full rebuild)
         let lastDateTs = null;
         let lastInsertedNode = null;
@@ -1383,7 +1404,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const msg of chatState.messages) {
             // Handle date divider insertion
             if (lastDateTs === null || !sameDay(lastDateTs, msg.timestamp)) {
-                const dividerKey = `divider-${msg.timestamp}`;
+                const d = new Date(msg.timestamp);
+                const dividerKey = `divider-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
                 let divider = chatMessages.querySelector(`[data-divider-key="${dividerKey}"]`);
                 if (!divider) {
                     divider = document.createElement('div');
