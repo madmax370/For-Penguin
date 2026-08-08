@@ -1881,6 +1881,13 @@ body::-webkit-scrollbar {
    Mobile-optimized • Themed Bubbles • Reply System
    =================================================== */
 
+/* Override general scene layout constraints for the Chat Scene */
+#scene-chat {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+}
+
 /* Chat Scene Container - Full viewport height with dynamic units */
 .chat-scene {
     display: flex;
@@ -2250,7 +2257,7 @@ body::-webkit-scrollbar {
 /* Input Bar - Premium Fixed Bottom */
 .chat-input-bar {
     flex-shrink: 0;
-    padding: var(--chat-spacing-sm) var(--chat-spacing-md);
+    padding: var(--chat-spacing-sm) var(--chat-spacing-md) calc(var(--chat-spacing-sm) + env(safe-area-inset-bottom, 0px));
     background: rgba(26, 15, 46, 0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -2471,8 +2478,6 @@ body::-webkit-scrollbar {
     }
 }
 
-}
-
 /* Keyboard Visible State - Adjust layout when mobile keyboard appears */
 .keyboard-visible .chat-messages {
     padding-bottom: 0.5rem;
@@ -2480,7 +2485,7 @@ body::-webkit-scrollbar {
 }
 
 .keyboard-visible .chat-input-bar {
-    /* Let CSS handle the positioning with flexbox */
+    padding-bottom: var(--chat-spacing-sm);
 }
 
 /* Reduced Motion Preference */

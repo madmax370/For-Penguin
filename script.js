@@ -1479,14 +1479,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Update actions row visibility based on current identity toggle
-        const actionsRow = bubble.querySelector('.chat-bubble-actions');
-        if (actionsRow) {
-            const editBtn = actionsRow.querySelector('.chat-action-btn');
-            if (editBtn && editBtn.textContent.includes('Edit')) {
-                // Show/hide edit button based on whether message belongs to current identity
-                const shouldShow = msg.sender === chatState.currentIdentity;
-                editBtn.style.display = shouldShow ? 'inline-flex' : 'none';
-            }
+        const editBtn = bubble.querySelector('.chat-edit-btn');
+        if (editBtn) {
+            // Show/hide edit button based on whether message belongs to current identity
+            const shouldShow = msg.sender === chatState.currentIdentity;
+            editBtn.style.display = shouldShow ? 'inline-flex' : 'none';
         }
         
         // Clean up edit box if message was saved (no longer in editBoxes map)
@@ -1618,6 +1615,12 @@ document.addEventListener('DOMContentLoaded', () => {
         input.style.overflow = 'hidden';
         editBox.appendChild(input);
 
+        // Create character counter element
+        const charCounter = document.createElement('div');
+        charCounter.className = 'chat-edit-char-counter';
+        charCounter.textContent = `${input.value.length}/2000`;
+        editBox.appendChild(charCounter);
+
         // Auto-resize function for edit input
         const autoResize = () => {
             input.style.height = 'auto';
@@ -1626,6 +1629,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         input.addEventListener('input', () => {
+            charCounter.textContent = `${input.value.length}/2000`;
             autoResize();
         });
 
@@ -1775,7 +1779,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('chat-reply-container');
         const quote     = document.getElementById('chat-reply-quote');
         if (container && quote) {
-            quote.innerHTML = `<span class="reply-preview-sender">${escapeHtml(sender)}</span><span class="reply-preview-text">${escapeHtml(text.substring(0, 70))}${text.length > 70 ? '…' : ''}</span>`;
+            quote.innerHTML = ''; // Clear previous preview
+            const senderSpan = document.createElement('span');
+            senderSpan.className = 'reply-preview-sender';
+            senderSpan.textContent = sender;
+            const textSpan = document.createElement('span');
+            textSpan.className = 'reply-preview-text';
+            textSpan.textContent = text.substring(0, 70) + (text.length > 70 ? '…' : '');
+            quote.appendChild(senderSpan);
+            quote.appendChild(textSpan);
             container.style.display = 'flex';
             // Trigger slide-in animation
             container.classList.remove('reply-anim');
@@ -1887,35 +1899,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (typeof window.visualViewport !== 'undefined') {
             const chatScene = document.getElementById('scene-chat');
+            const chatSceneContainer = chatScene ? chatScene.querySelector('.chat-scene') : null;
             const chatMessages = document.getElementById('chat-messages');
             
-            if (!chatScene || !chatMessages) return;
+            if (!chatScene || !chatMessages || !chatSceneContainer) return;
             
-            let initialViewportHeight = window.visualViewport.height;
-            
-            window.visualViewport.addEventListener('resize', () => {
+            const handleViewportChange = () => {
                 const currentHeight = window.visualViewport.height;
-                const keyboardHeight = initialViewportHeight - currentHeight;
+                chatSceneContainer.style.height = `${currentHeight}px`;
                 
-                // If keyboard is visible (viewport shrunk significantly)
-                if (keyboardHeight > 100) {
-                    // Add keyboard-visible class for CSS adjustments
+                // If keyboard is open (height is significantly less than window.innerHeight)
+                const isKeyboardOpen = window.innerHeight - currentHeight > 100;
+                if (isKeyboardOpen) {
                     chatScene.classList.add('keyboard-visible');
-                    
-                    // Scroll to bottom of messages when keyboard appears
+                    // Scroll to bottom
                     setTimeout(() => {
                         chatMessages.scrollTop = chatMessages.scrollHeight;
-                    }, 100);
+                    }, 50);
                 } else {
-                    // Keyboard hidden
                     chatScene.classList.remove('keyboard-visible');
                 }
-            });
+            };
             
-            // Update initial height on orientation change
-            window.visualViewport.addEventListener('scroll', () => {
-                initialViewportHeight = window.visualViewport.height;
-            });
+            window.visualViewport.addEventListener('resize', handleViewportChange);
+            window.visualViewport.addEventListener('scroll', handleViewportChange);
+            
+            // Run initially
+            handleViewportChange();
         }
     }
 
