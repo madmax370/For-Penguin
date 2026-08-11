@@ -1,5 +1,6 @@
 # Project Context
 
+> **Media feature note (2026-08-11)**: Chat now supports image/video attachments uploaded to Cloudinary (unsigned preset `chat_videos`, cloud `dyua5q73q`) and rendered inline via `buildImageMedia`/`buildVideoMedia` (custom lazy video player). See §6 (Firestore Chat System additions), §10 (media field), §13 (Cloudinary constants).
 > **Last verified**: working tree on `test-branch` (latest commit `ac8a5b6`).
 > This document supersedes all earlier versions and reflects the **current** state of the code (post "duplicate date dividers fix + inline edit crash + keyboard overlap + safe areas + alignment constraints" update).
 
@@ -190,8 +191,12 @@ Notify: Button click → POST to Telegram Bot API → cooldown countdown → toa
   - `reconcileMessages()` (`1359-1433`) — smart DOM reconciliation with date dividers, no full rebuild
   - `createBubble()` / `updateBubble()` (`1436-1566`) — bubble rendering incl. reply quote, edited tag, Reply/Edit actions
   - `startEdit()` / `cancelEdit()` (`1568-1719`) — inline editing of own messages (max 2000 chars)
-  - `handleSend()` / `sendMessage()` (`1720-1748`) — writes to Firestore with `serverTimestamp`
+  - `handleSend()` / `sendMessage()` (`1720-1748`) — writes to Firestore with `serverTimestamp`; supports media payloads and restores drafts on failure
   - `handleReply()` / `cancelReply()` (`1751-1769`) — reply preview bar + quote box
+  - **Media attachments** — `initMediaAttachments()` wires 📎 button + hidden file input; `handleAttachmentSelected()` validates type/size/offline; `startAttachmentUpload()` posts to Cloudinary (unsigned preset, XHR progress, `AbortController` cancel, retry); `renderAttachmentStrip()` shows preview strip
+  - **Media rendering** — `buildImageMedia()` (aspect-ratio box, 800px transform, lazy+async, lightbox) and `buildVideoMedia()` (custom player: `preload="none"`, lazy `src`, one-at-a-time, IntersectionObserver auto-pause, rAF progress bar, iOS fullscreen fallback); `showMediaErrorIn()` renders placeholders for broken/non-Cloudinary URLs
+  - **Lightbox** — `openLightbox()`/`closeLightbox()`; overlay lives at body level (scenes use `transform`, which would trap `position:fixed`)
+  - **Sanitization** — `sanitizeMedia()` whitelists/coerces Firestore media objects and rejects non-`res.cloudinary.com` URLs before rendering
   - Typing in/out (`1774-1803`) — debounced 3s typing heartbeat, 4s reset
   - Remote typing indicator (`1806-1850`) — auto-hide after 6s
   - `initKeyboardHandling()` (`1860-1898`) — mobile `visualViewport` listeners attached **exactly once** (guarded by `keyboardHandlingInited`, `script.js:1051`/`1863`)
@@ -326,6 +331,8 @@ Password Input → SHA-256 → compare hash
   - Document `typing/status`: real-time typing indicator
 - **Local**: `sessionStorage` for password lockout; browser cache for static assets
 - **Schema**: Firestore is schemaless; message shape is set by the writer (see §13)
+  - Message doc: `{ sender, text, timestamp, replyTo, isEdited, media }`
+  - `media`: `null | { type: 'image'|'video', publicId, url, width, height, duration, format, bytes }` — validated by `sanitizeMedia()` on read
 - **ORM**: None (raw Firestore compat SDK calls)
 
 ---
@@ -405,6 +412,8 @@ None.
 - `TG_BOT_TOKEN`, `TG_CHAT_ID`: `script.js:621-622`
 - `FIREBASE_CONFIG`: `script.js:867-874`
 - `CHATS_COL = 'web_chat_v2'`: `script.js:896`
+- `CLOUDINARY_CLOUD_NAME = 'dyua5q73q'` / `CLOUDINARY_UPLOAD_PRESET = 'chat_videos'`: `script.js` (~line 903, right after `CHATS_COL`) — unsigned uploads only; API secret must NEVER be in client code
+- Media limits: images ≤ 25 MB, videos ≤ 100 MB
 - Lockout: 3 attempts / 15s (both locks)
 - Notify cooldown: 10s
 - Typing throttle: 3s out / 6s in auto-hide

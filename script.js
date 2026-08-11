@@ -183,6 +183,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             blackout.style.display = 'block';
             passwordInput.value = '';
+            // Privacy: drop any staged media upload + close the photo viewer on re-lock
+            cancelPendingAttachment(false);
+            closeLightbox();
+            if (chatState.activeVideo) { try { chatState.activeVideo.pause(); } catch (e) { /* noop */ } }
         } else {
             const blackout = document.getElementById('privacy-blackout');
             if (blackout) blackout.style.display = 'none';
@@ -896,6 +900,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const CHATS_COL = 'web_chat_v2';
     const TYPING_DOC = db.doc('typing/status');
 
+    // ─── Cloudinary Media Config ─────────────────────────
+    // Unsigned uploads only: the API secret must NEVER be in client code.
+    // The upload preset below must be created (unsigned) in the Cloudinary console.
+    const CLOUDINARY_CLOUD_NAME     = 'dyua5q73q';
+    const CLOUDINARY_UPLOAD_PRESET  = 'chat_videos'; // unsigned upload preset name
+    const CLOUDINARY_UPLOAD_URL     = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD_NAME + '/auto/upload';
+    const CLOUDINARY_URL_PREFIX     = 'https://res.cloudinary.com/';
+    const MAX_IMAGE_BYTES           = 25 * 1024 * 1024;   // 25 MB
+    const MAX_VIDEO_BYTES           = 100 * 1024 * 1024;  // 100 MB
+
     // ─── Telegram Notify (uses TG_BOT_TOKEN / TG_CHAT_ID from REPLY DELIVERY above) ──
     const NOTIFY_COOLDOWN_MS = 10_000; // 10 seconds
     let notifyLastSentAt = 0;
@@ -1016,7 +1030,10 @@ document.addEventListener('DOMContentLoaded', () => {
         chatUnlocked: false,      // Chat lock state
         pinInput: '',             // Current PIN input
         failedAttempts: 0,        // Failed PIN attempts
-        lockoutEndTime: 0         // Lockout end time
+        lockoutEndTime: 0,        // Lockout end time
+        pendingAttachment: null,  // { file, previewUrl, kind, fileName, fileSize, status: 'uploading'|'ready'|'error', progress, media, xhr }
+        activeVideo: null,        // Currently playing <video> element (one at a time)
+        mediaObserver: null       // IntersectionObserver singleton for auto-pausing off-screen videos
     };
 
     // ─── Helpers ─────────────────────────────────────────
@@ -1025,6 +1042,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (s === 'me') return 'Bhatari';
         if (s === 'sanobar') return 'Bhandhari';
         return s;
+    }
+
+    // Trust boundary: Firestore media payloads are user-controlled — keep only
+    // whitelisted fields, coerce types, and force the URL through the Cloudinary gate
+    function sanitizeMedia(m) {
+        if (!m || typeof m !== 'object') return null;
+        if (m.type !== 'image' && m.type !== 'video') return null;
+        if (!isCloudinaryUrl(m.url)) return null;
+        const num = v => (typeof v === 'number' && isFinite(v) && v > 0) ? v : 0;
+        return {
+            type:     m.type,
+            publicId: typeof m.publicId === 'string' ? m.publicId : '',
+            url:      m.url,
+            width:    num(m.width),
+            height:   num(m.height),
+            duration: num(m.duration) || null,
+            format:   typeof m.format === 'string' ? m.format : '',
+            bytes:    num(m.bytes)
+        };
     }
 
     function formatDateLabel(ts) {
@@ -1279,6 +1315,9 @@ document.addEventListener('DOMContentLoaded', () => {
             chatInput.addEventListener('input', handleOutgoingTyping);
             if (chatReplyCancel) chatReplyCancel.addEventListener('click', cancelReply);
 
+            // Media attachments + lightbox (wired exactly once via chatSceneInited guard)
+            initMediaAttachments();
+
             // Notify button (Bhandhari only) - visible by default since Bhandhari is default identity
             if (notifyBtn) {
                 notifyBtn.style.display = 'inline-flex'; // Show by default for Bhandhari
@@ -1317,6 +1356,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         timestamp: ts,
                         replyTo:  d.replyTo  ? { ...d.replyTo, sender: normalizeSender(d.replyTo.sender) } : null,
                         isEdited: !!d.isEdited,
+                        media:    sanitizeMedia(d.media),
                         pending:  doc.metadata ? doc.metadata.hasPendingWrites : false
                     };
                 });
@@ -1371,6 +1411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Step 1: Remove orphaned nodes (messages that no longer exist)
         for (const [id, el] of chatState.renderedIds) {
             if (!expectedMsgIds.has(id)) {
+                releaseMediaIn(el); // pause + unload any videos and unobserve before removal
                 el.remove();
                 chatState.renderedIds.delete(id);
             }
@@ -1457,7 +1498,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update an existing bubble's mutable parts without re-creating it
     function updateBubble(bubble, msg) {
         const isBhatari = msg.sender === 'Bhatari';
-        bubble.className = `chat-bubble ${isBhatari ? 'left' : 'right'}${msg.pending ? ' pending' : ''}`;
+        // Preserve 'has-media' so pending→confirmed acks don't strip media styling or reload media
+        bubble.className = `chat-bubble ${isBhatari ? 'left' : 'right'}${msg.pending ? ' pending' : ''}${msg.media ? ' has-media' : ''}`;
 
         // Skip text update if currently being edited by user
         const isBeingEdited = chatState.editingMessageId === msg.id;
@@ -1482,7 +1524,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const editBtn = bubble.querySelector('.chat-edit-btn');
         if (editBtn) {
             // Show/hide edit button based on whether message belongs to current identity
-            const shouldShow = msg.sender === chatState.currentIdentity;
+            // (media-only messages have no caption to edit, so Edit stays hidden there)
+            const shouldShow = msg.sender === chatState.currentIdentity && !!(msg.text && msg.text.trim());
             editBtn.style.display = shouldShow ? 'inline-flex' : 'none';
         }
         
@@ -1506,7 +1549,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function createBubble(message) {
         const bubble = document.createElement('div');
         const isBhatari = message.sender === 'Bhatari';
-        bubble.className = `chat-bubble ${isBhatari ? 'left' : 'right'}${message.pending ? ' pending' : ''}`;
+        const hasText  = !!(message.text && message.text.trim());
+        const hasMedia = !!(message.media && (message.media.type === 'image' || message.media.type === 'video'));
+        bubble.className = `chat-bubble ${isBhatari ? 'left' : 'right'}${message.pending ? ' pending' : ''}${hasMedia ? ' has-media' : ''}`;
         bubble.dataset.id = message.id;
 
         // Sender label
@@ -1534,11 +1579,20 @@ document.addEventListener('DOMContentLoaded', () => {
             bubble.appendChild(quoteBox);
         }
 
-        // Message text
-        const textEl = document.createElement('div');
-        textEl.className = 'chat-message-text';
-        textEl.textContent = message.text;
-        bubble.appendChild(textEl);
+        // Media block (image or video) — inserted between reply quote and caption
+        if (hasMedia) {
+            bubble.appendChild(message.media.type === 'image'
+                ? buildImageMedia(message)
+                : buildVideoMedia(message));
+        }
+
+        // Message text (skipped entirely for media-only messages)
+        if (hasText) {
+            const textEl = document.createElement('div');
+            textEl.className = 'chat-message-text';
+            textEl.textContent = message.text;
+            bubble.appendChild(textEl);
+        }
 
         // (edited) badge + Timestamp row
         const metaRow = document.createElement('div');
@@ -1563,16 +1617,17 @@ document.addEventListener('DOMContentLoaded', () => {
         replyBtn.className = 'chat-action-btn';
         replyBtn.type = 'button';
         replyBtn.textContent = '↩ Reply';
-        replyBtn.addEventListener('click', e => { e.stopPropagation(); handleReply(message.id, message.text, message.sender); });
+        // Media-only messages quote as "📷 Photo" / "🎬 Video" so the reply bar is never empty
+        replyBtn.addEventListener('click', e => { e.stopPropagation(); handleReply(message.id, quoteTextForMessage(message), message.sender); });
         actionsRow.appendChild(replyBtn);
 
-        // Edit only own messages - always create button but control visibility via CSS class
+        // Edit only own messages with caption text - always create button but control visibility via CSS class
         const editBtn = document.createElement('button');
         editBtn.className = 'chat-action-btn chat-edit-btn';
         editBtn.type = 'button';
         editBtn.textContent = '✏ Edit';
         editBtn.dataset.ownerId = message.sender;
-        editBtn.style.display = (message.sender === chatState.currentIdentity) ? 'inline-flex' : 'none';
+        editBtn.style.display = (message.sender === chatState.currentIdentity && hasText) ? 'inline-flex' : 'none';
         editBtn.addEventListener('click', e => { 
             e.stopPropagation(); 
             startEdit(bubble, message); 
@@ -1747,28 +1802,46 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatInput = document.getElementById('chat-input');
         if (!chatInput) return;
         const text = chatInput.value.trim();
-        if (!text) return;
+
+        const att = chatState.pendingAttachment;
+        if (att && att.status === 'uploading') {
+            showToast('Almost there — finishing upload ⏳', false);
+            return;
+        }
+        const media = att && att.status === 'ready' ? att.media : null;
+        if (!text && !media) return;
+
         chatInput.value = '';
         resizeChatInput(chatInput);
-        sendMessage(text);
+        sendMessage(text, media);
         clearOutgoingTyping();
     }
 
-    async function sendMessage(text) {
+    async function sendMessage(text, media = null) {
         const replyTo = chatState.replyToMessage
             ? { id: chatState.replyToMessage.id, sender: chatState.replyToMessage.sender, text: chatState.replyToMessage.text }
             : null;
         cancelReply();
+        const sentAttachment = chatState.pendingAttachment; // keep ref in case we must restore on failure
+        if (media) clearAttachmentUI();
         try {
             await db.collection(CHATS_COL).add({
                 sender:    chatState.currentIdentity,
-                text,
+                text:      text || '',
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 replyTo,
-                isEdited: false
+                isEdited: false,
+                media:     media || null
             });
+            if (media && chatState.pendingAttachment === sentAttachment) discardPendingAttachment();
         } catch (err) {
             console.error('Send error:', err);
+            // Restore the draft so a failed send never loses the typed text or the uploaded media
+            const chatInput = document.getElementById('chat-input');
+            if (chatInput && text) { chatInput.value = text; resizeChatInput(chatInput); }
+            if (media && chatState.pendingAttachment === sentAttachment && sentAttachment) {
+                renderAttachmentStrip(); // strip comes back in "ready" state for retry
+            }
             showToast('Message failed to send 😢', true);
         }
     }
@@ -1802,6 +1875,566 @@ document.addEventListener('DOMContentLoaded', () => {
         chatState.replyToMessage = null;
         const container = document.getElementById('chat-reply-container');
         if (container) container.style.display = 'none';
+    }
+
+    // ─── Media: Cloudinary URL Helpers ───────────────────
+    function isCloudinaryUrl(url) {
+        return typeof url === 'string' && url.startsWith(CLOUDINARY_URL_PREFIX);
+    }
+
+    // Insert an on-the-fly transformation right after "/upload/"
+    function cldUrl(url, transform) {
+        if (!isCloudinaryUrl(url) || url.indexOf('/upload/') === -1) return null;
+        return url.replace('/upload/', '/upload/' + transform + '/');
+    }
+
+    // Video thumbnail: transform + swap file extension to .jpg (frame at second 0)
+    function cldVideoPoster(url) {
+        const t = cldUrl(url, 'so_0,w_600,c_limit,f_jpg,q_auto');
+        return t ? t.replace(/\.[a-z0-9]+(\?.*)?$/i, '.jpg') : null;
+    }
+
+    function formatDuration(sec) {
+        if (!sec || !isFinite(sec) || sec < 0) return '0:00';
+        sec = Math.floor(sec);
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // Reply quotes for media-only messages so the preview bar is never blank
+    function quoteTextForMessage(message) {
+        if (message.text && message.text.trim()) return message.text;
+        if (message.media) return message.media.type === 'video' ? '🎬 Video' : '📷 Photo';
+        return '';
+    }
+
+    // ─── Media: Attachment Picker & Upload ───────────────
+    function initMediaAttachments() {
+        const attachBtn     = document.getElementById('chat-attach-btn');
+        const fileInput     = document.getElementById('chat-file-input');
+        const cancelBtn     = document.getElementById('chat-attachment-cancel');
+        const retryBtn      = document.getElementById('chat-attachment-retry');
+        const lightbox      = document.getElementById('chat-lightbox');
+        const lightboxClose = document.getElementById('chat-lightbox-close');
+
+        if (attachBtn && fileInput) {
+            attachBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', () => {
+                const file = fileInput.files && fileInput.files[0];
+                fileInput.value = ''; // allow re-selecting the same file
+                if (file) handleAttachmentSelected(file);
+            });
+        }
+        if (cancelBtn) cancelBtn.addEventListener('click', () => cancelPendingAttachment(true));
+        if (retryBtn)  retryBtn.addEventListener('click', retryAttachmentUpload);
+        if (lightbox) {
+            lightbox.addEventListener('click', e => { if (e.target === lightbox) closeLightbox(); });
+        }
+        if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+    }
+
+    function handleAttachmentSelected(file) {
+        if (!navigator.onLine) { showToast('You are offline 📡 media needs a connection', true); return; }
+
+        const kind = file.type.startsWith('image/') ? 'image'
+                   : file.type.startsWith('video/') ? 'video' : null;
+        if (!kind) { showToast('Only photos or videos 💜', true); return; }
+
+        const maxBytes = kind === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+        if (file.size > maxBytes) {
+            showToast((kind === 'image' ? 'Photo' : 'Video') + ' too large — max '
+                + (kind === 'image' ? '25' : '100') + ' MB 😢', true);
+            return;
+        }
+
+        cancelPendingAttachment(false); // silently replace any previous staged upload
+
+        chatState.pendingAttachment = {
+            file,
+            previewUrl: URL.createObjectURL(file),
+            kind,
+            fileName: file.name || (kind === 'image' ? 'photo' : 'video'),
+            fileSize: file.size,
+            status: 'uploading',
+            progress: 0,
+            media: null,
+            xhr: null
+        };
+        renderAttachmentStrip();
+        startAttachmentUpload();
+    }
+
+    function startAttachmentUpload() {
+        const att = chatState.pendingAttachment;
+        if (!att || !att.file) return;
+        try {
+            const fd = new FormData();
+            fd.append('file', att.file);
+            fd.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+            const xhr = new XMLHttpRequest();
+            att.xhr = xhr;
+            xhr.open('POST', CLOUDINARY_UPLOAD_URL);
+
+            xhr.upload.onprogress = e => {
+                if (e.lengthComputable && chatState.pendingAttachment === att) {
+                    att.progress = Math.round((e.loaded / e.total) * 100);
+                    updateAttachmentStripProgress();
+                }
+            };
+            xhr.onload = () => {
+                if (chatState.pendingAttachment !== att) return; // was cancelled meanwhile
+                att.xhr = null;
+                let res = null;
+                try { res = JSON.parse(xhr.responseText); } catch (e) { /* leave null */ }
+                if (xhr.status >= 200 && xhr.status < 300 && res && res.secure_url) {
+                    att.media = {
+                        type:     res.resource_type === 'video' ? 'video' : 'image',
+                        publicId: res.public_id || '',
+                        url:      res.secure_url,
+                        width:    typeof res.width  === 'number' ? res.width  : 0,
+                        height:   typeof res.height === 'number' ? res.height : 0,
+                        duration: typeof res.duration === 'number' ? res.duration : null,
+                        format:   res.format || '',
+                        bytes:    typeof res.bytes === 'number' ? res.bytes : att.fileSize
+                    };
+                    att.kind = att.media.type; // trust Cloudinary's resource_type over our guess
+                    att.status = 'ready';
+                    renderAttachmentStrip();
+                } else {
+                    console.error('Cloudinary upload failed:', xhr.status, xhr.responseText);
+                    att.status = 'error';
+                    renderAttachmentStrip();
+                    showToast(
+                        (xhr.responseText && /preset/i.test(xhr.responseText))
+                            ? 'Upload preset not found — check Cloudinary settings ⚙️'
+                            : 'Upload failed 😢 tap ↻ to retry',
+                        true
+                    );
+                }
+            };
+            xhr.onerror = () => {
+                if (chatState.pendingAttachment !== att) return;
+                att.xhr = null;
+                att.status = 'error';
+                renderAttachmentStrip();
+                showToast('Upload failed 😢 check your connection', true);
+            };
+            xhr.onabort = () => {
+                // Safety net: cancelPendingAttachment normally handles cleanup first
+                if (chatState.pendingAttachment === att) { discardPendingAttachment(); clearAttachmentUI(); }
+            };
+            xhr.send(fd);
+        } catch (err) {
+            console.error('Upload start error:', err);
+            att.status = 'error';
+            renderAttachmentStrip();
+        }
+    }
+
+    function retryAttachmentUpload() {
+        const att = chatState.pendingAttachment;
+        if (!att || !att.file) return;
+        if (!navigator.onLine) { showToast('Still offline 📡', true); return; }
+        att.status = 'uploading';
+        att.progress = 0;
+        renderAttachmentStrip();
+        startAttachmentUpload();
+    }
+
+    function cancelPendingAttachment(announce) {
+        const att = chatState.pendingAttachment;
+        if (!att) return;
+        if (att.xhr) { try { att.xhr.abort(); } catch (e) { /* noop */ } }
+        discardPendingAttachment();
+        clearAttachmentUI();
+        if (announce) showToast('Attachment removed', false);
+    }
+
+    function discardPendingAttachment() {
+        const att = chatState.pendingAttachment;
+        if (att && att.previewUrl) { try { URL.revokeObjectURL(att.previewUrl); } catch (e) { /* noop */ } }
+        chatState.pendingAttachment = null;
+    }
+
+    function clearAttachmentUI() {
+        const container = document.getElementById('chat-attachment-container');
+        if (container) container.style.display = 'none';
+        const sendBtn = document.getElementById('chat-send-btn');
+        if (sendBtn) sendBtn.disabled = false;
+    }
+
+    function renderAttachmentStrip() {
+        const container   = document.getElementById('chat-attachment-container');
+        const thumb       = document.getElementById('chat-attachment-thumb');
+        const nameEl      = document.getElementById('chat-attachment-name');
+        const statusEl    = document.getElementById('chat-attachment-status');
+        const retryBtn    = document.getElementById('chat-attachment-retry');
+        const progressWrap = container ? container.querySelector('.chat-attachment-progress') : null;
+        const sendBtn     = document.getElementById('chat-send-btn');
+        const att = chatState.pendingAttachment;
+        if (!container) return;
+        if (!att) { container.style.display = 'none'; return; }
+
+        container.style.display = 'flex';
+
+        // Thumbnail: local object-URL preview for images, icon for videos
+        if (thumb) {
+            thumb.replaceChildren();
+            if (att.kind === 'image') {
+                const im = document.createElement('img');
+                im.className = 'chat-attachment-thumb-img';
+                im.src = att.previewUrl;
+                im.alt = 'Attachment preview';
+                thumb.appendChild(im);
+            } else {
+                const icon = document.createElement('span');
+                icon.className = 'chat-attachment-thumb-icon';
+                icon.textContent = '🎬';
+                thumb.appendChild(icon);
+            }
+        }
+        if (nameEl) { nameEl.textContent = att.fileName; nameEl.title = att.fileName; }
+
+        if (att.status === 'uploading') {
+            if (progressWrap) progressWrap.style.display = 'block';
+            if (retryBtn) retryBtn.style.display = 'none';
+            if (sendBtn) sendBtn.disabled = true; // one attachment at a time; send waits for upload
+        } else if (att.status === 'ready') {
+            if (progressWrap) progressWrap.style.display = 'none';
+            if (statusEl) statusEl.textContent = '✓ Ready to send';
+            if (retryBtn) retryBtn.style.display = 'none';
+            if (sendBtn) sendBtn.disabled = false;
+        } else { // 'error'
+            if (progressWrap) progressWrap.style.display = 'none';
+            if (statusEl) statusEl.textContent = 'Upload failed';
+            if (retryBtn) retryBtn.style.display = 'inline-flex';
+            if (sendBtn) sendBtn.disabled = false;
+        }
+        updateAttachmentStripProgress();
+    }
+
+    function updateAttachmentStripProgress() {
+        const fill     = document.getElementById('chat-attachment-progress-fill');
+        const statusEl = document.getElementById('chat-attachment-status');
+        const att = chatState.pendingAttachment;
+        if (!att || !fill) return;
+        fill.style.transform = 'scaleX(' + Math.min((att.progress || 0) / 100, 1) + ')';
+        if (statusEl && att.status === 'uploading') {
+            statusEl.textContent = 'Uploading… ' + (att.progress || 0) + '%';
+        }
+    }
+
+    // ─── Media: Secure URL Gate & Error Placeholders ─────
+    function showMediaErrorIn(container, kind, rebuildFn) {
+        container.replaceChildren();
+        const box = document.createElement('div');
+        box.className = 'chat-media-error';
+        const icon = document.createElement('span');
+        icon.className = 'chat-media-error-icon';
+        icon.textContent = kind === 'video' ? '🎬' : '📷';
+        const label = document.createElement('span');
+        label.className = 'chat-media-error-text';
+        label.textContent = (kind === 'video' ? 'Video' : 'Photo') + ' unavailable';
+        box.appendChild(icon);
+        box.appendChild(label);
+        if (rebuildFn) {
+            const retry = document.createElement('button');
+            retry.className = 'chat-media-retry';
+            retry.type = 'button';
+            retry.textContent = '↻ Retry';
+            retry.addEventListener('click', e => { e.stopPropagation(); rebuildFn(); });
+            box.appendChild(retry);
+        }
+        container.appendChild(box);
+    }
+
+    // ─── Media: Image Bubbles (+ Lightbox) ───────────────
+    function buildImageMedia(message) {
+        const media = message.media;
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-media-image';
+        if (media.width > 0 && media.height > 0) {
+            wrap.style.aspectRatio = media.width + ' / ' + media.height; // reserve space → no layout jump
+        }
+        const thumb = cldUrl(media.url, 'f_auto,q_auto,w_800,c_limit');
+        const full  = cldUrl(media.url, 'f_auto,q_auto,w_1600,c_limit');
+        if (!thumb) { showMediaErrorIn(wrap, 'image', null); return wrap; } // non-Cloudinary URL → defensive placeholder
+
+        const img = document.createElement('img');
+        img.className = 'chat-media-img';
+        img.setAttribute('loading', 'lazy');
+        img.setAttribute('decoding', 'async');
+        img.alt = message.text ? message.text.substring(0, 100) : 'Photo shared in chat';
+        if (media.width > 0)  img.width  = media.width;
+        if (media.height > 0) img.height = media.height;
+        img.addEventListener('error', () => {
+            showMediaErrorIn(wrap, 'image', () => { wrap.replaceWith(buildImageMedia(message)); });
+        });
+        img.addEventListener('click', e => { e.stopPropagation(); openLightbox(full || thumb, img.alt); });
+        img.src = thumb;
+        wrap.appendChild(img);
+        return wrap;
+    }
+
+    function openLightbox(src, altText) {
+        const lb  = document.getElementById('chat-lightbox');
+        const img = document.getElementById('chat-lightbox-img');
+        if (!lb || !img || !src) return;
+        img.src = src;
+        img.alt = altText || 'Photo';
+        lb.style.display = 'flex';
+        document.body.classList.add('chat-lightbox-open');
+    }
+
+    function closeLightbox() {
+        const lb  = document.getElementById('chat-lightbox');
+        const img = document.getElementById('chat-lightbox-img');
+        if (!lb || lb.style.display === 'none') return;
+        lb.style.display = 'none';
+        if (img) img.removeAttribute('src');
+        document.body.classList.remove('chat-lightbox-open');
+    }
+
+    // ─── Media: Video Bubbles (lag-free player) ──────────
+    function getMediaObserver() {
+        if (chatState.mediaObserver) return chatState.mediaObserver;
+        if (!('IntersectionObserver' in window)) return null;
+        chatState.mediaObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.intersectionRatio < 0.5) {
+                    const v = entry.target.querySelector('video');
+                    if (v && !v.paused) v.pause(); // scrolled mostly out of view → pause
+                }
+            });
+        }, { threshold: [0, 0.5, 1] });
+        return chatState.mediaObserver;
+    }
+
+    // Pause + fully unload any videos inside a node about to leave the DOM
+    function releaseMediaIn(root) {
+        if (!root || !root.querySelectorAll) return;
+        root.querySelectorAll('.chat-media-video').forEach(wrap => {
+            const video = wrap.querySelector('video');
+            if (video) {
+                try { video.pause(); } catch (e) { /* noop */ }
+                video.removeAttribute('src');
+                try { video.load(); } catch (e) { /* noop */ }
+                if (chatState.activeVideo === video) chatState.activeVideo = null;
+            }
+            if (chatState.mediaObserver) chatState.mediaObserver.unobserve(wrap);
+        });
+    }
+
+    function buildVideoMedia(message) {
+        const media = message.media;
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-media-video';
+        wrap.style.aspectRatio = (media.width > 0 && media.height > 0)
+            ? media.width + ' / ' + media.height
+            : '16 / 9';
+
+        // 720p-capped adaptive MP4 for inline playback — never the raw upload
+        const srcUrl   = cldUrl(media.url, 'f_auto,q_auto,w_720,c_limit');
+        const posterUrl = cldVideoPoster(media.url);
+        if (!srcUrl) { showMediaErrorIn(wrap, 'video', null); return wrap; }
+
+        const video = document.createElement('video');
+        video.className = 'chat-video-el';
+        video.playsInline = true;
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        video.preload = 'none'; // no network until the user presses play
+        if (posterUrl) video.poster = posterUrl;
+
+        const playOverlay = document.createElement('button');
+        playOverlay.className = 'chat-video-play';
+        playOverlay.type = 'button';
+        playOverlay.setAttribute('aria-label', 'Play video');
+        playOverlay.textContent = '▶';
+
+        const spinner = document.createElement('div');
+        spinner.className = 'chat-video-spinner';
+        spinner.style.display = 'none';
+
+        const badge = document.createElement('span');
+        badge.className = 'chat-video-badge';
+        badge.textContent = formatDuration(media.duration || 0);
+        if (!(media.duration > 0)) badge.style.display = 'none';
+
+        const controls = document.createElement('div');
+        controls.className = 'chat-video-controls';
+        controls.style.display = 'none';
+        controls.addEventListener('click', e => e.stopPropagation());
+
+        const ctrlPlay = document.createElement('button');
+        ctrlPlay.className = 'chat-video-ctrl-btn';
+        ctrlPlay.type = 'button';
+        ctrlPlay.textContent = '⏸';
+        ctrlPlay.setAttribute('aria-label', 'Pause');
+
+        const progressTrack = document.createElement('div');
+        progressTrack.className = 'chat-video-progress';
+        const progressFill = document.createElement('div');
+        progressFill.className = 'chat-video-progress-fill';
+        progressTrack.appendChild(progressFill);
+
+        const timeLabel = document.createElement('span');
+        timeLabel.className = 'chat-video-time';
+        timeLabel.textContent = media.duration > 0 ? '0:00 / ' + formatDuration(media.duration) : '0:00';
+
+        const muteBtn = document.createElement('button');
+        muteBtn.className = 'chat-video-ctrl-btn';
+        muteBtn.type = 'button';
+        muteBtn.textContent = '🔊';
+        muteBtn.setAttribute('aria-label', 'Mute');
+
+        const fullBtn = document.createElement('button');
+        fullBtn.className = 'chat-video-ctrl-btn';
+        fullBtn.type = 'button';
+        fullBtn.textContent = '⛶';
+        fullBtn.setAttribute('aria-label', 'Fullscreen');
+
+        controls.appendChild(ctrlPlay);
+        controls.appendChild(progressTrack);
+        controls.appendChild(timeLabel);
+        controls.appendChild(muteBtn);
+        controls.appendChild(fullBtn);
+
+        wrap.appendChild(video);
+        wrap.appendChild(playOverlay);
+        wrap.appendChild(spinner);
+        wrap.appendChild(badge);
+        wrap.appendChild(controls);
+
+        let loadStarted = false;
+        let progressRaf = null;
+
+        const setPlayingUI = playing => {
+            controls.style.display   = playing ? 'flex' : 'none';
+            playOverlay.style.display = playing ? 'none' : 'flex';
+            badge.style.display      = playing ? 'none' : (media.duration > 0 ? '' : 'none');
+            ctrlPlay.textContent = playing ? '⏸' : '▶';
+            ctrlPlay.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+            if (playing) spinner.style.display = 'none';
+        };
+
+        // Lazy src: first tap loads the stream, then plays
+        const startPlayback = () => {
+            if (chatState.activeVideo && chatState.activeVideo !== video) {
+                try { chatState.activeVideo.pause(); } catch (e) { /* noop */ } // one video at a time
+            }
+            if (!loadStarted) {
+                loadStarted = true;
+                playOverlay.style.display = 'none';
+                badge.style.display = 'none';
+                spinner.style.display = 'block';
+                video.src = srcUrl;
+                video.load();
+            }
+            const p = video.play();
+            if (p && p.catch) p.catch(err => {
+                console.warn('Video play blocked:', err);
+                spinner.style.display = 'none';
+                setPlayingUI(false);
+            });
+        };
+
+        playOverlay.addEventListener('click', e => { e.stopPropagation(); startPlayback(); });
+        video.addEventListener('click', e => {
+            e.stopPropagation();
+            if (video.paused) { startPlayback(); } else { video.pause(); }
+        });
+        ctrlPlay.addEventListener('click', e => {
+            e.stopPropagation();
+            if (video.paused) { startPlayback(); } else { video.pause(); }
+        });
+
+        video.addEventListener('play', () => {
+            if (chatState.activeVideo && chatState.activeVideo !== video) {
+                try { chatState.activeVideo.pause(); } catch (e) { /* noop */ }
+            }
+            chatState.activeVideo = video;
+            setPlayingUI(true);
+        });
+        video.addEventListener('pause', () => {
+            if (chatState.activeVideo === video) chatState.activeVideo = null;
+            if (!video.ended) setPlayingUI(false);
+        });
+        video.addEventListener('ended', () => {
+            if (chatState.activeVideo === video) chatState.activeVideo = null;
+            setPlayingUI(false);
+            playOverlay.textContent = '↻';
+            playOverlay.setAttribute('aria-label', 'Replay video');
+        });
+        video.addEventListener('waiting', () => { if (loadStarted) spinner.style.display = 'block'; });
+        video.addEventListener('playing', () => { spinner.style.display = 'none'; });
+        video.addEventListener('canplay', () => { spinner.style.display = 'none'; });
+        video.addEventListener('loadedmetadata', () => {
+            if (video.duration && isFinite(video.duration)) {
+                timeLabel.textContent = '0:00 / ' + formatDuration(video.duration);
+            }
+        });
+        // Progress bar: rAF-throttled, GPU-composited (transform only — no layout thrash)
+        video.addEventListener('timeupdate', () => {
+            if (progressRaf) return;
+            progressRaf = requestAnimationFrame(() => {
+                progressRaf = null;
+                const dur = video.duration || media.duration || 0;
+                if (dur > 0) {
+                    progressFill.style.transform = 'scaleX(' + Math.min(video.currentTime / dur, 1) + ')';
+                }
+                timeLabel.textContent = formatDuration(video.currentTime)
+                    + (dur > 0 ? ' / ' + formatDuration(dur) : '');
+            });
+        });
+        video.addEventListener('error', () => {
+            if (!loadStarted) return; // ignore errors before a real src was set
+            if (chatState.activeVideo === video) chatState.activeVideo = null;
+            const obs = chatState.mediaObserver;
+            showMediaErrorIn(wrap, 'video', () => {
+                const fresh = buildVideoMedia(message); // fresh element = clean retry
+                wrap.replaceWith(fresh);
+                if (obs) obs.unobserve(wrap);
+            });
+        });
+
+        // Tap-to-seek on the progress track
+        progressTrack.addEventListener('click', e => {
+            e.stopPropagation();
+            const dur = video.duration || 0;
+            if (!dur) return;
+            const rect = progressTrack.getBoundingClientRect();
+            const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+            video.currentTime = ratio * dur;
+        });
+
+        muteBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            video.muted = !video.muted;
+            muteBtn.textContent = video.muted ? '🔇' : '🔊';
+            muteBtn.setAttribute('aria-label', video.muted ? 'Unmute' : 'Mute');
+        });
+
+        fullBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            // iOS Safari (iPhone) only supports the video element's own fullscreen
+            if (video.webkitEnterFullscreen) {
+                try { video.webkitEnterFullscreen(); } catch (err) { /* noop */ }
+                return;
+            }
+            if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+            if (wrap.requestFullscreen) wrap.requestFullscreen().catch(() => {});
+            else if (wrap.webkitRequestFullscreen) wrap.webkitRequestFullscreen();
+        });
+
+        // Auto-pause when scrolled out of view
+        const obs = getMediaObserver();
+        if (obs) obs.observe(wrap);
+
+        return wrap;
     }
 
     // ─── Outgoing Typing ─────────────────────────────────
