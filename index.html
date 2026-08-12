@@ -248,7 +248,24 @@ You</p>
                     <p id="chat-pin-error" class="chat-pin-error" style="display: none;">Incorrect PIN. Try again! 🐧</p>
                 </div>
             </div>
-            
+
+            <!-- Identity Selection Overlay (shown after Chat PIN success; hidden otherwise) -->
+            <div id="chat-identity-overlay" class="chat-identity-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="chat-identity-title">
+                <div class="chat-identity-box glass-card">
+                    <div class="chat-identity-icon">🐧</div>
+                    <h2 class="chat-identity-title glow-text" id="chat-identity-title">Who are you?</h2>
+                    <p class="chat-identity-subtitle">Pick your identity for this chat session</p>
+                    <div class="chat-identity-buttons">
+                        <button type="button" id="chat-identity-bhatari" class="chat-identity-btn" data-identity="Bhatari">
+                            <span class="toggle-dot bhatari-dot"></span> Bhatari
+                        </button>
+                        <button type="button" id="chat-identity-bhandhari" class="chat-identity-btn" data-identity="Bhandhari">
+                            <span class="toggle-dot bhandhari-dot"></span> Bhandhari
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div class="chat-scene">
                 <!-- Header -->
                 <header class="chat-header">

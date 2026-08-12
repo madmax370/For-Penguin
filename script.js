@@ -187,6 +187,21 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelPendingAttachment(false);
             closeLightbox();
             if (chatState.activeVideo) { try { chatState.activeVideo.pause(); } catch (e) { /* noop */ } }
+            // Privacy: full chat teardown — identity is never silently resumed.
+            // Next unlock = PIN again, then "Who are you?" again.
+            cleanupReadReceiptObserver();
+            chatState.currentIdentity = null;
+            chatState.chatUnlocked = false;
+            chatState.pinInput = '';
+            hideIdentitySelector();
+            const chatLockOverlay = document.getElementById('chat-lock-overlay');
+            if (chatLockOverlay) chatLockOverlay.classList.remove('hidden');
+            const notifyBtn = document.getElementById('notify-bhatari-btn');
+            if (notifyBtn) notifyBtn.style.display = 'none';
+            document.querySelectorAll('#chat-identity-toggle .toggle-btn').forEach(b => {
+                b.classList.remove('active');
+                b.setAttribute('aria-checked', 'false');
+            });
         } else {
             const blackout = document.getElementById('privacy-blackout');
             if (blackout) blackout.style.display = 'none';
@@ -289,6 +304,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         currentEl.classList.remove('scene-exit');
                     }, 1000);
                 }
+                // Leaving the chat scene: hidden scenes keep layout (visibility:hidden),
+                // so IntersectionObserver would still fire — disconnect read receipts.
+                if (this.scenes[this.currentIndex] === 'scene-chat') {
+                    cleanupReadReceiptObserver();
+                }
             }
 
             // Enter new scene
@@ -302,6 +322,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Trigger scene-specific entrance
                     this.onSceneEnter(index);
+
+                    // Returning to the chat scene with an active identity: re-arm read receipts
+                    if (this.scenes[index] === 'scene-chat' && chatState.currentIdentity) {
+                        initReadReceiptObserver();
+                        observeAllIncomingBubbles();
+                    }
                 }, this.currentIndex >= 0 ? 400 : 0);
             }
         }
@@ -910,12 +936,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const MAX_IMAGE_BYTES           = 25 * 1024 * 1024;   // 25 MB
     const MAX_VIDEO_BYTES           = 100 * 1024 * 1024;  // 100 MB
 
+    // ─── Read Receipt Config ─────────────────────────────
+    // A message counts as "read" only when ≥70% of its bubble stays visibly
+    // in the recipient's viewport for the dwell duration (tall bubbles get a
+    // capped ratio so they can be read without scrolling the full height).
+    const READ_VISIBILITY_THRESHOLD = 0.7;
+    const READ_DWELL_MS             = 300;
+    const READ_TALL_RATIO           = 0.4;  // for bubbles taller than ~90% of viewport
+
     // ─── Telegram Notify (uses TG_BOT_TOKEN / TG_CHAT_ID from REPLY DELIVERY above) ──
     const NOTIFY_COOLDOWN_MS = 10_000; // 10 seconds
     let notifyLastSentAt = 0;
     let notifyCooldownTimer = null;
 
     async function notifyBhatari() {
+        if (chatState.currentIdentity !== 'Bhandhari') return; // identity-scoped control
         const btn = document.getElementById('notify-bhatari-btn');
         const now = Date.now();
         const remaining = NOTIFY_COOLDOWN_MS - (now - notifyLastSentAt);
@@ -1011,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Chat State ──────────────────────────────────────
     const chatState = {
-        currentIdentity: 'Bhandhari',  // Default to Bhandhari
+        currentIdentity: null,    // No default — user MUST pick Bhatari/Bhandhari after the Chat PIN
         messages: [],
         unsubMessages: null,
         unsubTyping: null,
@@ -1028,7 +1063,11 @@ document.addEventListener('DOMContentLoaded', () => {
         lockoutEndTime: 0,        // Lockout end time
         pendingAttachment: null,  // { file, previewUrl, kind, fileName, fileSize, status: 'uploading'|'ready'|'error', progress, media, xhr }
         activeVideo: null,        // Currently playing <video> element (one at a time)
-        mediaObserver: null       // IntersectionObserver singleton for auto-pausing off-screen videos
+        mediaObserver: null,      // IntersectionObserver singleton for auto-pausing off-screen videos
+        identitySelecting: false, // Double-click guard for the identity-selection overlay
+        readObserver: null,       // IntersectionObserver singleton for read receipts (starts after identity selection)
+        readTimers: new Map(),    // messageId → { timerId, identity } dwell timers
+        readPending: new Set()    // messageIds with a read-receipt write in flight (prevents duplicates)
     };
 
     // ─── Helpers ─────────────────────────────────────────
@@ -1181,10 +1220,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     const inputHash = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
                     
                     if (inputHash === CORRECT_PIN_HASH) {
-                        // Success - unlock chat
+                        // Success - unlock chat gate (identity still unknown at this point)
                         chatState.chatUnlocked = true;
                         chatState.pinInput = '';
                         chatState.failedAttempts = 0;
+                        chatState.currentIdentity = null; // never silently resume an old identity
                         
                         lockOverlay.classList.add('hidden');
                         pinError.style.display = 'none';
@@ -1203,9 +1243,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
                         }, 500);
                         
-                        // Show identity notification toast AFTER unlocking
+                        // Identity selection comes AFTER the PIN — the user must choose every time
                         setTimeout(() => {
-                            showToast(`You are chatting as ${chatState.currentIdentity}`, false, 'info');
+                            showIdentitySelector();
                         }, 600);
                     } else {
                         // Failed attempt
@@ -1265,40 +1305,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chatSceneInited) {
             chatSceneInited = true;
 
-            // Identity toggle - Default to Bhandhari
-            const defaultIdentity = 'Bhandhari';
-            chatState.currentIdentity = defaultIdentity;
-            
-            // Set initial toggle button state
-            toggleBtns.forEach(btn => {
-                const identity = btn.getAttribute('data-identity');
-                if (identity === defaultIdentity) {
-                    btn.classList.add('active');
-                    btn.setAttribute('aria-checked', 'true');
-                } else {
-                    btn.classList.remove('active');
-                    btn.setAttribute('aria-checked', 'false');
-                }
-                
-                btn.addEventListener('click', () => {
-                    toggleBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-checked', 'false'); });
-                    btn.classList.add('active');
-                    btn.setAttribute('aria-checked', 'true');
-                    chatState.currentIdentity = btn.getAttribute('data-identity') || 'Bhatari';
+            // Identity is NOT defaulted. It stays null until the user picks one
+            // on the post-PIN identity selector (see verifyPin → showIdentitySelector).
+            chatState.currentIdentity = null;
 
-                    // Notify button only visible for Bhandhari
-                    if (notifyBtn) {
-                        notifyBtn.style.display = chatState.currentIdentity === 'Bhandhari' ? 'inline-flex' : 'none';
-                    }
-                    
-                    // Update visibility of all edit buttons based on new identity
-                    document.querySelectorAll('.chat-edit-btn').forEach(editBtn => {
-                        const ownerId = editBtn.dataset.ownerId;
-                        editBtn.style.display = (ownerId === chatState.currentIdentity) ? 'inline-flex' : 'none';
-                    });
-                    
+            // Toggle buttons start with NO active state (nobody is "you" yet)
+            toggleBtns.forEach(btn => {
+                btn.classList.remove('active');
+                btn.setAttribute('aria-checked', 'false');
+
+                btn.addEventListener('click', () => {
+                    const identity = btn.getAttribute('data-identity') || 'Bhatari';
+                    if (!chatState.currentIdentity) return; // selector overlay owns the first choice
+                    if (identity === chatState.currentIdentity) return; // no-op re-click
+                    applyIdentityUI(identity);
+
                     // Show identity switch toast
                     showToast(`Switched to ${chatState.currentIdentity}`, false, 'info');
+                    onChatIdentityChanged(); // read receipts: cancel old timers, re-observe, refresh ticks
                 });
             });
             
@@ -1317,15 +1341,270 @@ document.addEventListener('DOMContentLoaded', () => {
             // Header polish: sliding toggle glider + compress-on-scroll (also one-time)
             initHeaderPolish();
 
-            // Notify button (Bhandhari only) - visible by default since Bhandhari is default identity
+            // Identity-selection overlay buttons (wired once)
+            initIdentitySelector();
+
+            // Notify button stays hidden until an identity is selected.
+            // It is only meaningful for Bhandhari (notifies the other person).
             if (notifyBtn) {
-                notifyBtn.style.display = 'inline-flex'; // Show by default for Bhandhari
+                notifyBtn.style.display = 'none';
                 notifyBtn.addEventListener('click', notifyBhatari);
             }
 
-            // Boot Firestore listeners
-            startMessageListener();
-            startTypingListener();
+            // NOTE: Firestore listeners (messages/typing) and the read-receipt observer
+            // are deliberately NOT started here. They boot in selectChatIdentity()
+            // once the user has explicitly chosen an identity.
+        }
+    }
+
+    // ─── Identity Selection (post-PIN, pre-chat) ─────────
+    let identitySelectorInited = false;
+    let positionToggleGlider = null; // assigned by initHeaderPolish(); repositions the identity glider
+
+    function initIdentitySelector() {
+        if (identitySelectorInited) return;
+        identitySelectorInited = true;
+        const btnBhatari   = document.getElementById('chat-identity-bhatari');
+        const btnBhandhari = document.getElementById('chat-identity-bhandhari');
+        [btnBhatari, btnBhandhari].forEach(btn => {
+            if (!btn) return;
+            btn.addEventListener('click', () => {
+                const identity = btn.getAttribute('data-identity');
+                if (!identity || chatState.identitySelecting) return;
+                selectChatIdentity(identity);
+            });
+        });
+        // Esc must NOT dismiss this overlay — identity is required, not optional
+    }
+
+    function showIdentitySelector() {
+        const overlay = document.getElementById('chat-identity-overlay');
+        if (!overlay) return;
+        chatState.identitySelecting = false;
+        overlay.querySelectorAll('.chat-identity-btn').forEach(b => { b.disabled = false; });
+        overlay.style.display = 'flex';
+        haptic(10);
+        const first = document.getElementById('chat-identity-bhatari');
+        if (first) first.focus();
+    }
+
+    function hideIdentitySelector() {
+        const overlay = document.getElementById('chat-identity-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    function selectChatIdentity(identity) {
+        // Double-click / double-tap protection
+        if (chatState.identitySelecting) return;
+        chatState.identitySelecting = true;
+        const overlay = document.getElementById('chat-identity-overlay');
+        if (overlay) overlay.querySelectorAll('.chat-identity-btn').forEach(b => { b.disabled = true; });
+
+        chatState.currentIdentity = identity;
+        applyIdentityUI(identity);
+        hideIdentitySelector();
+        haptic(12);
+
+        // Identity-dependent systems boot HERE, not earlier
+        startMessageListener();
+        startTypingListener();
+        initReadReceiptObserver();
+        observeAllIncomingBubbles();
+
+        showToast(`You are chatting as ${identity}`, false, 'info');
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) chatInput.focus();
+        chatState.identitySelecting = false;
+    }
+
+    // Shared UI updates for both the initial selection and the manual toggle
+    function applyIdentityUI(identity) {
+        chatState.currentIdentity = identity;
+        const toggleBtns = document.querySelectorAll('#chat-identity-toggle .toggle-btn');
+        toggleBtns.forEach(btn => {
+            const isActive = btn.getAttribute('data-identity') === identity;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+        });
+        if (positionToggleGlider) {
+            try { positionToggleGlider(); } catch (e) { /* noop */ }
+        }
+        const notifyBtn = document.getElementById('notify-bhatari-btn');
+        if (notifyBtn) {
+            notifyBtn.style.display = identity === 'Bhandhari' ? 'inline-flex' : 'none';
+        }
+        // Edit buttons + delivery ticks depend on which messages are "mine"
+        document.querySelectorAll('.chat-edit-btn').forEach(editBtn => {
+            const ownerId = editBtn.dataset.ownerId;
+            editBtn.style.display = (ownerId === chatState.currentIdentity) ? 'inline-flex' : 'none';
+        });
+        refreshAllTicks();
+    }
+
+    // ─── Read Receipts (WhatsApp-style, visibility-based) ──
+    function getOtherIdentity(identity) {
+        return identity === 'Bhatari' ? 'Bhandhari' : 'Bhatari';
+    }
+
+    function sanitizeReadBy(raw) {
+        return Array.isArray(raw) ? raw.filter(v => v === 'Bhatari' || v === 'Bhandhari') : [];
+    }
+
+    function isMessageRead(message) {
+        if (!message) return false;
+        const readBy = sanitizeReadBy(message.readBy);
+        return readBy.includes(getOtherIdentity(message.sender));
+    }
+
+    function initReadReceiptObserver() {
+        if (chatState.readObserver) return; // one observer, reused
+        if (!chatState.currentIdentity) return; // never observe before identity selection
+        if (!('IntersectionObserver' in window)) return;
+        chatState.readObserver = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                const el = entry.target;
+                const msgId = el.dataset ? el.dataset.id : null;
+                if (!msgId) return;
+                const msg = chatState.messages.find(m => m.id === msgId);
+                const rect = entry.boundingClientRect;
+                const isTall = rect.height > window.innerHeight * 0.9;
+                const threshold = isTall ? READ_TALL_RATIO : READ_VISIBILITY_THRESHOLD;
+                const visibleEnough = entry.isIntersecting && entry.intersectionRatio >= threshold;
+                if (visibleEnough && msg) {
+                    startReadDwell(msg, el);
+                } else {
+                    clearReadTimer(msgId);
+                }
+            });
+        }, { threshold: [0, READ_TALL_RATIO, READ_VISIBILITY_THRESHOLD, 1] });
+    }
+
+    function observeMessageForRead(element, message) {
+        if (!chatState.readObserver || !element || !message || !message.id) return;
+        if (!chatState.currentIdentity) return;                          // identity required
+        if (message.sender === chatState.currentIdentity) return;        // never read-mark own messages
+        if (message.pending) return;                                     // never on unsynced/optimistic writes
+        const readBy = sanitizeReadBy(message.readBy);
+        if (readBy.includes(chatState.currentIdentity)) return;          // already read → nothing to do
+        chatState.readObserver.observe(element);
+    }
+
+    function unobserveReadReceiptElement(element) {
+        if (chatState.readObserver && element) chatState.readObserver.unobserve(element);
+    }
+
+    function startReadDwell(message, element) {
+        if (!chatState.currentIdentity || !chatState.chatUnlocked) return;
+        if (chatState.readTimers.has(message.id)) return; // already counting
+        const identityAtObservation = chatState.currentIdentity; // capture: switch cancels
+        const timerId = setTimeout(() => {
+            chatState.readTimers.delete(message.id);
+            if (chatState.currentIdentity !== identityAtObservation) return; // switched mid-dwell
+            if (document.visibilityState !== 'visible') return;              // locked/hidden
+            if (!chatState.chatUnlocked) return;
+            if (!isElementVisibleEnough(element)) return;                    // scrolled away mid-dwell
+            // Re-read latest message state (reconciliation may have updated it)
+            const latest = chatState.messages.find(m => m.id === message.id);
+            if (!latest) return;
+            markMessageAsRead(latest, identityAtObservation);
+        }, READ_DWELL_MS);
+        chatState.readTimers.set(message.id, { timerId, identity: identityAtObservation });
+    }
+
+    function clearReadTimer(messageId) {
+        const entry = chatState.readTimers.get(messageId);
+        if (!entry) return;
+        clearTimeout(entry.timerId);
+        chatState.readTimers.delete(messageId);
+    }
+
+    function clearAllReadTimers() {
+        chatState.readTimers.forEach(({ timerId }) => clearTimeout(timerId));
+        chatState.readTimers.clear();
+    }
+
+    function isElementVisibleEnough(el) {
+        if (!el || !el.getBoundingClientRect) return false;
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return false;
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+        const iy = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+        const ratio = (ix * iy) / (r.width * r.height);
+        const isTall = r.height > vh * 0.9;
+        return ratio >= (isTall ? READ_TALL_RATIO : READ_VISIBILITY_THRESHOLD);
+    }
+
+    async function markMessageAsRead(message, identityAtObservation) {
+        if (!message || !message.id) return;                                   // needs a real Firestore doc ID
+        if (!identityAtObservation || chatState.currentIdentity !== identityAtObservation) return;
+        if (!chatState.chatUnlocked) return;                                   // chat must be active
+        if (document.visibilityState !== 'visible') return;                    // never in background
+        if (message.sender === identityAtObservation) return;                  // never own messages
+        const readBy = sanitizeReadBy(message.readBy);
+        if (readBy.includes(identityAtObservation)) return;                    // already read → skip write
+        if (message.pending) return;                                           // persisted messages only
+        if (chatState.readPending.has(message.id)) return;                     // one write in flight max
+        if (!navigator.onLine) return;                                         // respect offline; stays observed for retry
+        chatState.readPending.add(message.id);
+        try {
+            // Atomic + idempotent: safe against races, duplicates, and multi-tab overlaps
+            await db.collection(CHATS_COL).doc(message.id).update({
+                readBy: firebase.firestore.FieldValue.arrayUnion(identityAtObservation)
+            });
+            // In-memory memo ONLY (Firestore snapshot remains authoritative — §28):
+            // suppress redundant re-writes in the gap before the confirming snapshot arrives.
+            const live = chatState.messages.find(m => m.id === message.id);
+            if (live) {
+                const liveReadBy = sanitizeReadBy(live.readBy);
+                if (!liveReadBy.includes(identityAtObservation)) {
+                    live.readBy = [...liveReadBy, identityAtObservation];
+                }
+            }
+        } catch (err) {
+            // Silent background behavior: log once for debugging, show nothing to the user.
+            // readPending is cleared in finally → the next viewport entry retries naturally.
+            console.warn('[ReadReceipt] Failed to mark message as read:', message.id,
+                err && err.code ? err.code : err);
+        } finally {
+            chatState.readPending.delete(message.id);
+        }
+    }
+
+    function observeAllIncomingBubbles() {
+        if (!chatState.readObserver) return;
+        chatState.messages.forEach(msg => {
+            const el = chatState.renderedIds.get(msg.id);
+            if (el) observeMessageForRead(el, msg);
+        });
+    }
+
+    function refreshAllTicks() {
+        chatState.renderedIds.forEach((el, id) => {
+            const msg = chatState.messages.find(m => m.id === id);
+            if (msg) syncTick(el, msg);
+        });
+    }
+
+    function cleanupReadReceiptObserver() {
+        if (chatState.readObserver) {
+            chatState.readObserver.disconnect();
+            chatState.readObserver = null;
+        }
+        clearAllReadTimers();
+        chatState.readPending.clear();
+    }
+
+    // Identity switch (manual toggle) while the chat is live
+    function onChatIdentityChanged() {
+        clearAllReadTimers();               // kill every in-flight dwell timer from the old identity
+        if (chatState.readObserver) {       // fresh observer → re-evaluates visibility for the new identity
+            chatState.readObserver.disconnect();
+            chatState.readObserver = null;
+        }
+        if (chatState.currentIdentity) {
+            initReadReceiptObserver();
+            observeAllIncomingBubbles();
         }
     }
 
@@ -1356,6 +1635,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         replyTo:  d.replyTo  ? { ...d.replyTo, sender: normalizeSender(d.replyTo.sender) } : null,
                         isEdited: !!d.isEdited,
                         media:    sanitizeMedia(d.media),
+                        // Backward compatible: legacy messages without readBy → unread
+                        readBy:   sanitizeReadBy(d.readBy),
                         pending:  doc.metadata ? doc.metadata.hasPendingWrites : false
                     };
                 });
@@ -1447,6 +1728,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const [id, el] of chatState.renderedIds) {
             if (!expectedMsgIds.has(id)) {
                 releaseMediaIn(el); // pause + unload any videos and unobserve before removal
+                unobserveReadReceiptElement(el); // stop watching for read eligibility
+                clearReadTimer(id);              // kill any pending dwell timer (no leaks)
                 el.remove();
                 chatState.renderedIds.delete(id);
             }
@@ -1537,6 +1820,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     bubble.style.animationDelay = '';
                 }, { once: true });
                 chatState.renderedIds.set(msg.id, bubble);
+                observeMessageForRead(bubble, msg); // read receipts: watch incoming visible bubbles
                 if (lastInsertedNode) {
                     lastInsertedNode.insertAdjacentElement('afterend', bubble);
                 } else {
@@ -1586,14 +1870,13 @@ document.addEventListener('DOMContentLoaded', () => {
             editedTag.remove();
         }
 
-        // Delivery tick: flip 🕓 → ✓ with a pop when Firestore acks the message
-        const tick = bubble.querySelector('.chat-tick');
-        if (tick && !msg.pending && tick.classList.contains('tick-pending')) {
-            tick.classList.remove('tick-pending');
-            tick.classList.add('tick-sent', 'tick-pop');
-            tick.textContent = '✓';
-            tick.setAttribute('aria-label', 'Sent');
-            tick.addEventListener('animationend', () => tick.classList.remove('tick-pop'), { once: true });
+        // Delivery/read tick: 🕓 → ✓ → ✓✓ (read) — updated in place, never rebuilt
+        syncTick(bubble, msg);
+        // If this update says I've now read it (identity switch edge), stop observing
+        const rb = sanitizeReadBy(msg.readBy);
+        if (chatState.currentIdentity && rb.includes(chatState.currentIdentity)) {
+            unobserveReadReceiptElement(bubble);
+            clearReadTimer(msg.id);
         }
 
         // Update actions row visibility based on current identity toggle
@@ -1631,6 +1914,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.groupStart !== undefined) cls += message.groupStart ? ' grouped-start' : ' grouped-mid';
         if (message.groupEnd) cls += ' grouped-end';
         return cls + extra;
+    }
+
+    // ─── Delivery/Read Tick Sync ─────────────────────────
+    // Tick semantics (own messages only):
+    //   🕓  pending  — written locally, waiting for Firestore ack
+    //   ✓   sent     — persisted in Firestore
+    //   ✓✓  read     — recipient identity marked it visible (blue)
+    // Ticks live in the meta row, which is right-aligned and stable in size,
+    // so the ✓ → ✓✓ upgrade never causes the message text to jump.
+    function syncTick(bubble, msg) {
+        const metaRow = bubble.querySelector('.chat-meta-row');
+        if (!metaRow) return;
+        let tick = metaRow.querySelector('.chat-tick');
+        const isOwn = msg.sender === chatState.currentIdentity;
+
+        if (!isOwn) {
+            if (tick) tick.remove(); // not my message → no tick (identity switches refresh this)
+            return;
+        }
+
+        const isRead = isMessageRead(msg);
+        let glyph, cls, label;
+        if (msg.pending)     { glyph = '🕓'; cls = 'tick-pending'; label = 'Sending'; }
+        else if (isRead)     { glyph = '✓✓'; cls = 'tick-read';    label = 'Read'; }
+        else                 { glyph = '✓';  cls = 'tick-sent';    label = 'Sent'; }
+
+        if (!tick) {
+            tick = document.createElement('span');
+            metaRow.appendChild(tick);
+        }
+
+        const prevClass = tick.className;
+        const upgraded = (prevClass.includes('tick-pending') && cls !== 'tick-pending')
+                      || (prevClass.includes('tick-sent') && cls === 'tick-read');
+
+        tick.className = 'chat-tick ' + cls;
+        tick.textContent = glyph;
+        tick.setAttribute('aria-label', label);
+
+        if (upgraded) {
+            tick.classList.add('tick-pop');
+            tick.addEventListener('animationend', () => tick.classList.remove('tick-pop'), { once: true });
+        }
     }
 
     // ─── Create Bubble ────────────────────────────────────
@@ -1694,15 +2020,9 @@ document.addEventListener('DOMContentLoaded', () => {
         timestamp.className = 'chat-timestamp';
         timestamp.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         metaRow.appendChild(timestamp);
-        // Delivery tick on own messages: 🕓 while pending → ✓ once Firestore acks
-        if (message.sender === chatState.currentIdentity) {
-            const tick = document.createElement('span');
-            tick.className = 'chat-tick' + (message.pending ? ' tick-pending' : ' tick-sent');
-            tick.textContent = message.pending ? '🕓' : '✓';
-            tick.setAttribute('aria-label', message.pending ? 'Sending' : 'Sent');
-            metaRow.appendChild(tick);
-        }
         bubble.appendChild(metaRow);
+        // Delivery/read tick: 🕓 pending → ✓ sent → ✓✓ read (see syncTick)
+        syncTick(bubble, message);
 
         // Action buttons row (Reply + Edit for own messages)
         const actionsRow = document.createElement('div');
@@ -1899,6 +2219,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleSend() {
+        if (!chatState.currentIdentity) return; // identity required — selector overlay owns pre-identity state
         const chatInput = document.getElementById('chat-input');
         if (!chatInput) return;
         const text = chatInput.value.trim();
@@ -1941,7 +2262,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 replyTo,
                 isEdited: false,
-                media:     media || null
+                media:     media || null,
+                readBy:    []   // read receipts start unread; recipient adds themselves via arrayUnion
             });
             if (media && chatState.pendingAttachment === sentAttachment) discardPendingAttachment();
         } catch (err) {
@@ -2036,6 +2358,7 @@ document.addEventListener('DOMContentLoaded', () => {
             glider.style.height = active.offsetHeight + 'px';
             glider.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
         };
+        positionToggleGlider = positionGlider; // exposed for identity selection/switch
 
         if (toggle && glider) {
             // Reposition after fonts/layout settle and on toggle clicks
@@ -2622,6 +2945,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Outgoing Typing ─────────────────────────────────
     function handleOutgoingTyping() {
+        if (!chatState.currentIdentity) return; // never publish typing state before identity selection
         const chatInput = document.getElementById('chat-input');
         if (chatInput) {
             resizeChatInput(chatInput);
