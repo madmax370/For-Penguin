@@ -3762,3 +3762,83 @@ body.chat-lightbox-open {
         transform: none;
     }
 }
+
+/* ===================================================
+   PREMIUM POLISH — Empty State, Typing Breathe, Divider Pop
+   =================================================== */
+
+/* Empty state greeting (rendered when the chat has no messages) */
+.chat-empty-state {
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    text-align: center;
+    padding: 2rem 1.5rem;
+    animation: emptyStateIn var(--dur-glide) var(--ease-out-quint) both;
+}
+
+@keyframes emptyStateIn {
+    from { opacity: 0; transform: scale(0.9) translateY(10px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.chat-empty-icon {
+    font-size: 3rem;
+    animation: cueBreathe 2.4s ease-in-out infinite;
+    filter: drop-shadow(0 4px 16px rgba(123, 44, 191, 0.5));
+}
+
+.chat-empty-title {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 1.5rem;
+    color: #fff;
+}
+
+.chat-empty-sub {
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.5);
+    max-width: 240px;
+    line-height: 1.5;
+}
+
+/* Typing indicator: subtle glow breathing (single element, transform-free) */
+.typing-indicator-bubble {
+    animation: typingBreathe 2.2s ease-in-out infinite;
+}
+
+.typing-indicator-bubble.bubble-enter {
+    animation: bubbleInFromLeft var(--dur-bubble) var(--ease-spring) both, typingBreathe 2.2s ease-in-out 0.4s infinite;
+}
+
+.typing-indicator-bubble.bubble-enter.right {
+    animation-name: bubbleInFromRight, typingBreathe;
+}
+
+@keyframes typingBreathe {
+    0%, 100% { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 6px rgba(199, 125, 255, 0.1); }
+    50%      { box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 16px rgba(199, 125, 255, 0.35); }
+}
+
+/* New-day divider pops in when a day boundary forms mid-session */
+.chat-date-divider.divider-pop {
+    animation: dividerPop 0.3s var(--ease-spring) both;
+}
+
+@keyframes dividerPop {
+    from { opacity: 0; transform: scale(0.8); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-empty-state,
+    .chat-empty-icon,
+    .typing-indicator-bubble,
+    .typing-indicator-bubble.bubble-enter,
+    .typing-indicator-bubble.bubble-enter.right,
+    .chat-date-divider.divider-pop {
+        animation: none;
+    }
+}

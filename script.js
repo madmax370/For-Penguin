@@ -1419,6 +1419,30 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build ordered list of expected message IDs (preserving order)
         const expectedOrder = chatState.messages.map(m => m.id);
 
+        // Empty state: greeting card when there are no messages, removed on first bubble
+        let emptyState = chatMessages.querySelector('.chat-empty-state');
+        if (chatState.messages.length === 0) {
+            if (!emptyState) {
+                emptyState = document.createElement('div');
+                emptyState.className = 'chat-empty-state';
+                const icon = document.createElement('div');
+                icon.className = 'chat-empty-icon';
+                icon.textContent = '🐧';
+                const title = document.createElement('div');
+                title.className = 'chat-empty-title';
+                title.textContent = 'Say hi 💜';
+                const sub = document.createElement('div');
+                sub.className = 'chat-empty-sub';
+                sub.textContent = 'Start the conversation — photos and videos work too!';
+                emptyState.appendChild(icon);
+                emptyState.appendChild(title);
+                emptyState.appendChild(sub);
+                chatMessages.appendChild(emptyState);
+            }
+        } else if (emptyState) {
+            emptyState.remove();
+        }
+
         // Step 1: Remove orphaned nodes (messages that no longer exist)
         for (const [id, el] of chatState.renderedIds) {
             if (!expectedMsgIds.has(id)) {
@@ -1462,7 +1486,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 let divider = chatMessages.querySelector(`[data-divider-key="${dividerKey}"]`);
                 if (!divider) {
                     divider = document.createElement('div');
-                    divider.className = 'chat-date-divider';
+                    divider.className = 'chat-date-divider divider-pop';
+                    divider.addEventListener('animationend', () => divider.classList.remove('divider-pop'), { once: true });
                     divider.dataset.dividerKey = dividerKey;
                     divider.textContent = formatDateLabel(msg.timestamp);
                     // Insert at correct position
@@ -2640,7 +2665,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let bubble = chatMessages.querySelector('.typing-indicator-bubble');
         if (!bubble) {
             bubble = document.createElement('div');
-            bubble.className = `chat-bubble ${sender === 'Bhatari' ? 'left' : 'right'} typing-indicator-bubble`;
+            bubble.className = `chat-bubble ${sender === 'Bhatari' ? 'left' : 'right'} typing-indicator-bubble bubble-enter`;
+            bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-enter'), { once: true });
             const label = document.createElement('div');
             label.className = 'chat-sender-label';
             label.textContent = sender;
