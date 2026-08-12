@@ -1,5 +1,6 @@
 # Project Context
 
+> **Premium polish note (2026-08-11)**: Chat UI/UX polish layer added — motion tokens (`--ease-spring`, `--dur-*`), CSS-driven top-pill toast (`#chat-toast` + `.toast-*` variants), grouped message runs (`grouped-start/mid/end` computed in `reconcileMessages`), side-aware spring bubble entrances (`.bubble-enter`), send choreography (`.armed`, `.send-launch`, haptics via `haptic()`), delivery ticks (`.chat-tick` 🕓→✓), sliding identity glider (`#toggle-glider`), header compress-on-scroll (`.compact`), scroll-to-bottom FAB (`#chat-scroll-fab` + unread dot), empty-state card, typing-bubble glow breathe, divider pop, `:focus-visible` rings.
 > **Media feature note (2026-08-11)**: Chat now supports image/video attachments uploaded to Cloudinary (unsigned preset `chat_videos`, cloud `dyua5q73q`) and rendered inline via `buildImageMedia`/`buildVideoMedia` (custom lazy video player). See §6 (Firestore Chat System additions), §10 (media field), §13 (Cloudinary constants).
 > **Last verified**: working tree on `test-branch` (latest commit `ac8a5b6`).
 > This document supersedes all earlier versions and reflects the **current** state of the code (post "duplicate date dividers fix + inline edit crash + keyboard overlap + safe areas + alignment constraints" update).
