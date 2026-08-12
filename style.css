@@ -3516,3 +3516,96 @@ body.chat-lightbox-open {
         transform: translateX(-50%);
     }
 }
+
+/* ===================================================
+   PREMIUM POLISH — Send Choreography & Delivery Ticks
+   =================================================== */
+
+/* Send button "armed" state — glows when there is text to send */
+.chat-send-btn.armed {
+    background: linear-gradient(135deg, #9d4edd 0%, var(--accent-primary) 100%);
+    box-shadow: 0 4px 18px rgba(123, 44, 191, 0.55), 0 0 14px rgba(199, 125, 255, 0.4);
+    transform: scale(1.06);
+}
+
+/* Send-tap micro animation: 120ms squash + icon launch */
+.chat-send-btn.send-launch {
+    animation: sendSquash var(--dur-micro) var(--transition-smooth);
+}
+
+@keyframes sendSquash {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(0.82); }
+    100% { transform: scale(1); }
+}
+
+.chat-send-btn.send-launch .send-icon {
+    animation: sendIconLaunch var(--dur-ui) var(--ease-out-quint);
+}
+
+@keyframes sendIconLaunch {
+    0%   { transform: translateX(0); opacity: 1; }
+    45%  { transform: translateX(16px); opacity: 0; }
+    55%  { transform: translateX(-10px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+
+/* Delivery tick in the bubble meta row (own messages only) */
+.chat-tick {
+    font-size: 0.62rem;
+    margin-left: 4px;
+    line-height: 1;
+    display: inline-block;
+}
+
+.chat-tick.tick-pending {
+    opacity: 0.55;
+}
+
+.chat-tick.tick-sent {
+    color: rgba(199, 125, 255, 0.9);
+}
+
+/* ✓ pop when Firestore confirms the send */
+.chat-tick.tick-pop {
+    animation: tickPop var(--dur-ui) var(--ease-spring);
+}
+
+@keyframes tickPop {
+    0%   { transform: scale(0.4); }
+    60%  { transform: scale(1.35); }
+    100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-send-btn.send-launch,
+    .chat-send-btn.send-launch .send-icon,
+    .chat-tick.tick-pop {
+        animation: none;
+    }
+
+    .chat-send-btn.armed {
+        transform: none;
+    }
+}
+
+/* Receive glow: brief ring flash on live incoming bubbles while user is at bottom */
+.chat-bubble.bubble-receive-glow {
+    animation: bubbleInFromLeft var(--dur-bubble) var(--ease-spring) both, receiveGlow 0.9s var(--transition-smooth);
+}
+
+.chat-bubble.bubble-receive-glow.right {
+    animation-name: bubbleInFromRight, receiveGlow;
+}
+
+@keyframes receiveGlow {
+    0%   { box-shadow: 0 0 0 0 rgba(199, 125, 255, 0.55); }
+    100% { box-shadow: 0 0 0 12px rgba(199, 125, 255, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-bubble.bubble-receive-glow,
+    .chat-bubble.bubble-receive-glow.right {
+        animation: none;
+    }
+}

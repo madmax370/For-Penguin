@@ -1482,6 +1482,14 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Create new bubble and append after last node
                 const bubble = createBubble(msg);
+                // Receive haptic: soft nudge only for the other person's live messages
+                // while the user is watching the bottom of the chat (never on cold render)
+                if (chatInitialStaggerDone && wasAtBottom && msg.sender !== chatState.currentIdentity && !msg.pending) {
+                    haptic([6]);
+                    bubble.classList.add('bubble-receive-glow');
+                    bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-receive-glow'), { once: true });
+                    setTimeout(() => bubble.classList.remove('bubble-receive-glow'), 900); // fallback cleanup
+                }
                 // Entrance animation: spring pop from the sender's side. On the very first
                 // reconcile (history restore) bubbles cascade with a small stagger.
                 const staggerIdx = newBubblesThisPass;
@@ -1543,7 +1551,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (!msg.isEdited && editedTag) {
             editedTag.remove();
         }
-        
+
+        // Delivery tick: flip 🕓 → ✓ with a pop when Firestore acks the message
+        const tick = bubble.querySelector('.chat-tick');
+        if (tick && !msg.pending && tick.classList.contains('tick-pending')) {
+            tick.classList.remove('tick-pending');
+            tick.classList.add('tick-sent', 'tick-pop');
+            tick.textContent = '✓';
+            tick.setAttribute('aria-label', 'Sent');
+            tick.addEventListener('animationend', () => tick.classList.remove('tick-pop'), { once: true });
+        }
+
         // Update actions row visibility based on current identity toggle
         const editBtn = bubble.querySelector('.chat-edit-btn');
         if (editBtn) {
@@ -1642,6 +1660,14 @@ document.addEventListener('DOMContentLoaded', () => {
         timestamp.className = 'chat-timestamp';
         timestamp.textContent = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         metaRow.appendChild(timestamp);
+        // Delivery tick on own messages: 🕓 while pending → ✓ once Firestore acks
+        if (message.sender === chatState.currentIdentity) {
+            const tick = document.createElement('span');
+            tick.className = 'chat-tick' + (message.pending ? ' tick-pending' : ' tick-sent');
+            tick.textContent = message.pending ? '🕓' : '✓';
+            tick.setAttribute('aria-label', message.pending ? 'Sending' : 'Sent');
+            metaRow.appendChild(tick);
+        }
         bubble.appendChild(metaRow);
 
         // Action buttons row (Reply + Edit for own messages)
@@ -1833,6 +1859,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Send Message ────────────────────────────────────
+    // ─── Haptics (guarded, silent when unsupported) ──────
+    function haptic(pattern) {
+        if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) { /* noop */ } }
+    }
+
     function handleSend() {
         const chatInput = document.getElementById('chat-input');
         if (!chatInput) return;
@@ -1845,6 +1876,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const media = att && att.status === 'ready' ? att.media : null;
         if (!text && !media) return;
+
+        // Send choreography: tick haptic + squash/launch micro-anim on the button
+        haptic(8);
+        const sendBtn = document.getElementById('chat-send-btn');
+        if (sendBtn) {
+            sendBtn.classList.remove('send-launch');
+            void sendBtn.offsetWidth; // restart animation
+            sendBtn.classList.add('send-launch');
+            sendBtn.classList.remove('armed');
+        }
 
         chatInput.value = '';
         resizeChatInput(chatInput);
@@ -2480,6 +2521,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatInput = document.getElementById('chat-input');
         if (chatInput) {
             resizeChatInput(chatInput);
+            // Armed send button: glows when there's something to send
+            const sendBtn = document.getElementById('chat-send-btn');
+            if (sendBtn) sendBtn.classList.toggle('armed', chatInput.value.trim().length > 0);
         }
         const now = Date.now();
         if (now - chatState.lastTypingSentTime > 3000) {
