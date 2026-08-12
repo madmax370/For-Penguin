@@ -1314,6 +1314,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Media attachments + lightbox (wired exactly once via chatSceneInited guard)
             initMediaAttachments();
 
+            // Header polish: sliding toggle glider + compress-on-scroll (also one-time)
+            initHeaderPolish();
+
             // Notify button (Bhandhari only) - visible by default since Bhandhari is default identity
             if (notifyBtn) {
                 notifyBtn.style.display = 'inline-flex'; // Show by default for Bhandhari
@@ -1983,6 +1986,51 @@ document.addEventListener('DOMContentLoaded', () => {
         if (message.text && message.text.trim()) return message.text;
         if (message.media) return message.media.type === 'video' ? '🎬 Video' : '📷 Photo';
         return '';
+    }
+
+    // ─── Header Polish: sliding toggle glider + compress-on-scroll ──
+    // Called once (guarded by chatSceneInited in initChatScene)
+    function initHeaderPolish() {
+        const toggle   = document.getElementById('chat-identity-toggle');
+        const glider   = document.getElementById('toggle-glider');
+        const header   = document.querySelector('.chat-header');
+        const chatMessages = document.getElementById('chat-messages');
+
+        const positionGlider = () => {
+            if (!toggle || !glider) return;
+            const active = toggle.querySelector('.toggle-btn.active');
+            if (!active) return;
+            // Transform-only positioning so the slide never triggers layout mid-anim
+            glider.style.width  = active.offsetWidth + 'px';
+            glider.style.height = active.offsetHeight + 'px';
+            glider.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+        };
+
+        if (toggle && glider) {
+            // Reposition after fonts/layout settle and on toggle clicks
+            requestAnimationFrame(positionGlider);
+            setTimeout(positionGlider, 350); // after Google Fonts swap
+            toggle.querySelectorAll('.toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    requestAnimationFrame(positionGlider); // after class flip
+                    haptic(12);
+                });
+            });
+            window.addEventListener('resize', positionGlider, { passive: true });
+        }
+
+        // Header compresses once the user starts scrolling (rAF-throttled, passive)
+        if (header && chatMessages) {
+            let scrollTick = false;
+            chatMessages.addEventListener('scroll', () => {
+                if (scrollTick) return;
+                scrollTick = true;
+                requestAnimationFrame(() => {
+                    scrollTick = false;
+                    header.classList.toggle('compact', chatMessages.scrollTop > 24);
+                });
+            }, { passive: true });
+        }
     }
 
     // ─── Media: Attachment Picker & Upload ───────────────
