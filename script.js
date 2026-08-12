@@ -979,38 +979,33 @@ document.addEventListener('DOMContentLoaded', () => {
         return div.innerHTML;
     }
 
+    // ─── Toast (styling lives in style.css #chat-toast; JS drives classes + timers) ──
     function showToast(message, isError = false, type = 'default') {
         let toast = document.getElementById('chat-toast');
         if (!toast) {
             toast = document.createElement('div');
             toast.id = 'chat-toast';
-            toast.style.cssText = `
-                position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);
-                background:rgba(30,15,50,0.92);color:#f3e8ff;
-                padding:0.6rem 1.25rem;border-radius:24px;font-size:0.82rem;font-weight:600;
-                backdrop-filter:blur(12px);border:1px solid rgba(199,125,255,0.3);
-                z-index:9999;opacity:0;transition:all 0.35s cubic-bezier(0.34,1.56,0.64,1);
-                pointer-events:none;white-space:nowrap;
-            `;
+            toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
             document.body.appendChild(toast);
         }
         toast.textContent = message;
-        
-        // Set color based on type
+
+        // Variant classes replace the old per-call inline styling
+        toast.classList.remove('toast-info', 'toast-error', 'toast-visible');
         if (type === 'info') {
-            toast.style.borderColor = 'rgba(100,180,255,0.5)';
-            toast.style.background = 'rgba(30,40,60,0.92)';
-        } else {
-            toast.style.borderColor = isError ? 'rgba(255,100,100,0.4)' : 'rgba(199,125,255,0.3)';
-            toast.style.background = 'rgba(30,15,50,0.92)';
+            toast.classList.add('toast-info');
+        } else if (isError) {
+            toast.classList.add('toast-error');
         }
-        
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateX(-50%) translateY(0)';
+
+        // Restart the entrance animation on rapid successive toasts
+        void toast.offsetWidth;
+        toast.classList.add('toast-visible');
+
         clearTimeout(toast._hideTimer);
         toast._hideTimer = setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateX(-50%) translateY(20px)';
+            toast.classList.remove('toast-visible');
         }, 2800);
     }
 

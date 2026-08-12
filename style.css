@@ -28,6 +28,13 @@
     --chat-spacing-md: 1rem;
     --font-size-mobile-base: clamp(0.875rem, 2vw, 0.95rem);
     --transition-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    /* Penguin Motion Language */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-micro: 120ms;
+    --dur-ui: 220ms;
+    --dur-bubble: 380ms;
+    --dur-glide: 450ms;
 }
 
 /* ===== RESET & BASE ===== */
@@ -3404,5 +3411,63 @@ body.chat-lightbox-open {
     .chat-attach-btn,
     .chat-video-play {
         transition: none;
+    }
+}
+
+/* ===================================================
+   PREMIUM POLISH — Toast Pill (styled here, JS drives classes)
+   =================================================== */
+#chat-toast {
+    position: fixed;
+    top: calc(72px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    transform: translateX(-50%) translateY(-16px) scale(0.92);
+    background: rgba(30, 15, 50, 0.92);
+    color: #f3e8ff;
+    padding: 0.6rem 1.25rem;
+    border-radius: 24px;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(199, 125, 255, 0.3);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(123, 44, 191, 0.25);
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: 88vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: transform var(--dur-ui) var(--ease-spring), opacity var(--dur-ui) var(--transition-smooth);
+    will-change: transform, opacity;
+}
+
+#chat-toast.toast-visible {
+    transform: translateX(-50%) translateY(0) scale(1);
+    opacity: 1;
+}
+
+#chat-toast.toast-info {
+    border-color: rgba(100, 180, 255, 0.5);
+    background: rgba(30, 40, 60, 0.92);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(100, 180, 255, 0.22);
+}
+
+#chat-toast.toast-error {
+    border-color: rgba(255, 100, 100, 0.4);
+    background: rgba(50, 18, 24, 0.92);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 100, 100, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #chat-toast {
+        transition: opacity var(--dur-ui) linear;
+        transform: translateX(-50%);
+    }
+
+    #chat-toast.toast-visible {
+        transform: translateX(-50%);
     }
 }
