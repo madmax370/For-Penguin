@@ -1487,11 +1487,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const bubble = createBubble(msg);
                 // Receive haptic: soft nudge only for the other person's live messages
                 // while the user is watching the bottom of the chat (never on cold render)
-                if (chatInitialStaggerDone && wasAtBottom && msg.sender !== chatState.currentIdentity && !msg.pending) {
-                    haptic([6]);
-                    bubble.classList.add('bubble-receive-glow');
-                    bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-receive-glow'), { once: true });
-                    setTimeout(() => bubble.classList.remove('bubble-receive-glow'), 900); // fallback cleanup
+                if (chatInitialStaggerDone && msg.sender !== chatState.currentIdentity && !msg.pending) {
+                    if (wasAtBottom) {
+                        haptic([6]);
+                        bubble.classList.add('bubble-receive-glow');
+                        bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-receive-glow'), { once: true });
+                        setTimeout(() => bubble.classList.remove('bubble-receive-glow'), 900); // fallback cleanup
+                    } else {
+                        // User is scrolled up: flag the FAB's unread dot instead of a haptic
+                        const fab = document.getElementById('chat-scroll-fab');
+                        if (fab) fab.classList.add('unread');
+                    }
                 }
                 // Entrance animation: spring pop from the sender's side. On the very first
                 // reconcile (history restore) bubbles cascade with a small stagger.
@@ -1525,8 +1531,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Smooth scroll to bottom only if user was already near bottom
-        if (wasAtBottom) {
-            chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+        if (wasAtBottom && newBubblesThisPass > 0) {
+            smoothScrollToBottom(chatMessages);
         }
     }
 
@@ -2020,6 +2026,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Header compresses once the user starts scrolling (rAF-throttled, passive)
+        // Same listener also drives the scroll-to-bottom FAB visibility.
+        const fab = document.getElementById('chat-scroll-fab');
         if (header && chatMessages) {
             let scrollTick = false;
             chatMessages.addEventListener('scroll', () => {
@@ -2028,9 +2036,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 requestAnimationFrame(() => {
                     scrollTick = false;
                     header.classList.toggle('compact', chatMessages.scrollTop > 24);
+                    if (fab) {
+                        const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+                        fab.classList.toggle('visible', distFromBottom > 300);
+                        // Reaching the bottom clears the unread dot
+                        if (distFromBottom < 80) fab.classList.remove('unread');
+                    }
                 });
             }, { passive: true });
         }
+
+        // FAB tap: glide to bottom + soft haptic
+        if (fab) {
+            fab.addEventListener('click', () => {
+                if (chatMessages) smoothScrollToBottom(chatMessages);
+                fab.classList.remove('unread');
+                haptic([6]);
+            });
+        }
+    }
+
+    // Deliberate smooth scrolls only — permanent CSS smoothness makes message bursts swimmy
+    function smoothScrollToBottom(el) {
+        el.classList.add('smooth-scroll');
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        // Remove after the glide so incremental scrollTop writes stay instant
+        setTimeout(() => el.classList.remove('smooth-scroll'), 600);
     }
 
     // ─── Media: Attachment Picker & Upload ───────────────
@@ -2626,7 +2657,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lbl) lbl.textContent = sender;
         }
 
-        chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+        smoothScrollToBottom(chatMessages);
         chatState.remoteTyping.sender = sender;
         // Auto-hide after 6s if no update
         chatState.remoteTyping.timer = setTimeout(hideRemoteTypingIndicator, 6000);

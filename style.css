@@ -2032,8 +2032,13 @@ body::-webkit-scrollbar {
     display: flex;
     flex-direction: column;
     gap: var(--chat-spacing-sm);
-    scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain; /* stop mobile pull-to-refresh hijack */
+    /* No permanent scroll-behavior here — deliberate smooth glides use .smooth-scroll */
+}
+
+.chat-messages.smooth-scroll {
+    scroll-behavior: smooth;
 }
 
 .chat-messages::-webkit-scrollbar {
@@ -3676,5 +3681,84 @@ body.chat-lightbox-open {
     .chat-title,
     .toggle-glider {
         transition: none;
+    }
+}
+
+/* ===================================================
+   PREMIUM POLISH — Scroll-to-bottom FAB
+   =================================================== */
+.chat-scroll-fab {
+    position: absolute;
+    right: 1rem;
+    /* Float above the input bar (+ iOS home indicator) */
+    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(26, 15, 46, 0.85);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(199, 125, 255, 0.4);
+    color: #c77dff;
+    font-size: 1.15rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 14px rgba(123, 44, 191, 0.25);
+    z-index: 30;
+    opacity: 0;
+    transform: scale(0.6) translateY(8px);
+    pointer-events: none;
+    transition: opacity var(--dur-ui) var(--transition-smooth),
+                transform var(--dur-ui) var(--ease-spring);
+    touch-action: manipulation;
+}
+
+.chat-scroll-fab.visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+}
+
+.chat-scroll-fab:active {
+    transform: scale(0.9);
+}
+
+.chat-scroll-fab-icon {
+    line-height: 1;
+}
+
+/* Unread dot: lights when a new message lands while the user is scrolled up */
+.chat-scroll-fab-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #c77dff 0%, #7b2cbf 100%);
+    border: 2px solid rgba(26, 15, 46, 0.95);
+    box-shadow: 0 0 8px rgba(199, 125, 255, 0.8);
+    opacity: 0;
+    transform: scale(0);
+    transition: opacity var(--dur-ui) var(--transition-smooth),
+                transform var(--dur-ui) var(--ease-spring);
+}
+
+.chat-scroll-fab.unread .chat-scroll-fab-dot {
+    opacity: 1;
+    transform: scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .chat-scroll-fab,
+    .chat-scroll-fab-dot {
+        transition: opacity 0.1s linear;
+        transform: none;
+    }
+
+    .chat-scroll-fab.visible {
+        transform: none;
     }
 }
