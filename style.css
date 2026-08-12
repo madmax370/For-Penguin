@@ -2036,32 +2036,61 @@ body::-webkit-scrollbar {
     padding: var(--chat-spacing-sm) var(--chat-spacing-md);
     border-radius: var(--chat-radius-lg);
     position: relative;
-    animation: bubbleSlideIn 0.4s var(--transition-smooth) forwards;
-    opacity: 0;
-    transform: translateY(20px) scale(0.95);
     word-break: break-word;
     backdrop-filter: blur(var(--chat-blur-strength));
     -webkit-backdrop-filter: blur(var(--chat-blur-strength));
-    transition: transform 0.2s var(--transition-smooth), box-shadow 0.2s var(--transition-smooth);
+    transition: transform var(--dur-micro) var(--transition-smooth), box-shadow 0.2s var(--transition-smooth);
     will-change: auto; /* Removed memory-heavy scroll-position hint */
+    transform-origin: bottom center;
 }
 
-@keyframes bubbleSlideIn {
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+/* Entrance: class-triggered so updateBubble's class rewrite never replays it.
+   Bubbles pop in from their own side (left sender → from left, right → from right). */
+.chat-bubble.bubble-enter {
+    animation: bubbleInFromLeft var(--dur-bubble) var(--ease-spring) both;
 }
 
-/* Premium Grouped Bubbles - Consecutive messages from same sender */
-.chat-bubble + .chat-bubble.left:not(.grouped-start) {
-    margin-top: 2px;
+.chat-bubble.bubble-enter.right {
+    animation-name: bubbleInFromRight;
+}
+
+@keyframes bubbleInFromLeft {
+    from { opacity: 0; transform: translate(-12px, 14px) scale(0.96); transform-origin: bottom left; }
+    to   { opacity: 1; transform: translate(0, 0) scale(1); transform-origin: bottom left; }
+}
+
+@keyframes bubbleInFromRight {
+    from { opacity: 0; transform: translate(12px, 14px) scale(0.96); transform-origin: bottom right; }
+    to   { opacity: 1; transform: translate(0, 0) scale(1); transform-origin: bottom right; }
+}
+
+/* Touch press feedback */
+.chat-bubble:active {
+    transform: scale(0.975);
+    transition-duration: var(--dur-micro);
+}
+
+/* Premium Grouped Bubbles - Consecutive messages from same sender.
+   Classes (grouped-start / grouped-mid / grouped-end) are computed per-run in
+   reconcileMessages() — runs break when the sender changes or the gap exceeds 5 min. */
+.chat-bubble.grouped-mid,
+.chat-bubble.grouped-end {
+    margin-top: calc(-1 * (var(--chat-spacing-sm) - 2px)); /* collapse the flex gap to 2px */
+}
+
+.chat-bubble.grouped-mid.left,
+.chat-bubble.grouped-end.left {
     border-top-left-radius: var(--chat-radius-sm);
 }
 
-.chat-bubble + .chat-bubble.right:not(.grouped-start) {
-    margin-top: 2px;
+.chat-bubble.grouped-mid.right,
+.chat-bubble.grouped-end.right {
     border-top-right-radius: var(--chat-radius-sm);
+}
+
+/* Hide the sender label on continuation bubbles (only run starts announce the sender) */
+.chat-bubble:not(.grouped-start) > .chat-sender-label {
+    display: none;
 }
 
 .chat-bubble.grouped-end {
@@ -2497,12 +2526,22 @@ body::-webkit-scrollbar {
 
 /* Reduced Motion Preference */
 @media (prefers-reduced-motion: reduce) {
-    .chat-bubble {
+    .chat-bubble,
+    .chat-bubble.bubble-enter {
         animation: none;
         opacity: 1;
         transform: none;
     }
-    
+
+    .chat-bubble:active {
+        transform: none;
+    }
+
+    .chat-media-img {
+        transition: none;
+        opacity: 1;
+    }
+
     .chat-reply-container {
         animation: none;
     }
@@ -3188,6 +3227,12 @@ body::-webkit-scrollbar {
     object-fit: cover;
     display: block;
     cursor: zoom-in;
+    opacity: 0;
+    transition: opacity 0.3s var(--transition-smooth);
+}
+
+.chat-media-img.loaded {
+    opacity: 1;
 }
 
 /* Video Player */

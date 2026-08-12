@@ -1077,6 +1077,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Scene Init ───────────────────────────────────────
     let chatSceneInited = false;
+    let chatInitialStaggerDone = false; // cold-render cascade fires once per page load
     // Guards against duplicate listener registration when the chat scene is re-entered
     let chatLockOverlayInited = false;
     let keyboardHandlingInited = false;
@@ -1397,6 +1398,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const wasAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
 
+        // Compute sender runs for grouped rendering (same sender within 5 min = one run)
+        const RUN_GAP_MS = 5 * 60 * 1000;
+        for (let i = 0; i < chatState.messages.length; i++) {
+            const cur = chatState.messages[i];
+            const prev = chatState.messages[i - 1];
+            const next = chatState.messages[i + 1];
+            const contPrev = prev && prev.sender === cur.sender && (cur.timestamp - prev.timestamp) < RUN_GAP_MS;
+            const contNext = next && next.sender === cur.sender && (next.timestamp - cur.timestamp) < RUN_GAP_MS;
+            cur.groupStart = !contPrev;
+            cur.groupEnd   = !contNext;
+        }
+
         // Track which message IDs we expect to see
         const expectedMsgIds = new Set(chatState.messages.map(m => m.id));
         
@@ -1436,7 +1449,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Step 2: Append ONLY new messages at the end (no full rebuild)
         let lastDateTs = null;
         let lastInsertedNode = null;
-        
+        let newBubblesThisPass = 0; // counts new bubbles for entrance stagger
+
         for (const msg of chatState.messages) {
             // Handle date divider insertion
             if (lastDateTs === null || !sameDay(lastDateTs, msg.timestamp)) {
@@ -1468,6 +1482,18 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Create new bubble and append after last node
                 const bubble = createBubble(msg);
+                // Entrance animation: spring pop from the sender's side. On the very first
+                // reconcile (history restore) bubbles cascade with a small stagger.
+                const staggerIdx = newBubblesThisPass;
+                newBubblesThisPass++;
+                if (!chatInitialStaggerDone) {
+                    bubble.style.animationDelay = Math.min(staggerIdx * 40, 320) + 'ms';
+                }
+                bubble.classList.add('bubble-enter');
+                bubble.addEventListener('animationend', () => {
+                    bubble.classList.remove('bubble-enter');
+                    bubble.style.animationDelay = '';
+                }, { once: true });
                 chatState.renderedIds.set(msg.id, bubble);
                 if (lastInsertedNode) {
                     lastInsertedNode.insertAdjacentElement('afterend', bubble);
@@ -1477,6 +1503,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 lastInsertedNode = bubble;
             }
         }
+
+        // After the first pass, future messages enter instantly (no stagger)
+        chatInitialStaggerDone = true;
 
         // Get typing bubble to keep it at bottom
         const typingBubble = chatMessages.querySelector('.typing-indicator-bubble');
@@ -1492,9 +1521,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Update an existing bubble's mutable parts without re-creating it
     function updateBubble(bubble, msg) {
-        const isBhatari = msg.sender === 'Bhatari';
-        // Preserve 'has-media' so pending→confirmed acks don't strip media styling or reload media
-        bubble.className = `chat-bubble ${isBhatari ? 'left' : 'right'}${msg.pending ? ' pending' : ''}${msg.media ? ' has-media' : ''}`;
+        // Preserve 'has-media' so pending→confirmed acks don't strip media styling or reload media.
+        // bubbleClassName() re-derives grouping classes so run changes don't require a rebuild.
+        bubble.className = bubbleClassName(msg);
 
         // Skip text update if currently being edited by user
         const isBeingEdited = chatState.editingMessageId === msg.id;
@@ -1540,13 +1569,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Shared class list for a message bubble (grouping classes activate CSS at style.css)
+    function bubbleClassName(message, extra = '') {
+        const isBhatari = message.sender === 'Bhatari';
+        const hasMedia = !!(message.media && (message.media.type === 'image' || message.media.type === 'video'));
+        let cls = `chat-bubble ${isBhatari ? 'left' : 'right'}`;
+        if (message.pending) cls += ' pending';
+        if (hasMedia) cls += ' has-media';
+        if (message.groupStart !== undefined) cls += message.groupStart ? ' grouped-start' : ' grouped-mid';
+        if (message.groupEnd) cls += ' grouped-end';
+        return cls + extra;
+    }
+
     // ─── Create Bubble ────────────────────────────────────
     function createBubble(message) {
         const bubble = document.createElement('div');
-        const isBhatari = message.sender === 'Bhatari';
         const hasText  = !!(message.text && message.text.trim());
         const hasMedia = !!(message.media && (message.media.type === 'image' || message.media.type === 'video'));
-        bubble.className = `chat-bubble ${isBhatari ? 'left' : 'right'}${message.pending ? ' pending' : ''}${hasMedia ? ' has-media' : ''}`;
+        bubble.className = bubbleClassName(message);
         bubble.dataset.id = message.id;
 
         // Sender label
@@ -2168,8 +2208,11 @@ document.addEventListener('DOMContentLoaded', () => {
         img.addEventListener('error', () => {
             showMediaErrorIn(wrap, 'image', () => { wrap.replaceWith(buildImageMedia(message)); });
         });
+        // Fade in on load — the reserved aspect-ratio box prevents layout jump
+        img.addEventListener('load', () => { img.classList.add('loaded'); });
         img.addEventListener('click', e => { e.stopPropagation(); openLightbox(full || thumb, img.alt); });
         img.src = thumb;
+        if (img.complete && img.naturalWidth > 0) img.classList.add('loaded'); // cache-hit path
         wrap.appendChild(img);
         return wrap;
     }
