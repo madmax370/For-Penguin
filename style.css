@@ -2275,7 +2275,7 @@ a.chat-link {
 /* Input Bar - Premium Fixed Bottom */
 .chat-input-bar {
     flex-shrink: 0;
-    padding: var(--chat-spacing-sm) var(--chat-spacing-md) calc(var(--chat-spacing-sm) + env(safe-area-inset-bottom, 0px));
+    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
     background: rgba(26, 15, 46, 0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -2290,12 +2290,12 @@ a.chat-link {
 /* Modern Chat Input - Premium Auto-expanding Pill */
 .chat-input {
     flex: 1;
-    min-height: 52px;
+    min-height: 44px;
     max-height: 140px;
-    padding: 1rem 1.5rem;
+    padding: 0.65rem 1.1rem;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
     border: 2px solid rgba(199, 125, 255, 0.3);
-    border-radius: 32px;
+    border-radius: 26px;
     font-family: 'Outfit', sans-serif;
     font-size: 1rem; /* Prevents iOS zoom */
     color: rgba(255, 255, 255, 0.98);
@@ -2340,14 +2340,14 @@ a.chat-link {
 /* Mobile optimization for chat input */
 @media (max-width: 768px) {
     .chat-input {
-        min-height: 48px;
-        padding: 0.85rem 1.1rem;
-        border-radius: 26px;
+        min-height: 44px;
+        padding: 0.6rem 1rem;
+        border-radius: 24px;
         font-size: 1rem; /* Prevents zoom on iOS */
     }
     
     .chat-input-bar {
-        padding: 0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+        padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
         gap: 0.5rem;
     }
     
@@ -2512,12 +2512,12 @@ a.chat-link {
     }
     
     .chat-input-bar {
-        padding: 0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+        padding: 0.5rem 0.65rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
     }
     
     .chat-input {
-        padding: 0.65rem 0.9rem;
-        font-size: 0.9rem;
+        padding: 0.55rem 0.85rem;
+        font-size: 0.95rem;
     }
     
     .chat-send-btn {
