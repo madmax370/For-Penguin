@@ -52,6 +52,9 @@ html, body {
     margin: 0;
     padding: 0;
     overflow-x: hidden;
+    /* Kill Android/iOS elastic page overscroll: the whole fixed chat scene
+       must never be dragged by a swipe that starts on the input bar */
+    overscroll-behavior: none;
     position: relative;
     background-color: var(--bg-dark);
     color: var(--text-main);
@@ -1917,6 +1920,7 @@ body::-webkit-scrollbar {
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(199, 125, 255, 0.15);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    touch-action: none; /* gestures on the header must never reach the page scroller */
     z-index: 10;
     display: flex;
     align-items: center;
