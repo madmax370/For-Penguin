@@ -8,10 +8,10 @@
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐧</text></svg>">
     <meta name="description" content="A special birthday surprise for my bestfriend">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Caveat:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=1.0.3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=1.0.5">
 </head>
 
 <body>
@@ -75,8 +75,10 @@
                         <div class="ladder-clip"></div>
                         <div class="ladder-img-container">
                             <picture>
-                                <source srcset="images/image1.webp" type="image/webp">
-                                <img src="images/image1.png" alt="Childhood" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
+                                <source type="image/webp"
+                                    srcset="images/image1-640.webp 640w, images/image1.webp 1260w"
+                                    sizes="(max-width: 480px) 85vw, 340px">
+                                <img src="images/image1.jpg" alt="Childhood" width="800" height="1143" loading="eager" decoding="async" fetchpriority="high" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
                             </picture>
                         </div>
                         <div class="ladder-caption">
@@ -91,8 +93,10 @@
                         <div class="ladder-clip"></div>
                         <div class="ladder-img-container">
                             <picture>
-                                <source srcset="images/image2.webp" type="image/webp">
-                                <img src="images/image2.png" alt="Growing up" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
+                                <source type="image/webp"
+                                    srcset="images/image2-640.webp 640w, images/image2.webp 1400w"
+                                    sizes="(max-width: 480px) 85vw, 340px">
+                                <img src="images/image2.jpg" alt="Growing up" width="800" height="920" loading="eager" decoding="async" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
                             </picture>
                         </div>
                         <div class="ladder-caption">
@@ -107,8 +111,10 @@
                         <div class="ladder-clip"></div>
                         <div class="ladder-img-container">
                             <picture>
-                                <source srcset="images/image3.webp" type="image/webp">
-                                <img src="images/image3.png" alt="Recent" loading="lazy" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
+                                <source type="image/webp"
+                                    srcset="images/image3-640.webp 640w, images/image3.webp 864w"
+                                    sizes="(max-width: 480px) 85vw, 340px">
+                                <img src="images/image3.jpg" alt="Recent" width="800" height="1111" loading="eager" decoding="async" onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=\'color:#fff; font-size:0.9rem;\'>Image unavailable 💜</span>'">
                             </picture>
                         </div>
                         <div class="ladder-caption">
@@ -356,10 +362,8 @@ You</p>
         </div>
     </div>
 
-    <!-- Firebase SDK (compat) -->
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-    <script src="script.js?v=1.0.3"></script>
+    <!-- Firebase is loaded only when Chat opens (see ensureFirebase in script.js) -->
+    <script src="script.js?v=1.0.5"></script>
 </body>
 
 </html>

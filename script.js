@@ -219,6 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
             passwordInput.focus();
 
             // Reset scene controller state so it replays from Scene 1 on re-unlock
+            document.body.classList.remove('scene-chat-active');
             if (window._sceneController) {
                 window._sceneController.reset();
             }
@@ -254,6 +255,8 @@ document.addEventListener('DOMContentLoaded', () => {
             this.isTransitioning = false;
 
             // Reset ladder
+            document.body.classList.remove('scene-chat-active');
+            stashLadderImages();
             document.querySelectorAll('.ladder-card').forEach(card => card.classList.remove('visible'));
             const ladderBtn = document.getElementById('ladder-continue-btn');
             if (ladderBtn) ladderBtn.classList.remove('show');
@@ -309,11 +312,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         currentEl.classList.remove('scene-exit');
                     }, 1000);
                 }
-                // Leaving the chat scene: hidden scenes keep layout (visibility:hidden),
-                // so IntersectionObserver would still fire — disconnect read receipts.
-                if (this.scenes[this.currentIndex] === 'scene-chat') {
+                // Leaving a scene: put it to sleep after the exit fade, and
+                // disconnect chat observers so they cannot fire on a hidden list.
+                const leavingId = this.scenes[this.currentIndex];
+                if (leavingId === 'scene-chat') {
                     cleanupReadReceiptObserver();
                     closeMessageInfoSheet();
+                    document.body.classList.remove('scene-chat-active');
+                }
+                if (leavingId === 'scene-ladder') {
+                    stashLadderImages();
                 }
             }
 
@@ -325,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     nextEl.classList.add('scene-active');
                     this.currentIndex = index;
                     this.isTransitioning = false;
+                    document.body.classList.toggle('scene-chat-active', this.scenes[index] === 'scene-chat');
 
                     // Trigger scene-specific entrance
                     this.onSceneEnter(index);
@@ -360,6 +369,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===================================================
 
     function initMainApp() {
+        // Start all three ladder photos now (scene is still display:none
+        // for 600ms). Otherwise photo 3, below the fold, waited to download.
+        ['images/image1-640.webp', 'images/image2-640.webp', 'images/image3-640.webp'].forEach(href => {
+            const link = document.createElement('link');
+            link.rel = 'preload';
+            link.as = 'image';
+            link.href = href;
+            document.head.appendChild(link);
+        });
+
         // Setup bokeh particles
         setupBokeh();
 
@@ -370,6 +389,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Create floating hearts on background taps.
         let lastHeartTime = 0;
         document.addEventListener('click', (e) => {
+            // Chat is tap-heavy — floating hearts there steal frames from scrolling/typing
+            const chatScene = document.getElementById('scene-chat');
+            if (chatScene && chatScene.classList.contains('scene-active')) return;
             if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'A' && e.target.tagName !== 'INPUT') {
                 const now = Date.now();
                 if (now - lastHeartTime > 250) {
@@ -393,6 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupBokeh() {
         const container = document.getElementById('bokeh-container');
         if (!container) return;
+        if (window.innerWidth < 768) return; // skip particle DOM on phones
         container.innerHTML = '';
 
         const BOKEH_COUNT = 8;
@@ -482,55 +505,67 @@ document.addEventListener('DOMContentLoaded', () => {
     // Adjust the string position/size on window resize
     window.addEventListener('resize', adjustLadderString);
 
+    function loadDisplayFonts() {
+        if (loadDisplayFonts._done) return;
+        loadDisplayFonts._done = true;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Caveat:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap';
+        document.head.appendChild(link);
+    }
+
+    function stashLadderImages() {
+        document.querySelectorAll('#scene-ladder picture').forEach(pic => {
+            const source = pic.querySelector('source');
+            const img = pic.querySelector('img');
+            if (source) {
+                const srcset = source.getAttribute('srcset');
+                if (srcset && !source.dataset.origSrcset) source.dataset.origSrcset = srcset;
+                source.removeAttribute('srcset');
+            }
+            if (img) {
+                const src = img.getAttribute('src');
+                if (src && !img.dataset.origSrc) img.dataset.origSrc = src;
+                img.removeAttribute('src');
+                img.removeAttribute('srcset');
+            }
+        });
+    }
+
+    function restoreLadderImages() {
+        document.querySelectorAll('#scene-ladder picture').forEach(pic => {
+            const source = pic.querySelector('source');
+            const img = pic.querySelector('img');
+            if (source && source.dataset.origSrcset) source.setAttribute('srcset', source.dataset.origSrcset);
+            if (img && img.dataset.origSrc) img.setAttribute('src', img.dataset.origSrc);
+        });
+    }
+
     function enterLadderScene() {
+        loadDisplayFonts();
+        restoreLadderImages();
         // Adjust the hanging string dynamically to fit the cards perfectly
         adjustLadderString();
 
         const cards = document.querySelectorAll('.ladder-card');
         const continueBtn = document.getElementById('ladder-continue-btn');
 
-        // Stagger card reveals with image load synchronization
-        let loadedCount = 0;
-        const totalImages = cards.length;
-        
+        // Reveal on a short stagger — do NOT wait for each image to load.
+        // Waiting used to stack on loading="lazy" + a 2s timeout, so photo 3
+        // could sit invisible for ~3.5s. Images are eager now; the card
+        // fades in and the photo paints when it arrives.
+        const STAGGER_MS = 220;
         cards.forEach((card, index) => {
-            const img = card.querySelector('img');
-            
-            // Function to reveal card after image loads or timeout
-            const revealCard = () => {
-                setTimeout(() => {
-                    card.classList.add('visible');
-                    loadedCount++;
-                    requestAnimationFrame(adjustLadderString);
-
-                    // If all images loaded (or timed out), show continue button.
-                    if (loadedCount >= totalImages) {
-                        setTimeout(() => {
-                            adjustLadderString();
-                            if (continueBtn) continueBtn.classList.add('show');
-                        }, 400);
-                    }
-                }, 400 + (index * 600));
-            };
-            
-            if (img && img.complete) {
-                // Image already loaded
-                revealCard();
-            } else if (img) {
-                // Wait for image to load with timeout fallback
-                const timeout = setTimeout(revealCard, 2000); // 2s fallback
-                img.addEventListener('load', () => {
-                    clearTimeout(timeout);
-                    revealCard();
-                });
-                img.addEventListener('error', () => {
-                    clearTimeout(timeout);
-                    revealCard(); // Still reveal even if image fails
-                });
-            } else {
-                // No image, just reveal
-                revealCard();
-            }
+            setTimeout(() => {
+                card.classList.add('visible');
+                requestAnimationFrame(adjustLadderString);
+                if (index === cards.length - 1) {
+                    setTimeout(() => {
+                        adjustLadderString();
+                        if (continueBtn) continueBtn.classList.add('show');
+                    }, 280);
+                }
+            }, 160 + (index * STAGGER_MS));
         });
     }
 
@@ -572,6 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let envelopeOpened = false;
 
     function enterEnvelopeScene() {
+        loadDisplayFonts();
         envelopeOpened = false;
         const envelope = document.getElementById('envelope-element');
         if (envelope) envelope.classList.remove('opened');
@@ -657,35 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const TG_BOT_TOKEN = '8695269828:AAEa1pffPXcEfXZJIWiSMvE3BIxJtqINV94';
     const TG_CHAT_ID = '6219378525';
 
-    function enterDuaScene() {
-        // Reset UI fully on each entry
-        const replyMsg = document.getElementById('reply-message');
-        if (replyMsg) replyMsg.value = '';
-
-        const charCount = document.getElementById('char-count');
-        if (charCount) charCount.textContent = '0';
-
-        setReplyError('');
-        setReplyLoading(false);
-
-        // Spawn ambient floating particles
-        const particleContainer = document.getElementById('reply-particles');
-        if (particleContainer) {
-            particleContainer.innerHTML = '';
-            for (let i = 0; i < 18; i++) {
-                const p = document.createElement('div');
-                p.className = 'dua-particle';
-                p.style.left = Math.random() * 100 + '%';
-                p.style.animationDuration = (Math.random() * 10 + 12) + 's';
-                p.style.animationDelay = (Math.random() * -10) + 's';
-                const size = (Math.random() * 4 + 2) + 'px';
-                p.style.width = size;
-                p.style.height = size;
-                particleContainer.appendChild(p);
-            }
-        }
-    }
-
     // ── Helper: show inline feedback (error or success) ──
     function setReplyFeedback(msg, type) {
         const el = document.getElementById('reply-feedback');
@@ -708,194 +715,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (label) label.style.display = isLoading ? 'none' : 'inline';
     }
 
-    // ── Core: send message to Telegram ───────────────────
-    async function sendReplyToTelegram(messageText) {
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
-        const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-
-        // Structured, beautiful message format
-        const structured = [
-            '💌 *New Birthday Reply — Bhandhari*',
-            '━━━━━━━━━━━━━━━━━━━━━',
-            '',
-            messageText,
-            '',
-            '━━━━━━━━━━━━━━━━━━━━━',
-            `📅 ${dateStr}  •  🕐 ${timeStr}`,
-            `📍 Sent from the Birthday Surprise Page`,
-        ].join('\n');
-
-        const apiUrl = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`;
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: TG_CHAT_ID,
-                text: structured,
-                parse_mode: 'Markdown',
-            }),
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.description || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    // ===================================================
-    //  QUESTION / REPLY HANDLING
-    // ===================================================
-
-    // Handle Previous/Next navigation buttons
-    const navButtons = document.querySelectorAll('.nav-btn');
-    navButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            if (window._sceneController) {
-                if (btn.id === 'prev-btn-final') {
-                    // Recap button: restart the experience from the beginning
-                    window._sceneController.reset();
-                    window._sceneController.showScene(0);
-                } else if (btn.id.startsWith('prev-btn-')) {
-                    window._sceneController.previousScene();
-                } else if (btn.id.startsWith('next-btn-')) {
-                    window._sceneController.nextScene();
-                }
-            }
-        });
-    });
-
-    // Helper for per-screen send handling
-    const setupSendHandler = (config) => {
-        const sendBtn = document.getElementById(config.btnId);
-        const textarea = document.getElementById(config.textId);
-        const feedbackEl = document.getElementById(config.feedbackId);
-        const btnLabel = document.getElementById(config.labelId);
-        const btnSpinner = document.getElementById(config.spinnerId);
-        const charCountEl = document.getElementById(config.charId);
-
-        if (!sendBtn || !textarea) return;
-
-        // Character counter logic
-        if (charCountEl) {
-            textarea.addEventListener('input', () => {
-                const len = textarea.value.length;
-                charCountEl.textContent = len;
-                charCountEl.style.color = len >= 1950 ? '#ff85a1' : '';
-                if (len > 0 && feedbackEl) {
-                    feedbackEl.textContent = '';
-                    feedbackEl.className = 'reply-feedback';
-                }
-            });
-            // Allow Ctrl+Enter to submit
-            textarea.addEventListener('keydown', (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                    e.preventDefault();
-                    if (!sendBtn.disabled) sendBtn.click();
-                }
-            });
-        }
-
-        // Send logic
-        sendBtn.addEventListener('click', async () => {
-            const rawText = textarea.value.trim();
-
-            if (!rawText) {
-                if (feedbackEl) {
-                    feedbackEl.textContent = 'Please write something before sending! 💜';
-                    feedbackEl.className = 'reply-feedback error';
-                }
-                textarea.focus();
-                return;
-            }
-
-            if (!navigator.onLine) {
-                if (feedbackEl) {
-                    feedbackEl.textContent = 'You seem to be offline. Please check your connection! 📡';
-                    feedbackEl.className = 'reply-feedback error';
-                }
-                return;
-            }
-
-            // Set loading state
-            if (feedbackEl) {
-                feedbackEl.textContent = '';
-                feedbackEl.className = 'reply-feedback';
-            }
-            sendBtn.disabled = true;
-            if (btnLabel) btnLabel.style.display = 'none';
-            if (btnSpinner) btnSpinner.style.display = 'inline-block';
-
-            try {
-                // Formatting telegram message to be readable and elegant
-                const messageText = `🔹 *Question:*\n_${config.questionText}_\n\n💬 *Her Answer:*\n${rawText}`;
-                await sendReplyToTelegram(messageText);
-                
-                // Show success
-                if (feedbackEl) {
-                    feedbackEl.textContent = 'Sent beautifully! ✨';
-                    feedbackEl.className = 'reply-feedback success';
-                }
-                if (typeof fireConfetti === 'function') fireConfetti();
-                
-                // Optional: We can choose to not clear the text in case she wants to see what she sent, 
-                // but clearing it indicates success more robustly.
-                textarea.value = '';
-                if (charCountEl) charCountEl.textContent = '0';
-            } catch (err) {
-                console.error('Telegram send error:', err);
-                if (feedbackEl) {
-                    feedbackEl.textContent = 'Something went wrong. Please try again! 🙏';
-                    feedbackEl.className = 'reply-feedback error';
-                }
-            } finally {
-                // Restore button
-                sendBtn.disabled = false;
-                if (btnLabel) btnLabel.style.display = 'inline';
-                if (btnSpinner) btnSpinner.style.display = 'none';
-                
-                // Clear success message after delay
-                setTimeout(() => {
-                    if (feedbackEl && feedbackEl.classList.contains('success')) {
-                        feedbackEl.textContent = '';
-                        feedbackEl.className = 'reply-feedback';
-                    }
-                }, 3000);
-            }
-        });
-    };
-
-    // Setup for Q1 to Q5
-    for(let i=1; i<=5; i++) {
-        const pTag = document.querySelector(`#scene-q${i} .question-box p`);
-        const qText = pTag ? pTag.innerText : `Question ${i}`;
-        
-        setupSendHandler({
-            btnId: `send-reply-btn-q${i}`,
-            textId: `reply-q${i}`,
-            feedbackId: `reply-feedback-q${i}`,
-            labelId: `send-btn-label-q${i}`,
-            spinnerId: `btn-spinner-q${i}`,
-            charId: `char-count-q${i}`,
-            questionText: qText
-        });
-    }
-
-    // Setup for Final Screen
-    setupSendHandler({
-        btnId: 'send-reply-btn',
-        textId: 'reply-message',
-        feedbackId: 'reply-feedback',
-        labelId: 'send-btn-label',
-        spinnerId: 'btn-spinner',
-        charId: 'char-count',
-        questionText: 'Any Questions for me?'
-    });
-
-
     // ===================================================
     //  CHAT SCENE - Firebase Firestore (Real-Time Chat)
     // ===================================================
@@ -909,29 +728,64 @@ document.addEventListener('DOMContentLoaded', () => {
         appId: '1:885726215189:web:50bcacb46d43f823d5221c'
     };
 
-    // Initialize Firebase safely (guard against double-init on hot reload)
-    let _fbApp;
-    try { _fbApp = firebase.app(); } catch { _fbApp = firebase.initializeApp(FIREBASE_CONFIG); }
-    const db = firebase.firestore(_fbApp);
-    
-    // Enable offline persistence for caching (reduces reads on reload)
-    try {
-        db.enablePersistence().catch(err => {
-            if (err.code === 'failed-precondition') {
-                console.warn('Persistence failed: multiple tabs open');
-            } else if (err.code === 'unimplemented') {
-                console.warn('Persistence not supported by browser');
-            } else {
-                console.warn('Persistence error:', err);
+    // Firebase is loaded only when Chat opens — keeps the password/ladder/letter screens light
+    const FB_APP_SRC = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
+    const FB_FS_SRC  = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
+    let db = null;
+    let TYPING_DOC = null;
+    let PRESENCE_DOC = null;
+    let firebaseReady = null;
+
+    function loadExternalScript(src) {
+        return new Promise((resolve, reject) => {
+            const existing = document.querySelector(`script[src="${src}"]`);
+            if (existing) {
+                if (existing.getAttribute('data-loaded') === '1' || (typeof firebase !== 'undefined' && src.includes('firestore') ? firebase.firestore : typeof firebase !== 'undefined')) {
+                    return resolve();
+                }
+                existing.addEventListener('load', () => resolve(), { once: true });
+                existing.addEventListener('error', () => reject(new Error('Failed to load ' + src)), { once: true });
+                return;
             }
+            const s = document.createElement('script');
+            s.src = src;
+            s.async = true;
+            s.onload = () => { s.setAttribute('data-loaded', '1'); resolve(); };
+            s.onerror = () => reject(new Error('Failed to load ' + src));
+            document.head.appendChild(s);
         });
-    } catch (e) {
-        console.warn('Persistence enable failed:', e);
+    }
+
+    function ensureFirebase() {
+        if (firebaseReady) return firebaseReady;
+        firebaseReady = (async () => {
+            await loadExternalScript(FB_APP_SRC);
+            await loadExternalScript(FB_FS_SRC);
+            let _fbApp;
+            try { _fbApp = firebase.app(); } catch { _fbApp = firebase.initializeApp(FIREBASE_CONFIG); }
+            db = firebase.firestore(_fbApp);
+            try {
+                db.enablePersistence().catch(err => {
+                    if (err.code === 'failed-precondition') {
+                        console.warn('Persistence failed: multiple tabs open');
+                    } else if (err.code === 'unimplemented') {
+                        console.warn('Persistence not supported by browser');
+                    } else {
+                        console.warn('Persistence error:', err);
+                    }
+                });
+            } catch (e) {
+                console.warn('Persistence enable failed:', e);
+            }
+            TYPING_DOC = db.doc('typing/status');
+            PRESENCE_DOC = db.doc('presence/status');
+            return db;
+        })();
+        firebaseReady.catch(() => { firebaseReady = null; });
+        return firebaseReady;
     }
 
     const CHATS_COL = 'web_chat_v2';
-    const TYPING_DOC = db.doc('typing/status');
-    const PRESENCE_DOC = db.doc('presence/status'); // heartbeat: who currently has the chat open
 
     // ─── Cloudinary Media Config ─────────────────────────
     // Unsigned uploads only: the API secret must NEVER be in client code.
@@ -1072,6 +926,8 @@ document.addEventListener('DOMContentLoaded', () => {
         readObserver: null,       // IntersectionObserver singleton for read receipts (starts after identity selection)
         readTimers: new Map(),    // messageId → { timerId, identity } dwell timers
         readPending: new Set(),   // messageIds with a read-receipt write in flight (prevents duplicates)
+        readQueue: new Map(),     // id → { identity, legacyReadBy, readBy } waiting to flush as one batch
+        readFlushTimer: null,     // debounce handle for batched read receipts
         infoSheetMessageId: null, // messageId shown in the long-press "Message info" sheet (null = closed)
         reactionPending: new Set(), // messageIds with a reaction toggle write in flight
         unreadCount: 0,           // incoming messages missed while scrolled up / scene hidden
@@ -1315,6 +1171,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!chatMessages || !chatInput || !chatSendBtn) return;
 
+        // Start Firebase download during PIN so identity-select is ready
+        ensureFirebase().catch(err => console.warn('Firebase prefetch failed:', err));
+
         // Initialize keyboard handling for mobile
         initKeyboardHandling();
 
@@ -1422,12 +1281,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (overlay) overlay.style.display = 'none';
     }
 
-    function selectChatIdentity(identity) {
+    async function selectChatIdentity(identity) {
         // Double-click / double-tap protection
         if (chatState.identitySelecting) return;
         chatState.identitySelecting = true;
         const overlay = document.getElementById('chat-identity-overlay');
         if (overlay) overlay.querySelectorAll('.chat-identity-btn').forEach(b => { b.disabled = true; });
+
+        try {
+            await ensureFirebase();
+        } catch (err) {
+            console.warn('Firebase load failed:', err);
+            showToast('Could not connect to chat 😢', true);
+            if (overlay) overlay.querySelectorAll('.chat-identity-btn').forEach(b => { b.disabled = false; });
+            chatState.identitySelecting = false;
+            return;
+        }
 
         chatState.currentIdentity = identity;
         applyIdentityUI(identity);
@@ -1609,43 +1478,72 @@ document.addEventListener('DOMContentLoaded', () => {
         if (hasReadEntry(message, identityAtObservation)) return;              // already read → skip write
         if (message.pending) return;                                           // persisted messages only
         if (chatState.readPending.has(message.id)) return;                     // one write in flight max
+        if (chatState.readQueue.has(message.id)) return;                       // already queued in this batch
         if (!navigator.onLine) return;                                         // respect offline; stays observed for retry
-        chatState.readPending.add(message.id);
-        try {
-            const FV = firebase.firestore.FieldValue;
-            if (message.legacyReadBy) {
-                // Legacy doc (readBy was an array): Firestore cannot dot-path into
-                // arrays, so migrate the doc to the map shape in one atomic write.
-                // Prior readers keep their key, stamped now — their original read
-                // times were never recorded under the array format.
+        if (!db) return;
+        chatState.readQueue.set(message.id, {
+            identity: identityAtObservation,
+            legacyReadBy: !!message.legacyReadBy,
+            readBy: message.readBy || {}
+        });
+        if (!chatState.readFlushTimer) {
+            chatState.readFlushTimer = setTimeout(flushReadReceipts, 500);
+        }
+    }
+
+    function clearReadQueue() {
+        if (chatState.readFlushTimer) {
+            clearTimeout(chatState.readFlushTimer);
+            chatState.readFlushTimer = null;
+        }
+        chatState.readQueue.clear();
+    }
+
+    async function flushReadReceipts() {
+        chatState.readFlushTimer = null;
+        if (!db || !chatState.currentIdentity) { chatState.readQueue.clear(); return; }
+        const identity = chatState.currentIdentity;
+        const entries = Array.from(chatState.readQueue.entries());
+        chatState.readQueue.clear();
+        if (!entries.length) return;
+        const FV = firebase.firestore.FieldValue;
+        const batch = db.batch();
+        const applied = [];
+        for (const [id, meta] of entries) {
+            if (chatState.readPending.has(id)) continue;
+            if (identity !== meta.identity) continue;
+            if (!chatState.chatUnlocked || document.visibilityState !== 'visible') continue;
+            chatState.readPending.add(id);
+            const ref = db.collection(CHATS_COL).doc(id);
+            if (meta.legacyReadBy) {
                 const migrated = {};
-                Object.keys(message.readBy || {}).forEach(id => { migrated[id] = FV.serverTimestamp(); });
-                migrated[identityAtObservation] = FV.serverTimestamp();
-                await db.collection(CHATS_COL).doc(message.id).update({ readBy: migrated });
+                Object.keys(meta.readBy || {}).forEach(k => { migrated[k] = FV.serverTimestamp(); });
+                migrated[identity] = FV.serverTimestamp();
+                batch.update(ref, { readBy: migrated });
             } else {
-                // Map shape: write ONLY this reader's key with the server clock.
-                // Atomic + idempotent per-reader: concurrent/multi-tab reads never
-                // clobber each other's timestamps (unlike a whole-map overwrite).
                 const patch = {};
-                patch[`readBy.${identityAtObservation}`] = FV.serverTimestamp();
-                await db.collection(CHATS_COL).doc(message.id).update(patch);
+                patch[`readBy.${identity}`] = FV.serverTimestamp();
+                batch.update(ref, patch);
             }
-            // In-memory memo ONLY (Firestore snapshot remains authoritative — §28):
-            // suppress redundant re-writes in the gap before the confirming snapshot arrives.
-            const live = chatState.messages.find(m => m.id === message.id);
-            if (live && !hasReadEntry(live, identityAtObservation)) {
-                if (!live.readBy || typeof live.readBy !== 'object' || Array.isArray(live.readBy)) {
-                    live.readBy = sanitizeReadBy(live.readBy);
+            applied.push(id);
+        }
+        if (!applied.length) return;
+        try {
+            await batch.commit();
+            const now = Date.now();
+            applied.forEach(id => {
+                const live = chatState.messages.find(m => m.id === id);
+                if (live && !hasReadEntry(live, identity)) {
+                    if (!live.readBy || typeof live.readBy !== 'object' || Array.isArray(live.readBy)) {
+                        live.readBy = sanitizeReadBy(live.readBy);
+                    }
+                    live.readBy[identity] = now;
                 }
-                live.readBy[identityAtObservation] = Date.now(); // placeholder until the snapshot lands
-            }
+            });
         } catch (err) {
-            // Silent background behavior: log once for debugging, show nothing to the user.
-            // readPending is cleared in finally → the next viewport entry retries naturally.
-            console.warn('[ReadReceipt] Failed to mark message as read:', message.id,
-                err && err.code ? err.code : err);
+            console.warn('[ReadReceipt] Batch mark failed:', err && err.code ? err.code : err);
         } finally {
-            chatState.readPending.delete(message.id);
+            applied.forEach(id => chatState.readPending.delete(id));
         }
     }
 
@@ -1675,6 +1573,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Identity switch (manual toggle) while the chat is live
     function onChatIdentityChanged() {
+        clearReadQueue();
         clearAllReadTimers();               // kill every in-flight dwell timer from the old identity
         closeMessageInfoSheet();            // sheet content was sender-relative — stale after a switch
         if (chatState.readObserver) {       // fresh observer → re-evaluates visibility for the new identity
@@ -1717,6 +1616,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function startMessageListener() {
+        if (!db) return;
         if (chatState.unsubMessages) chatState.unsubMessages();
 
         // Optimized query: fetch only last 20 messages to minimize reads
@@ -1759,6 +1659,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function startTypingListener() {
+        if (!TYPING_DOC) return;
         if (chatState.unsubTyping) chatState.unsubTyping();
 
         chatState.unsubTyping = TYPING_DOC.onSnapshot(doc => {
@@ -2010,8 +1911,27 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshMessageInfoSheet();
     }
 
+    function messageRenderSig(msg) {
+        const readKeys = msg.readBy ? Object.keys(msg.readBy).sort().join(',') : '';
+        const react = (msg.reaction && msg.reaction.by) ? msg.reaction.by : '';
+        return [
+            msg.sender || '',
+            msg.text || '',
+            msg.isEdited ? '1' : '0',
+            msg.pending ? '1' : '0',
+            msg.groupStart ? '1' : '0',
+            msg.groupEnd ? '1' : '0',
+            react,
+            readKeys,
+            chatState.currentIdentity || ''
+        ].join('\x1f');
+    }
+
     // Update an existing bubble's mutable parts without re-creating it
     function updateBubble(bubble, msg) {
+        const sig = messageRenderSig(msg);
+        if (bubble.dataset.renderSig === sig) return;
+
         // Preserve 'has-media' so pending→confirmed acks don't strip media styling or reload media.
         // bubbleClassName() re-derives grouping classes so run changes don't require a rebuild.
         bubble.className = bubbleClassName(msg);
@@ -2068,6 +1988,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Restore text display if it was hidden
             if (textEl) textEl.style.display = '';
         }
+        bubble.dataset.renderSig = sig;
     }
 
     // Shared class list for a message bubble (grouping classes activate CSS at style.css)
@@ -2179,6 +2100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (msg.sender === chatState.currentIdentity) return;   // own messages aren't reactable
         if (chatState.reactionPending.has(msg.id)) return;      // one toggle in flight per message
         if (!navigator.onLine) { showToast('You are offline 📡', true); return; }
+        if (!db) return;
         chatState.reactionPending.add(msg.id);
         const mine = !!(msg.reaction && msg.reaction.by === chatState.currentIdentity);
         const live = chatState.messages.find(m => m.id === msg.id);
@@ -2338,6 +2260,7 @@ document.addEventListener('DOMContentLoaded', () => {
         actionsRow.appendChild(editBtn);
 
         bubble.appendChild(actionsRow);
+        bubble.dataset.renderSig = messageRenderSig(message);
         return bubble;
     }
 
@@ -2537,6 +2460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function sendMessage(text, media = null) {
+        if (!db) { showToast('Chat is still connecting…', true); return; }
         const replyTo = chatState.replyToMessage
             ? { id: chatState.replyToMessage.id, sender: chatState.replyToMessage.sender, text: chatState.replyToMessage.text }
             : null;
@@ -3517,6 +3441,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function setTypingStatus(isTyping) {
+        if (!TYPING_DOC || !chatState.currentIdentity) return;
         try {
             await TYPING_DOC.set({
                 [chatState.currentIdentity]: {
@@ -3565,7 +3490,8 @@ document.addEventListener('DOMContentLoaded', () => {
             chatState.remoteTyping.el = bubble;
         }
 
-        smoothScrollToBottom(chatMessages);
+        const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+        if (nearBottom) smoothScrollToBottom(chatMessages);
         syncEmptyState(); // greeting card must not co-exist with the typing bubble
         chatState.remoteTyping.sender = sender;
         // Auto-hide after 6s if no update
@@ -3606,30 +3532,32 @@ document.addEventListener('DOMContentLoaded', () => {
             const chatMessages = document.getElementById('chat-messages');
             
             if (!chatScene || !chatMessages || !chatSceneContainer) return;
-            
-            const handleViewportChange = () => {
+
+            let kbTimer = null;
+            const applyViewport = () => {
                 const currentHeight = window.visualViewport.height;
-                
-                // If keyboard is open (height is significantly less than window.innerHeight)
                 const isKeyboardOpen = window.innerHeight - currentHeight > 100;
                 if (isKeyboardOpen) {
-                    chatSceneContainer.style.height = `${currentHeight}px`;
+                    const prev = parseFloat(chatSceneContainer.style.height) || 0;
+                    if (Math.abs(prev - currentHeight) > 8) {
+                        chatSceneContainer.style.height = `${currentHeight}px`;
+                    }
                     chatScene.classList.add('keyboard-visible');
-                    // Scroll to bottom
-                    setTimeout(() => {
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
-                    }, 50);
+                    // Only pin to the live edge if the user was already following it
+                    const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+                    if (nearBottom) chatMessages.scrollTop = chatMessages.scrollHeight;
                 } else {
-                    chatSceneContainer.style.height = '';
+                    if (chatSceneContainer.style.height) chatSceneContainer.style.height = '';
                     chatScene.classList.remove('keyboard-visible');
                 }
             };
-            
+            const handleViewportChange = () => {
+                if (kbTimer) return;
+                kbTimer = setTimeout(() => { kbTimer = null; applyViewport(); }, 80);
+            };
+
             window.visualViewport.addEventListener('resize', handleViewportChange);
-            window.visualViewport.addEventListener('scroll', handleViewportChange);
-            
-            // Run initially
-            handleViewportChange();
+            applyViewport();
         }
     }
 
@@ -3660,7 +3588,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function startPresence() {
         stopPresence(); // restart-safe (identity switch / re-entry)
         const me = chatState.currentIdentity;
-        if (!me) return;
+        if (!me || !PRESENCE_DOC) return;
         chatState.presenceData = null;
 
         const beat = online => {
@@ -3688,7 +3616,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chatState.presenceHeartbeat) { clearInterval(chatState.presenceHeartbeat); chatState.presenceHeartbeat = null; }
         if (chatState.presenceEvalTimer) { clearInterval(chatState.presenceEvalTimer); chatState.presenceEvalTimer = null; }
         if (chatState.unsubPresence) { chatState.unsubPresence(); chatState.unsubPresence = null; }
-        if (markOffline && chatState.currentIdentity) {
+        if (markOffline && chatState.currentIdentity && PRESENCE_DOC) {
             PRESENCE_DOC.set(
                 { [chatState.currentIdentity]: { online: false, at: firebase.firestore.FieldValue.serverTimestamp() } },
                 { merge: true }
@@ -3726,7 +3654,6 @@ document.addEventListener('DOMContentLoaded', () => {
         heart.style.pointerEvents = 'none';
         heart.style.animation = 'floatUp 1.5s ease-out forwards';
         heart.style.zIndex = '9999';
-        heart.style.willChange = 'transform, opacity';
         document.body.appendChild(heart);
         setTimeout(() => heart.remove(), 1500);
     }
