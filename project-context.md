@@ -1,9 +1,11 @@
 # Project Context
 
-> **Read receipts note (2026-08-11)**: Identity is no longer defaulted — `chatState.currentIdentity` starts `null`; after Chat PIN success the `#chat-identity-overlay` forces an explicit Bhatari/Bhandhari choice (never persisted; reset to `null` on every privacy re-lock). WhatsApp-style read receipts: message docs carry `readBy: []` (legacy messages without it behave as unread), a single `IntersectionObserver` (70% threshold, 300ms dwell, capped ratio for tall bubbles) watches incoming bubbles, and `markMessageAsRead()` writes with atomic `FieldValue.arrayUnion()` gated on identity/visibility/unlocked/online. Ticks: 🕓 pending → ✓ sent → ✓✓ read (blue). Observer disconnects on scene exit and privacy re-lock; identity switch cancels dwell timers.
-> **Premium polish note (2026-08-11)**: Chat UI/UX polish layer — motion tokens (`--ease-spring`, `--dur-*`), CSS-driven top-pill toast, grouped message runs, side-aware spring bubble entrances, send choreography + haptics, sliding identity glider (`#toggle-glider`), header compress-on-scroll, scroll-to-bottom FAB with unread dot, empty-state card, typing glow breathe, `:focus-visible` rings.
+> **Chat audit & enhancements note (2026-08-24, evening)**: Full chat UI/UX pass plus six new features. **Audit fixes**: typing-indicator fade-reuse bug (element + remove-timer now tracked in `remoteTyping`); duplicate `.chat-quote-box`/`.quote-sender`/`.quote-text` definitions consolidated into one flex layout with `.quote-accent-bar` (pink gradient variant on right bubbles); Shift+Enter inserts newline (Enter still sends); connection status is a floating pill above the input bar (`bottom: calc(100% + 8px)`) that animates on state *change* only — amber "Reconnecting…" persists, green "Connected" blip fades after 1.8s; sticky-touch hovers wrapped in `@media (hover: hover)`; dead code removed (`.chat-reply-btn` CSS, `escapeHtml()`, duplicate `@keyframes lockPulse`, duplicate `.toggle-btn transition`); input auto-resize cap aligned at 140px; Firefox `scrollbar-width/color` on `.chat-messages`/`.chat-input`; focus rings extended to `.msg-info-close`/`.pin-key`; edit textarea forced ≥16px on mobile (iOS zoom); URLs in messages render as safe links via `setTextWithLinks()` (createElement-only, http(s)/www schemes only, trailing punctuation trimmed). **Features**: ① tap a reply quote → `jumpToQuotedMessage()` scrolls the original into view with a `.message-highlight` flash ring (missing target → info toast; keyboard accessible); ② double-tap a received *text* message toggles a 💜 heart reaction (`REACTION_EMOJI` const, stored as `reaction: { by }` via optimistic `update()`, badge via `syncReactionBadge()`, hearts burst via existing `createHeart()`; media bubbles excluded — their tap opens the lightbox); ③ presence dot in header — `PRESENCE_DOC = db.doc('presence/status')` heartbeat every 25s, other side offline if last beat >75s (`PRESENCE_STALE_MS`), hidden tab reports offline, torn down with explicit offline write on privacy re-lock; ④ skeleton shimmer rows render while history first loads (skipped when cache warm, removed on first snapshot/empty chat); ⑤ scroll-FAB dot grew into an unread counter pill (`setUnreadCount()`, caps at "99+"); ⑥ WhatsApp-style "New messages" divider above the first missed message (`firstUnseenId`; missed = arrived while scrolled up OR scene inactive — `engaged = wasAtBottom && scene-active`), cleared on reaching bottom/FAB tap, auto-cleared if it ages out of the last-20 window. The long-press Message-info sheet gained swipe-down-to-close and focus management (✕ focused on open, focus restored on close; same for lightbox). A proposed "Copy text" sheet row was **removed** at owner request.
+
+> **Read receipts note (2026-08-24, readBy map)**: Identity is no longer defaulted — `chatState.currentIdentity` starts `null`; after Chat PIN success the `#chat-identity-overlay` forces an explicit Bhatari/Bhandhari choice (never persisted; reset to `null` on every privacy re-lock). WhatsApp-style read receipts: message docs carry `readBy` as a **map of identity → read-at time** (`{ "Bhatari": Timestamp }`; new sends start `{}`), a single `IntersectionObserver` (70% threshold, 300ms dwell, capped ratio for tall bubbles) watches incoming bubbles, and `markMessageAsRead()` writes with an atomic per-reader dot-path update `readBy.<identity> = FieldValue.serverTimestamp()` gated on identity/visibility/unlocked/online. Legacy docs whose `readBy` is still an array are normalized in-memory by `sanitizeReadBy()` (keys with null timestamps) and migrate to the map shape on first read via a one-time full-map write. Ticks: 🕓 pending → ✓ sent → ✓✓ read (blue). Observer disconnects on scene exit and privacy re-lock; identity switch cancels dwell timers. Long-pressing a sent message opens the glass "Message info" bottom sheet (`#msg-info-overlay`, body level) showing sent time + who read it and when.
+> **Premium polish note (2026-08-11)**: Chat UI/UX polish layer — motion tokens (`--ease-spring`, `--dur-*`), CSS-driven top-pill toast, grouped message runs, side-aware spring bubble entrances, send choreography + haptics, sliding identity glider (`#toggle-glider`), header compress-on-scroll, scroll-to-bottom FAB (now with unread *count*, see the 2026-08-24 note), empty-state card (now synced via `syncEmptyState()` so it never co-exists with the typing bubble), typing glow breathe, `:focus-visible` rings.
 > **Media feature note (2026-08-11)**: Chat now supports image/video attachments uploaded to Cloudinary (unsigned preset `chat_videos`, cloud `dyua5q73q`) and rendered inline via `buildImageMedia`/`buildVideoMedia` (custom lazy video player). See §6 (Firestore Chat System additions), §10 (media field), §13 (Cloudinary constants).
-> **Last verified**: working tree on `test-branch` (latest commit `ac8a5b6`).
+> **Last verified**: working tree with **uncommitted changes** on top of latest commit `8b7df16` (read receipts + identity selection). Line references marked "(~)" are approximate — the file has grown past 3700 lines.
 > This document supersedes all earlier versions and reflects the **current** state of the code (post "duplicate date dividers fix + inline edit crash + keyboard overlap + safe areas + alignment constraints" update).
 
 ---
@@ -181,28 +183,37 @@ Notify: Button click → POST to Telegram Bot API → cooldown countdown → toa
   - PIN keypad click listener attached **exactly once** (guarded by `chatLockOverlayInited`, `script.js:1050`/`1093`) — re-entering the chat scene no longer stacks duplicate handlers
   - On success: hides overlay, shows identity toast ("You are chatting as …", `script.js:1176`)
 
-### Firestore Chat System (`script.js:864-1911`)
-- **Firebase config**: `script.js:867-874` (project `web-app-511d5`)
-- **Collection**: `CHATS_COL = 'web_chat_v2'` (`script.js:896`)
-- **Typing doc**: `TYPING_DOC = db.doc('typing/status')` (`script.js:897`)
-- **Offline persistence**: `db.enablePersistence()` with graceful multi-tab handling (`script.js:881-894`)
+### Firestore Chat System (`script.js` ~928 onward)
+- **Firebase config**: `script.js` (~867) (project `web-app-511d5`)
+- **Collection**: `CHATS_COL = 'web_chat_v2'` (`script.js:~928`)
+- **Typing doc**: `TYPING_DOC = db.doc('typing/status')`
+- **Presence doc**: `PRESENCE_DOC = db.doc('presence/status')` — heartbeat-based online indicator
+- **Offline persistence**: `db.enablePersistence()` with graceful multi-tab handling
 - **Sub-modules**:
-  - `initChatScene()` (`1215-1290`) — wires listeners once, defaults identity to **Bhandhari**
-  - `startMessageListener()` (`1295-1329`) — `orderBy('timestamp','asc').limitToLast(20)` real-time snapshot
-  - `startTypingListener()` (`1331-1357`) — reads `typing/status` doc for the *other* identity, shows/hides typing bubble
-  - `reconcileMessages()` (`1359-1433`) — smart DOM reconciliation with date dividers, no full rebuild
-  - `createBubble()` / `updateBubble()` (`1436-1566`) — bubble rendering incl. reply quote, edited tag, Reply/Edit actions
-  - `startEdit()` / `cancelEdit()` (`1568-1719`) — inline editing of own messages (max 2000 chars)
-  - `handleSend()` / `sendMessage()` (`1720-1748`) — writes to Firestore with `serverTimestamp`; supports media payloads and restores drafts on failure
-  - `handleReply()` / `cancelReply()` (`1751-1769`) — reply preview bar + quote box
-  - **Media attachments** — `initMediaAttachments()` wires 📎 button + hidden file input; `handleAttachmentSelected()` validates type/size/offline; `startAttachmentUpload()` posts to Cloudinary (unsigned preset, XHR progress, `AbortController` cancel, retry); `renderAttachmentStrip()` shows preview strip
-  - **Media rendering** — `buildImageMedia()` (aspect-ratio box, 800px transform, lazy+async, lightbox) and `buildVideoMedia()` (custom player: `preload="none"`, lazy `src`, one-at-a-time, IntersectionObserver auto-pause, rAF progress bar, iOS fullscreen fallback); `showMediaErrorIn()` renders placeholders for broken/non-Cloudinary URLs
-  - **Lightbox** — `openLightbox()`/`closeLightbox()`; overlay lives at body level (scenes use `transform`, which would trap `position:fixed`)
-  - **Sanitization** — `sanitizeMedia()` whitelists/coerces Firestore media objects and rejects non-`res.cloudinary.com` URLs before rendering
-  - Typing in/out (`1774-1803`) — debounced 3s typing heartbeat, 4s reset
-  - Remote typing indicator (`1806-1850`) — auto-hide after 6s
-  - `initKeyboardHandling()` (`1860-1898`) — mobile `visualViewport` listeners attached **exactly once** (guarded by `keyboardHandlingInited`, `script.js:1051`/`1863`)
-  - `updateConnectionStatus()` (`1901-1911`) — "✅ Connected" / "⏳ Reconnecting…"
+  - `initChatScene()` — wires listeners once (`chatSceneInited` guard); identity is NOT defaulted — stays `null` until the post-PIN selector; one-time wiring includes `initMediaAttachments()`, `initMessageInfoSheet()`, `initChatReactions()`, `initHeaderPolish()`, `initIdentitySelector()`
+  - `startMessageListener()` — `orderBy('timestamp','asc').limitToLast(20)` real-time snapshot; maps docs through `sanitizeMedia()` / `sanitizeReaction()` / `sanitizeReadBy()`; sets `legacyReadBy` flag for array-shaped readBy; calls `removeSkeleton()` on first snapshot
+  - `startTypingListener()` — reads `typing/status` doc for the *other* identity, shows/hides typing bubble
+  - **Remote typing robustness** — `showRemoteTypingIndicator()/hideRemoteTypingIndicator()` track the bubble element (`remoteTyping.el`) and its removal timer (`removeTimer`) so rapid stop/start cycles reuse-and-restore instead of leaving an invisible fading bubble
+  - `syncEmptyState()` — greeting card shown only when messages are empty AND no typing bubble exists; shared by reconciliation and both typing functions
+  - `reconcileMessages()` — smart DOM reconciliation: date dividers (stable calendar-day keys), "New messages" divider insertion, grouped runs, receive-glow vs missed-message branching (`engaged = wasAtBottom && scene-active`)
+  - `createBubble()` / `updateBubble()` — bubble rendering incl. tappable reply quote, linkified text (`setTextWithLinks()` + `dataset.raw` change detection), reaction badge (`syncReactionBadge()`), edited tag, Reply/Edit actions, ticks
+  - `jumpToQuotedMessage()` — scrolls quoted original into view + flash ring; toast when target is outside the last-20 window
+  - **Reactions** — `initChatReactions()` delegated double-tap detector (350ms window, per-identity); `reactToMessage()` optimistic toggle write (`reaction: {by}` set / `FieldValue.delete()`); `burstHearts()` reuses global floating hearts
+  - **Read receipts (readBy map)** — see top note; `sanitizeReadBy()` normalizes legacy arrays and Firestore timestamps to ms; `markMessageAsRead()` dot-path writes with `serverTimestamp()`, one-time full-map migration for legacy array docs
+  - **Message info sheet** — long-press (480ms) a sent message → glass bottom sheet with sent time + who read it & when; swipe-down-to-close; focus management; live refresh from snapshots via `refreshMessageInfoSheet()`
+  - `startEdit()` / `cancelEdit()` — inline editing of own messages (max 2000 chars)
+  - `handleSend()` / `sendMessage()` — writes `{sender, text, timestamp: serverTimestamp(), replyTo, isEdited:false, media, readBy:{}}`; restores drafts on failure; Shift+Enter = newline
+  - `handleReply()` / `cancelReply()` — reply preview bar + quote box
+  - **Presence** — `startPresence()/stopPresence()/refreshPresenceDot()`: 25s heartbeat merge-write into `presence/status`, listener + 15s staleness re-evaluation, header `.presence-dot` toggles `.online`; hidden tab beats offline; re-lock does explicit offline write
+  - **Skeleton** — `renderSkeleton()/removeSkeleton()` shimmer shown only when no messages are rendered yet
+  - **Unread/divider state** — `setUnreadCount(n)` (FAB counter pill, 99+ cap) and `clearNewMessagesDivider()`; wired into scroll handler (bottom = seen), FAB click, identity selection, and privacy re-lock teardown
+  - **Media attachments** — `initMediaAttachments()` wires 📎 button + hidden file input; upload pipeline unchanged (Cloudinary unsigned preset, XHR progress, cancel/retry)
+  - **Media rendering** — `buildImageMedia()` / `buildVideoMedia()` / `showMediaErrorIn()` unchanged
+  - **Lightbox** — `openLightbox()/closeLightbox()` now manage focus (store opener, focus ✕ on open, restore on close)
+  - `setTextWithLinks()` — safe URL rendering into bubbles (DOM-built anchors, `rel="noopener noreferrer nofollow"`)
+  - Typing in/out — debounced 3s typing heartbeat, 4s reset
+  - `initKeyboardHandling()` — mobile `visualViewport` listeners attached exactly once
+  - `updateConnectionStatus()` — change-gated status pill above the input bar (green blip fades after 1.8s; amber persists while reconnecting)
 
 ### Telegram Integration (`script.js:620-622`, `904-958`)
 - **Credentials** (hardcoded): `TG_BOT_TOKEN` (`script.js:621`), `TG_CHAT_ID = '6219378525'` (`script.js:622`)
@@ -231,10 +242,17 @@ Notify: Button click → POST to Telegram Bot API → cooldown countdown → toa
 ### Chat Message Flow (Firestore)
 ```
 sendMessage():
-  chatState.replyToMessage → db.collection('web_chat_v2').add({sender, text, timestamp: serverTimestamp(), replyTo, isEdited:false})
+  db.collection('web_chat_v2').add({sender, text, timestamp: serverTimestamp(), replyTo, isEdited:false, media, readBy:{}})
   → onSnapshot fires → reconcileMessages() renders bubble (pending state until server ack)
 incoming:
-  snapshot → parse sender (normalizeSender) → create/update bubble → scroll if near bottom
+  snapshot → parse sender (normalizeSender) → create/update bubble → scroll if engaged
+reactions:
+  double-tap received bubble → optimistic toggle → update({reaction:{by}} | {reaction: FieldValue.delete()})
+read receipts:
+  IntersectionObserver dwell → markMessageAsRead() → dot-path update readBy.<identity>=serverTimestamp()
+presence:
+  identity selected → startPresence() → every 25s merge-write online:true into presence/status
+                     → hidden tab beats offline; other side's beat >75s old → dot gray
 ```
 
 ### Typing Flow
@@ -301,18 +319,27 @@ Password Input → SHA-256 → compare hash
 ### Global State
 - `window._sceneController`: SceneController instance (`script.js:332`)
 
-### Chat State (`chatState`, `script.js:997-1013`)
+### Chat State (`chatState`)
 | Field | Purpose |
 |-------|---------|
-| `currentIdentity` | `'Bhatari'` or `'Bhandhari'` (default Bhandhari) |
-| `messages` | Message array from Firestore snapshot |
-| `unsubMessages` / `unsubTyping` | Firestore unsubscribe functions |
+| `currentIdentity` | `'Bhatari'` or `'Bhandhari'`; starts `null` — forced choice on the post-PIN selector, reset to `null` on every privacy re-lock |
+| `messages` | Message array from Firestore snapshot (normalized: `readBy` map in ms, `reaction {by}`, `legacyReadBy` flag) |
+| `unsubMessages` / `unsubTyping` / `unsubPresence` | Firestore unsubscribe functions |
 | `replyToMessage` | Active reply target `{id, text, sender}` |
 | `lastTypingSentTime` / `typingResetTimer` | Outgoing typing throttling |
-| `remoteTyping` | Remote typing indicator state `{sender, timer}` |
-| `renderedIds` | `Map<id, DOMElement>` for reconciliation |
+| `remoteTyping` | `{ sender, timer, el, removeTimer }` — element + fade timer tracked to prevent invisible-bubble reuse bug |
+| `renderedIds` | `Map<id, DOMElement>` for reconciliation (also used by quote jump) |
 | `editingMessageId` / `editBoxes` | Inline edit tracking |
 | `chatUnlocked`, `pinInput`, `failedAttempts`, `lockoutEndTime` | Chat PIN lock state |
+| `pendingAttachment`, `activeVideo`, `mediaObserver` | Media upload / playback state |
+| `identitySelecting` | Double-click guard for the identity selector |
+| `readObserver`, `readTimers`, `readPending` | Read-receipt observer singleton, dwell timers, writes-in-flight |
+| `infoSheetMessageId` | Message shown in the long-press info sheet (`null` = closed) |
+| `reactionPending` | Message ids with a reaction toggle write in flight |
+| `unreadCount` | Missed incoming messages (drives FAB counter pill) |
+| `firstUnseenId` | Id of first missed message — anchors the "New messages" divider |
+| `presenceData`, `presenceHeartbeat`, `presenceEvalTimer` | Presence snapshot payload + heartbeat/staleness interval handles |
+| `unsubPresence` | Presence doc listener unsubscribe |
 
 ### Password State
 - `failedAttempts`, `lockoutEndTime`, `isLockedOut` (backed by sessionStorage)
@@ -331,10 +358,14 @@ Password Input → SHA-256 → compare hash
 - **Primary**: Firebase Firestore
   - Collection `web_chat_v2`: chat messages
   - Document `typing/status`: real-time typing indicator
+  - Document `presence/status`: presence heartbeats `{ [identity]: { online: bool, at: serverTimestamp } }` (merged writes)
 - **Local**: `sessionStorage` for password lockout; browser cache for static assets
 - **Schema**: Firestore is schemaless; message shape is set by the writer (see §13)
-  - Message doc: `{ sender, text, timestamp, replyTo, isEdited, media }`
+  - Message doc: `{ sender, text, timestamp, replyTo, isEdited, media, readBy, reaction }`
+  - `readBy`: **map** of identity → read-at (`{ "Bhatari": Timestamp }`); new sends start `{}`; legacy array docs migrate on first read
+  - `reaction`: `null | { by: 'Bhatari'|'Bhandhari', at }` — single slot; only the recipient reacts (double-tap toggles)
   - `media`: `null | { type: 'image'|'video', publicId, url, width, height, duration, format, bytes }` — validated by `sanitizeMedia()` on read
+  - `reaction` validated by `sanitizeReaction()` on read
 - **ORM**: None (raw Firestore compat SDK calls)
 
 ---
@@ -348,7 +379,7 @@ None (monolithic frontend application). Shared helpers: `normalizeSender`, `form
 
 **Firebase Firestore** (`script.js:867-894`)
 - **Service**: Google Firebase (project `web-app-511d5`)
-- **Endpoints**: collection `web_chat_v2`; document `typing/status`
+- **Endpoints**: collection `web_chat_v2`; documents `typing/status` and `presence/status`
 - **Authentication**: web API key + Firestore Security Rules (rules not in repo — must be configured in Firebase console)
 - **Error Handling**: snapshot error → `updateConnectionStatus(false)`; persistence errors warn and degrade gracefully
 
@@ -384,8 +415,8 @@ None (monolithic frontend application). Shared helpers: `normalizeSender`, `form
 
 ### Encryption / Validation
 - SHA-256 hashing for password/PIN (obfuscation, not real security)
-- Chat messages rendered via `textContent` (mitigates stored-XSS from message content)
-- Network status checked before sends
+- Chat messages rendered via `textContent`; URL linkification builds anchors with DOM APIs only (no innerHTML), restricted to `http(s)://` / `www.` schemes with `rel="noopener noreferrer nofollow"` — stored-XSS posture unchanged
+- Network status checked before sends and reaction toggles
 
 ### Security-Sensitive Areas
 1. Hardcoded Telegram bot token (real credential; anyone can hijack the bot)
@@ -410,17 +441,21 @@ None. All configuration is hardcoded in `script.js`.
 None.
 
 ### Runtime Configuration (hardcoded)
-- `CORRECT_PASSWORD_HASH` / `CORRECT_PIN_HASH`: `script.js:17` & `1144`
-- `TG_BOT_TOKEN`, `TG_CHAT_ID`: `script.js:621-622`
-- `FIREBASE_CONFIG`: `script.js:867-874`
-- `CHATS_COL = 'web_chat_v2'`: `script.js:896`
-- `CLOUDINARY_CLOUD_NAME = 'dyua5q73q'` / `CLOUDINARY_UPLOAD_PRESET = 'chat_videos'`: `script.js` (~line 903, right after `CHATS_COL`) — unsigned uploads only; API secret must NEVER be in client code
+- `CORRECT_PASSWORD_HASH` / `CORRECT_PIN_HASH`: top of `script.js`
+- `TG_BOT_TOKEN`, `TG_CHAT_ID`: `script.js` (~620)
+- `FIREBASE_CONFIG`: `script.js` (~867)
+- `CHATS_COL = 'web_chat_v2'`, `TYPING_DOC`, `PRESENCE_DOC`: `script.js:~928-930`
+- `CLOUDINARY_CLOUD_NAME = 'dyua5q73q'` / `CLOUDINARY_UPLOAD_PRESET = 'chat_videos'` — unsigned uploads only; API secret must NEVER be in client code
 - Media limits: images ≤ 25 MB, videos ≤ 100 MB
 - Lockout: 3 attempts / 15s (both locks)
 - Notify cooldown: 10s
 - Typing throttle: 3s out / 6s in auto-hide
 - Message cap: 2000 chars (edit input maxLength)
 - Snapshot window: last 20 messages
+- Read receipts: 70% visibility threshold, 300ms dwell (`READ_VISIBILITY_THRESHOLD` / `READ_DWELL_MS`), 0.4 ratio for tall bubbles
+- Long-press info sheet: 480ms hold; double-tap reaction window: 350ms
+- Presence: 25s heartbeat, 75s staleness cutoff
+- Input auto-resize cap: 140px (matches CSS `.chat-input` max-height)
 
 ### Build Configuration
 None (no build process; static files served directly).
@@ -543,9 +578,12 @@ None (no build process; static files served directly).
 ### Decision Logic
 - Lock success → reveal; failure <3 → remaining attempts; ≥3 → lockout
 - Offline → block + overlay; empty message → toast/block
-- Reply target → preview bar; cancel → clears
+- Reply target → preview bar; cancel → clears; tap quote → jump to original (toast if outside last-20 window)
 - Identity toggle → re-render edit-button visibility + notify button visibility
 - Edit unchanged → cancel; save error → re-enable inputs + copy text to clipboard
+- Incoming message: engaged (`wasAtBottom && scene-active`) → haptic + glow; else → unread count++ and anchor "New messages" divider
+- Double-tap received text message → toggle reaction write; own messages long-press → info sheet instead
+- Read receipts: dot-path `serverTimestamp()` write for map docs, full-map migration write for legacy array docs
 
 ---
 
@@ -554,22 +592,25 @@ None (no build process; static files served directly).
 **Confirmed**
 
 ### Technical Debt / Issues
-1. **Hardcoded secrets in client** — Telegram bot token + chat ID, Firebase config, password/PIN hash (`script.js:17, 1129, 621-622, 867-874`)
-2. **Dead code (legacy reply/question system)** — see §21 for the full list
-3. **Latent bug: `charCounter` undefined** — `script.js:1589` references `charCounter` which is never declared; typing in the edit box throws a `ReferenceError` (breaks auto-resize of the edit input)
-4. **Latent bug: wrong class in `updateBubble`** — `script.js:1442` queries `.chat-actions-row`, but bubbles use `.chat-bubble-actions` (`script.js:1523`); edit-button visibility updates there are a no-op (partially compensated by the toggle handler at `1245-1248`)
-5. **Stale comment/logic mismatch** — `script.js:1266` says Bhatari is default, but default identity is Bhandhari (`1219-1220`); notify button hidden on first load even though identity = Bhandhari until the toggle is clicked
-6. **`updateBubble` edit-button check** (`1445`) reads the first `.chat-action-btn` (Reply), not the Edit button — logic never matches
-7. **Orphaned asset** — `songs/song1.mp3` referenced nowhere; empty "MUSIC PLAYER SCENE STYLES" CSS block (`style.css:1873-1877`)
-8. **Dead CSS** — legacy reply-box, question-scene, dua styles remain (`style.css:1321-1872`)
-9. **No automated tests**, no JS linting, no CI
-10. **Re-lock UX**: any tab switch forces full password re-entry and scene reset
-11. **Client-side security theater** — hash-based locks are bypassable via DevTools; Firestore rules are the real enforcement (not in repo)
+1. **Hardcoded secrets in client** — Telegram bot token + chat ID, Firebase config, password/PIN hash (`script.js` top + config block)
+2. **Dead code (legacy reply/question system)** — see §21C/§21D for the full list (chat-scoped dead code was cleaned on 2026-08-24; legacy scene code remains)
+3. **Orphaned asset** — `songs/song1.mp3` referenced nowhere; empty "MUSIC PLAYER SCENE STYLES" CSS block
+4. **Dead CSS** — legacy reply-box, question-scene, dua styles remain (`style.css:1321-1872` region)
+5. **No automated tests**, no JS linting, no CI
+6. **Re-lock UX**: any tab switch forces full password re-entry and scene reset
+7. **Client-side security theater** — hash-based locks are bypassable via DevTools; Firestore rules are the real enforcement (not in repo)
+8. **Rolling history window** — only the last 20 messages load; quote-jump targets older than that show an info toast instead of jumping
 
-### Missing Features (relative to `task.md`)
-- Telegram-based message sync (getUpdates polling, `__TYPING__::` payloads, prefix parsing) was **not implemented** — Firestore was used instead
-- Telegram channel (id `-1003904588299`) from `task.md` is not used by the code
-- Only "Notify Bhatari" (one-direction Telegram push) exists
+### Edge Cases (handled)
+- Multi-tab: `enablePersistence` warns `failed-precondition`
+- Long messages truncated in quote previews (60/70 chars) and edit cap 2000
+- Message send failure → draft text/media restored to composer
+- Timestamp fallback to `Date.now()` when `serverTimestamp` pending
+- Legacy array-shaped `readBy` → normalized with null timestamps, migrated on first read
+- Quote jump to unloaded history → info toast, no crash
+- Rapid typing stop/start → typing bubble reused without going invisible
+- Missed messages while scene hidden or scrolled up → unread count + divider; state wiped on privacy re-lock and fresh identity selection
+- Double-tap detection ignores quotes, action buttons, links, media (each has its own click behavior)
 
 ### Edge Cases
 - Multi-tab: `enablePersistence` warns `failed-precondition`
@@ -656,14 +697,22 @@ None (no build process; static files served directly).
 
 ### Verification Checklist Before Committing
 - [ ] Main password works (4-digit code matching hash)
-- [ ] Chat PIN unlocks chat
+- [ ] Chat PIN unlocks chat; identity selector forces a choice
 - [ ] All 3 scenes + "Jump to Chat" navigate correctly
 - [ ] Messages send/receive in real time across two identities
-- [ ] Reply quoting, inline edit, typing indicators work
+- [ ] Reply quoting works; tapping a quote jumps to the original with flash
+- [ ] Inline edit, typing indicators work (typing bubble survives rapid stop/start)
+- [ ] Double-tap on received text message toggles 💜 reaction (and untoggles)
+- [ ] Long-press own message opens info sheet; swipe-down closes it
+- [ ] Read ticks: 🕓 → ✓ → ✓✓ blue; legacy array readBy docs migrate without errors
+- [ ] Presence dot goes green when other identity is live elsewhere, decays offline
+- [ ] Skeleton shimmer on cold identity selection; not over warm cache
+- [ ] FAB unread counter increments when scrolled up / scene hidden; divider clears at bottom
+- [ ] URLs render as safe links; Shift+Enter newline; Enter sends
 - [ ] Notify Bhatari posts to Telegram + cooldown countdown
-- [ ] Offline overlay + re-lock on tab switch function
-- [ ] Mobile layout (`100dvh`) with keyboard open
-- [ ] No console errors (note `charCounter` ReferenceError on edit typing — pre-existing)
+- [ ] Offline overlay + re-lock on tab switch function (unread/divider/skeleton/presence all reset)
+- [ ] Mobile layout (`100dvh`) with keyboard open; no iOS zoom on inputs
+- [ ] No console errors
 
 ### When in Doubt
 1. Read `instructions.md` first for workflow requirements
@@ -725,6 +774,32 @@ This section documents everything that differs from the previous `project-contex
 5. **iOS Safe Areas and Keyboard overlap fixed** (`script.js` & `style.css`) — Utilized `window.visualViewport.height` to dynamically size `.chat-scene` in pixels on mobile, preventing overlap. Configured `padding-bottom` on `.chat-input-bar` with safe-area calculations, dynamically resetting it when the keyboard is open.
 6. **XSS risk in reply preview resolved** (`script.js`) — Replaced direct `innerHTML` injection with programmatic `document.createElement()` and `textContent` assignments in the reply preview window.
 
+### J. Recent Changes 2026-08-24 (working tree, uncommitted)
+Three working sessions on top of commit `8b7df16`. All verified via `node --check` + CSS brace balance + manual browser pass; **not yet committed** at time of writing.
+
+**Session 1 — readBy map + Message info sheet:**
+1. `readBy` converted from array to map of identity → read-at ms; `markMessageAsRead()` writes atomic per-reader dot-path updates with `FieldValue.serverTimestamp()`; legacy array docs flagged (`legacyReadBy`) and migrated once via full-map write; ticks unchanged.
+2. Long-press (480ms) a sent message → glassmorphism bottom sheet (`#msg-info-overlay`, body level) showing sent time + who read it & when; live-updates from snapshots; closes on backdrop/✕/Escape/re-lock/scene-exit/identity-switch.
+
+**Session 2 — Full chat UI audit (fixes):**
+3. Typing indicator invisible-bubble bug fixed (element + removal timer tracked).
+4. Duplicate quote-box CSS consolidated; double accent stripe removed; pink accent variant for right bubbles.
+5. Shift+Enter = newline; connection status pill rework (change-gated, fades when connected); sticky-touch hovers wrapped in `(hover: hover)`.
+6. Dead code removed: `.chat-reply-btn` CSS, `escapeHtml()`, duplicate `lockPulse`, duplicate `.toggle-btn transition`.
+7. Safe URL linkification in bubbles (`setTextWithLinks`); input cap aligned at 140px; Firefox scrollbars; focus rings extended; edit textarea ≥16px on mobile (iOS zoom); lightbox/sheet focus management; sheet swipe-down-to-close.
+
+**Session 3 — Owner request:** "Copy text" row removed from the info sheet completely.
+
+**Session 4 — Six enhancements:**
+8. Tap quote → jump to original message + flash highlight (`jumpToQuotedMessage`, `.message-highlight`).
+9. Double-tap 💜 reactions on received text messages (`reaction: {by}` field, optimistic toggle, badge + heart burst).
+10. Presence dot in header (`presence/status` doc, 25s heartbeat, 75s staleness).
+11. Skeleton shimmer while history first loads.
+12. FAB unread counter pill (caps "99+").
+13. "New messages" divider anchored at `firstUnseenId`; missed = arrived while scrolled up or scene inactive; cleared at bottom / FAB / re-lock / fresh identity selection.
+
+**Firestore note:** the new `presence/status` document should be covered by the same security rules as `typing/status` (verify in Firebase console).
+
 ---
 
 ## 22. Testing Strategy (current)
@@ -733,8 +808,8 @@ This section documents everything that differs from the previous `project-contex
 
 - **No automated tests** exist (no `package.json`, no test runner).
 - Validation is **manual** in-browser against the checklist in §20.
-- No JS linting; CSS linting is stylelint with 2 rules.
-- Before committing any future change, run: `git diff` review, manual browser pass (password → scenes → chat → notify), and check the browser console for the known `charCounter` error.
+- No JS linting; CSS linting is stylelint with 2 rules; JS syntax checked via `node --check script.js`; CSS brace balance verified ad hoc.
+- Before committing any future change, run: `git diff` review and a manual browser pass covering the full §20 checklist (password → scenes → chat → receipts/reactions/presence → re-lock).
 
 ## 23. Contribution Guidelines
 

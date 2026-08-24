@@ -186,6 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Privacy: drop any staged media upload + close the photo viewer on re-lock
             cancelPendingAttachment(false);
             closeLightbox();
+            closeMessageInfoSheet();
+            removeSkeleton();
+            setUnreadCount(0);
+            clearNewMessagesDivider();
+            stopPresence(); // heartbeat off + best-effort offline write (identity is going away)
             if (chatState.activeVideo) { try { chatState.activeVideo.pause(); } catch (e) { /* noop */ } }
             // Privacy: full chat teardown — identity is never silently resumed.
             // Next unlock = PIN again, then "Who are you?" again.
@@ -308,6 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // so IntersectionObserver would still fire — disconnect read receipts.
                 if (this.scenes[this.currentIndex] === 'scene-chat') {
                     cleanupReadReceiptObserver();
+                    closeMessageInfoSheet();
                 }
             }
 
@@ -925,6 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const CHATS_COL = 'web_chat_v2';
     const TYPING_DOC = db.doc('typing/status');
+    const PRESENCE_DOC = db.doc('presence/status'); // heartbeat: who currently has the chat open
 
     // ─── Cloudinary Media Config ─────────────────────────
     // Unsigned uploads only: the API secret must NEVER be in client code.
@@ -943,6 +950,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const READ_VISIBILITY_THRESHOLD = 0.7;
     const READ_DWELL_MS             = 300;
     const READ_TALL_RATIO           = 0.4;  // for bubbles taller than ~90% of viewport
+    const LONG_PRESS_MS             = 480;  // hold to open the Message info sheet
+    const DOUBLE_TAP_MS             = 350;  // max gap between taps for a heart reaction
+    const REACTION_EMOJI            = '💜'; // app's signature purple heart (swap to '❤️' if ever wanted)
+    const PRESENCE_STALE_MS         = 75000; // heartbeat older than this → treat as offline
+    const PRESENCE_HEARTBEAT_MS     = 25000;
 
     // ─── Telegram Notify (uses TG_BOT_TOKEN / TG_CHAT_ID from REPLY DELIVERY above) ──
     const NOTIFY_COOLDOWN_MS = 10_000; // 10 seconds
@@ -1006,14 +1018,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn) btn.innerHTML = `⏳ Wait ${secLeft}s`;
     }
 
-    // ─── Toast notification ──────────────────────────────
-    // XSS Protection: Escape HTML special characters
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
     // ─── Toast (styling lives in style.css #chat-toast; JS drives classes + timers) ──
     function showToast(message, isError = false, type = 'default') {
         let toast = document.getElementById('chat-toast');
@@ -1053,7 +1057,7 @@ document.addEventListener('DOMContentLoaded', () => {
         replyToMessage: null,
         lastTypingSentTime: 0,
         typingResetTimer: null,
-        remoteTyping: { sender: null, timer: null },
+        remoteTyping: { sender: null, timer: null, el: null, removeTimer: null },
         renderedIds: new Map(),   // id → DOM element for reconciliation
         editingMessageId: null,   // Track which message is being edited
         editBoxes: new Map(),     // messageId → { bubble, textEl, editBox, originalText }
@@ -1067,7 +1071,15 @@ document.addEventListener('DOMContentLoaded', () => {
         identitySelecting: false, // Double-click guard for the identity-selection overlay
         readObserver: null,       // IntersectionObserver singleton for read receipts (starts after identity selection)
         readTimers: new Map(),    // messageId → { timerId, identity } dwell timers
-        readPending: new Set()    // messageIds with a read-receipt write in flight (prevents duplicates)
+        readPending: new Set(),   // messageIds with a read-receipt write in flight (prevents duplicates)
+        infoSheetMessageId: null, // messageId shown in the long-press "Message info" sheet (null = closed)
+        reactionPending: new Set(), // messageIds with a reaction toggle write in flight
+        unreadCount: 0,           // incoming messages missed while scrolled up / scene hidden
+        firstUnseenId: null,      // id of the first missed message ("New messages" divider sits above it)
+        presenceData: null,       // last presence/status snapshot payload
+        presenceHeartbeat: null,  // setInterval handle for own heartbeat writes
+        presenceEvalTimer: null,  // setInterval handle re-evaluating the other side's staleness
+        unsubPresence: null       // presence doc listener unsubscribe
     };
 
     // ─── Helpers ─────────────────────────────────────────
@@ -1095,6 +1107,14 @@ document.addEventListener('DOMContentLoaded', () => {
             format:   typeof m.format === 'string' ? m.format : '',
             bytes:    num(m.bytes)
         };
+    }
+
+    // Reaction field: single slot per message — only the recipient of a message
+    // can react to it, so `{ by }` is sufficient. Anything else is junk → null.
+    function sanitizeReaction(r) {
+        if (!r || typeof r !== 'object') return null;
+        if (r.by !== 'Bhatari' && r.by !== 'Bhandhari') return null;
+        return { by: r.by };
     }
 
     function formatDateLabel(ts) {
@@ -1331,12 +1351,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // This code is kept for compatibility if chat is already unlocked
 
             chatSendBtn.addEventListener('click', handleSend);
-            chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); handleSend(); } });
+            chatInput.addEventListener('keypress', e => {
+                // Enter sends; Shift+Enter inserts a newline (standard chat behavior)
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+            });
             chatInput.addEventListener('input', handleOutgoingTyping);
             if (chatReplyCancel) chatReplyCancel.addEventListener('click', cancelReply);
 
             // Media attachments + lightbox (wired exactly once via chatSceneInited guard)
             initMediaAttachments();
+
+            // Long-press "Message info" bottom sheet (wired once)
+            initMessageInfoSheet();
+
+            // Double-tap heart reactions on received messages (wired once)
+            initChatReactions();
 
             // Header polish: sliding toggle glider + compress-on-scroll (also one-time)
             initHeaderPolish();
@@ -1406,10 +1435,14 @@ document.addEventListener('DOMContentLoaded', () => {
         haptic(12);
 
         // Identity-dependent systems boot HERE, not earlier
+        setUnreadCount(0);          // fresh session = clean slate (relock may have left residue)
+        clearNewMessagesDivider();
+        if (chatState.messages.length === 0 && chatState.renderedIds.size === 0) renderSkeleton();
         startMessageListener();
         startTypingListener();
         initReadReceiptObserver();
         observeAllIncomingBubbles();
+        startPresence();
 
         showToast(`You are chatting as ${identity}`, false, 'info');
         const chatInput = document.getElementById('chat-input');
@@ -1446,14 +1479,47 @@ document.addEventListener('DOMContentLoaded', () => {
         return identity === 'Bhatari' ? 'Bhandhari' : 'Bhatari';
     }
 
+    // readBy v2: a MAP of identity → read-at time instead of the old array.
+    //   { "Bhatari": 1724480000000, "Bhandhari": 1724480500000 }
+    // Legacy docs may still carry an array ("readBy": ["Bhatari"]) — those are
+    // normalized transparently: array entries become keys with a null timestamp
+    // (their original read times were never recorded).
+    function readAtToMillis(v) {
+        if (!v) return null;
+        if (typeof v.toMillis === 'function') {                 // Firestore Timestamp
+            try { const ms = v.toMillis(); return isFinite(ms) ? ms : null; } catch (e) { return null; }
+        }
+        if (typeof v === 'number' && isFinite(v) && v > 0) return v;
+        if (typeof v === 'string') {
+            const ms = new Date(v).getTime();
+            return isFinite(ms) ? ms : null;
+        }
+        return null;
+    }
+
     function sanitizeReadBy(raw) {
-        return Array.isArray(raw) ? raw.filter(v => v === 'Bhatari' || v === 'Bhandhari') : [];
+        const out = {};
+        if (!raw) return out;
+        if (Array.isArray(raw)) {                               // legacy shape → keys with unknown time
+            raw.forEach(v => { if (v === 'Bhatari' || v === 'Bhandhari') out[v] = null; });
+            return out;
+        }
+        if (typeof raw === 'object') {                          // map shape → normalize each timestamp to ms
+            Object.keys(raw).forEach(k => {
+                if (k === 'Bhatari' || k === 'Bhandhari') out[k] = readAtToMillis(raw[k]);
+            });
+        }
+        return out;
+    }
+
+    function hasReadEntry(message, identity) {
+        if (!message || !message.readBy || !identity) return false;
+        return Object.prototype.hasOwnProperty.call(message.readBy, identity);
     }
 
     function isMessageRead(message) {
         if (!message) return false;
-        const readBy = sanitizeReadBy(message.readBy);
-        return readBy.includes(getOtherIdentity(message.sender));
+        return hasReadEntry(message, getOtherIdentity(message.sender));
     }
 
     function initReadReceiptObserver() {
@@ -1484,8 +1550,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chatState.currentIdentity) return;                          // identity required
         if (message.sender === chatState.currentIdentity) return;        // never read-mark own messages
         if (message.pending) return;                                     // never on unsynced/optimistic writes
-        const readBy = sanitizeReadBy(message.readBy);
-        if (readBy.includes(chatState.currentIdentity)) return;          // already read → nothing to do
+        if (hasReadEntry(message, chatState.currentIdentity)) return;    // already read → nothing to do
         chatState.readObserver.observe(element);
     }
 
@@ -1541,25 +1606,38 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chatState.chatUnlocked) return;                                   // chat must be active
         if (document.visibilityState !== 'visible') return;                    // never in background
         if (message.sender === identityAtObservation) return;                  // never own messages
-        const readBy = sanitizeReadBy(message.readBy);
-        if (readBy.includes(identityAtObservation)) return;                    // already read → skip write
+        if (hasReadEntry(message, identityAtObservation)) return;              // already read → skip write
         if (message.pending) return;                                           // persisted messages only
         if (chatState.readPending.has(message.id)) return;                     // one write in flight max
         if (!navigator.onLine) return;                                         // respect offline; stays observed for retry
         chatState.readPending.add(message.id);
         try {
-            // Atomic + idempotent: safe against races, duplicates, and multi-tab overlaps
-            await db.collection(CHATS_COL).doc(message.id).update({
-                readBy: firebase.firestore.FieldValue.arrayUnion(identityAtObservation)
-            });
+            const FV = firebase.firestore.FieldValue;
+            if (message.legacyReadBy) {
+                // Legacy doc (readBy was an array): Firestore cannot dot-path into
+                // arrays, so migrate the doc to the map shape in one atomic write.
+                // Prior readers keep their key, stamped now — their original read
+                // times were never recorded under the array format.
+                const migrated = {};
+                Object.keys(message.readBy || {}).forEach(id => { migrated[id] = FV.serverTimestamp(); });
+                migrated[identityAtObservation] = FV.serverTimestamp();
+                await db.collection(CHATS_COL).doc(message.id).update({ readBy: migrated });
+            } else {
+                // Map shape: write ONLY this reader's key with the server clock.
+                // Atomic + idempotent per-reader: concurrent/multi-tab reads never
+                // clobber each other's timestamps (unlike a whole-map overwrite).
+                const patch = {};
+                patch[`readBy.${identityAtObservation}`] = FV.serverTimestamp();
+                await db.collection(CHATS_COL).doc(message.id).update(patch);
+            }
             // In-memory memo ONLY (Firestore snapshot remains authoritative — §28):
             // suppress redundant re-writes in the gap before the confirming snapshot arrives.
             const live = chatState.messages.find(m => m.id === message.id);
-            if (live) {
-                const liveReadBy = sanitizeReadBy(live.readBy);
-                if (!liveReadBy.includes(identityAtObservation)) {
-                    live.readBy = [...liveReadBy, identityAtObservation];
+            if (live && !hasReadEntry(live, identityAtObservation)) {
+                if (!live.readBy || typeof live.readBy !== 'object' || Array.isArray(live.readBy)) {
+                    live.readBy = sanitizeReadBy(live.readBy);
                 }
+                live.readBy[identityAtObservation] = Date.now(); // placeholder until the snapshot lands
             }
         } catch (err) {
             // Silent background behavior: log once for debugging, show nothing to the user.
@@ -1598,6 +1676,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Identity switch (manual toggle) while the chat is live
     function onChatIdentityChanged() {
         clearAllReadTimers();               // kill every in-flight dwell timer from the old identity
+        closeMessageInfoSheet();            // sheet content was sender-relative — stale after a switch
         if (chatState.readObserver) {       // fresh observer → re-evaluates visibility for the new identity
             chatState.readObserver.disconnect();
             chatState.readObserver = null;
@@ -1609,6 +1688,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Firestore Listeners ─────────────────────────────
+    // Skeleton shimmer shown while the first batch of messages loads — only when
+    // there's genuinely nothing rendered yet (identity switch with a warm cache
+    // must NOT flash skeletons over live content).
+    function renderSkeleton() {
+        removeSkeleton();
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-skeleton';
+        wrap.id = 'chat-skeleton';
+        [62, 44, 70, 38, 55].forEach((widthPct, i) => {
+            const row = document.createElement('div');
+            row.className = 'skel-row ' + (i % 2 ? 'right' : 'left');
+            const bubble = document.createElement('div');
+            bubble.className = 'skel-bubble';
+            bubble.style.width = widthPct + '%';
+            if (i % 3 === 0) bubble.style.height = '64px'; // vary heights like real bubbles
+            row.appendChild(bubble);
+            wrap.appendChild(row);
+        });
+        chatMessages.appendChild(wrap);
+    }
+
+    function removeSkeleton() {
+        const skel = document.getElementById('chat-skeleton');
+        if (skel) skel.remove();
+    }
+
     function startMessageListener() {
         if (chatState.unsubMessages) chatState.unsubMessages();
 
@@ -1618,6 +1725,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .limitToLast(20)
             .onSnapshot(snapshot => {
                 updateConnectionStatus(true);
+                removeSkeleton(); // first data (or a genuinely empty chat) arrived
 
                 chatState.messages = snapshot.docs.map(doc => {
                     const d = doc.data();
@@ -1635,8 +1743,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         replyTo:  d.replyTo  ? { ...d.replyTo, sender: normalizeSender(d.replyTo.sender) } : null,
                         isEdited: !!d.isEdited,
                         media:    sanitizeMedia(d.media),
-                        // Backward compatible: legacy messages without readBy → unread
-                        readBy:   sanitizeReadBy(d.readBy),
+                        reaction: sanitizeReaction(d.reaction),
+                        // Backward compatible: legacy array readBy → map with unknown times
+                        readBy:        sanitizeReadBy(d.readBy),
+                        legacyReadBy:  Array.isArray(d.readBy), // array docs need a one-time migration write
                         pending:  doc.metadata ? doc.metadata.hasPendingWrites : false
                     };
                 });
@@ -1676,11 +1786,61 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Smart DOM Reconciliation ─────────────────────────
+    // Greeting card shows only when the chat is truly empty — never alongside
+    // the typing bubble (shared by reconciliation and the typing indicator).
+    function syncEmptyState() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        let emptyState = chatMessages.querySelector('.chat-empty-state');
+        const shouldShow = chatState.messages.length === 0 && !chatMessages.querySelector('.typing-indicator-bubble');
+        if (shouldShow && !emptyState) {
+            emptyState = document.createElement('div');
+            emptyState.className = 'chat-empty-state';
+            const icon = document.createElement('div');
+            icon.className = 'chat-empty-icon';
+            icon.textContent = '🐧';
+            const title = document.createElement('div');
+            title.className = 'chat-empty-title';
+            title.textContent = 'Say hi 💜';
+            const sub = document.createElement('div');
+            sub.className = 'chat-empty-sub';
+            sub.textContent = 'Start the conversation — photos and videos work too!';
+            emptyState.appendChild(icon);
+            emptyState.appendChild(title);
+            emptyState.appendChild(sub);
+            chatMessages.appendChild(emptyState);
+        } else if (!shouldShow && emptyState) {
+            emptyState.remove();
+        }
+    }
+
+    // ─── Unread count + "New messages" divider ────────────
+    function setUnreadCount(n) {
+        chatState.unreadCount = Math.max(0, n);
+        const fab = document.getElementById('chat-scroll-fab');
+        if (!fab) return;
+        const label = document.getElementById('chat-scroll-fab-count');
+        if (label) label.textContent = chatState.unreadCount > 99 ? '99+' : (chatState.unreadCount || '');
+        fab.classList.toggle('unread', chatState.unreadCount > 0);
+    }
+
+    function clearNewMessagesDivider() {
+        chatState.firstUnseenId = null;
+        document.querySelectorAll('#chat-messages .chat-new-divider').forEach(el => el.remove());
+    }
+
     function reconcileMessages() {
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) return;
 
         const wasAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+
+        // "Engaged" = genuinely watching the live edge right now. Being scrolled
+        // up OR having the scene hidden (ladder/envelope, or privacy-locked) means
+        // incoming messages count as missed.
+        const sceneEl = document.getElementById('scene-chat');
+        const sceneActive = !!(sceneEl && sceneEl.classList.contains('scene-active'));
+        const engaged = wasAtBottom && sceneActive;
 
         // Compute sender runs for grouped rendering (same sender within 5 min = one run)
         const RUN_GAP_MS = 5 * 60 * 1000;
@@ -1694,35 +1854,21 @@ document.addEventListener('DOMContentLoaded', () => {
             cur.groupEnd   = !contNext;
         }
 
-        // Track which message IDs we expect to see
         const expectedMsgIds = new Set(chatState.messages.map(m => m.id));
-        
+
+        syncEmptyState();
+
+        // History is a rolling last-20 window — if the first unseen message aged
+        // out of it, the divider concept no longer applies
+        if (chatState.firstUnseenId && !expectedMsgIds.has(chatState.firstUnseenId)) {
+            chatState.firstUnseenId = null;
+        }
+
+        // Single "New messages" divider per pass (already in DOM → don't duplicate)
+        let newDividerPlaced = !!chatMessages.querySelector('.chat-new-divider');
+
         // Build ordered list of expected message IDs (preserving order)
         const expectedOrder = chatState.messages.map(m => m.id);
-
-        // Empty state: greeting card when there are no messages, removed on first bubble
-        let emptyState = chatMessages.querySelector('.chat-empty-state');
-        if (chatState.messages.length === 0) {
-            if (!emptyState) {
-                emptyState = document.createElement('div');
-                emptyState.className = 'chat-empty-state';
-                const icon = document.createElement('div');
-                icon.className = 'chat-empty-icon';
-                icon.textContent = '🐧';
-                const title = document.createElement('div');
-                title.className = 'chat-empty-title';
-                title.textContent = 'Say hi 💜';
-                const sub = document.createElement('div');
-                sub.className = 'chat-empty-sub';
-                sub.textContent = 'Start the conversation — photos and videos work too!';
-                emptyState.appendChild(icon);
-                emptyState.appendChild(title);
-                emptyState.appendChild(sub);
-                chatMessages.appendChild(emptyState);
-            }
-        } else if (emptyState) {
-            emptyState.remove();
-        }
 
         // Step 1: Remove orphaned nodes (messages that no longer exist)
         for (const [id, el] of chatState.renderedIds) {
@@ -1783,7 +1929,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 lastInsertedNode = divider;
                 lastDateTs = msg.timestamp;
             }
-            
+
+            // "New messages" separator above the first message missed while away
+            if (!newDividerPlaced && chatState.firstUnseenId && msg.id === chatState.firstUnseenId) {
+                const nd = document.createElement('div');
+                nd.className = 'chat-new-divider divider-pop';
+                nd.textContent = 'New messages';
+                if (lastInsertedNode) {
+                    lastInsertedNode.insertAdjacentElement('afterend', nd);
+                } else {
+                    chatMessages.insertBefore(nd, chatMessages.firstChild);
+                }
+                lastInsertedNode = nd;
+                newDividerPlaced = true;
+            }
+
             // Handle message bubble
             const existing = chatState.renderedIds.get(msg.id);
             if (existing) {
@@ -1794,17 +1954,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Create new bubble and append after last node
                 const bubble = createBubble(msg);
                 // Receive haptic: soft nudge only for the other person's live messages
-                // while the user is watching the bottom of the chat (never on cold render)
-                if (chatInitialStaggerDone && msg.sender !== chatState.currentIdentity && !msg.pending) {
-                    if (wasAtBottom) {
+                // while the user is engaged (watching the bottom, scene visible) —
+                // never on cold render. Otherwise it's a MISSED message → unread
+                // count + "New messages" divider.
+                if (chatInitialStaggerDone && chatState.currentIdentity &&
+                    msg.sender !== chatState.currentIdentity && !msg.pending) {
+                    if (engaged) {
                         haptic([6]);
                         bubble.classList.add('bubble-receive-glow');
                         bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-receive-glow'), { once: true });
                         setTimeout(() => bubble.classList.remove('bubble-receive-glow'), 900); // fallback cleanup
                     } else {
-                        // User is scrolled up: flag the FAB's unread dot instead of a haptic
-                        const fab = document.getElementById('chat-scroll-fab');
-                        if (fab) fab.classList.add('unread');
+                        setUnreadCount(chatState.unreadCount + 1);
+                        if (!chatState.firstUnseenId) chatState.firstUnseenId = msg.id;
                     }
                 }
                 // Entrance animation: spring pop from the sender's side. On the very first
@@ -1843,6 +2005,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (wasAtBottom && newBubblesThisPass > 0) {
             smoothScrollToBottom(chatMessages);
         }
+
+        // Info sheet stays live: a read receipt arriving while it's open updates the sheet
+        refreshMessageInfoSheet();
     }
 
     // Update an existing bubble's mutable parts without re-creating it
@@ -1854,8 +2019,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Skip text update if currently being edited by user
         const isBeingEdited = chatState.editingMessageId === msg.id;
         const textEl = bubble.querySelector('.chat-message-text');
-        if (textEl && !isBeingEdited && textEl.textContent !== msg.text) {
-            textEl.textContent = msg.text;
+        if (textEl && !isBeingEdited && textEl.dataset.raw !== msg.text) {
+            setTextWithLinks(textEl, msg.text);
+            textEl.dataset.raw = msg.text;
         }
 
         // Edited badge - ensure it appears when isEdited is true
@@ -1872,9 +2038,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Delivery/read tick: 🕓 → ✓ → ✓✓ (read) — updated in place, never rebuilt
         syncTick(bubble, msg);
+        syncReactionBadge(bubble, msg);
         // If this update says I've now read it (identity switch edge), stop observing
-        const rb = sanitizeReadBy(msg.readBy);
-        if (chatState.currentIdentity && rb.includes(chatState.currentIdentity)) {
+        if (chatState.currentIdentity && hasReadEntry(msg, chatState.currentIdentity)) {
             unobserveReadReceiptElement(bubble);
             clearReadTimer(msg.id);
         }
@@ -1956,7 +2122,113 @@ document.addEventListener('DOMContentLoaded', () => {
         if (upgraded) {
             tick.classList.add('tick-pop');
             tick.addEventListener('animationend', () => tick.classList.remove('tick-pop'), { once: true });
+            if (cls === 'tick-read') haptic(10); // soft buzz the moment your message is read
         }
+    }
+
+    // ─── Jump to Quoted Message ──────────────────────────
+    // Scrolls the quoted original into view (if still within the loaded window)
+    // and flash-highlights it. History is capped at the last 20 messages, so
+    // older targets get a gentle "not available" toast instead.
+    function jumpToQuotedMessage(replyToId) {
+        if (!replyToId) return;
+        const target = chatState.renderedIds.get(replyToId);
+        if (!target || !target.isConnected) {
+            showToast('Original message not available', false, 'info');
+            return;
+        }
+        const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+        // Restart the flash even if it's mid-animation from a previous tap
+        target.classList.remove('message-highlight');
+        void target.offsetWidth;
+        target.classList.add('message-highlight');
+        const clearFlash = () => target.classList.remove('message-highlight');
+        target.addEventListener('animationend', clearFlash, { once: true });
+        setTimeout(clearFlash, 1600); // fallback in case the animation is cut short
+    }
+
+    // ─── Heart Reactions (double-tap a received message) ──
+    // Single slot per message: only its recipient ever reacts, stored as
+    // `reaction: { by }`. Double-tap toggles it on/off.
+    function syncReactionBadge(bubble, msg) {
+        let badge = bubble.querySelector('.chat-reaction');
+        if (msg.reaction) {
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.className = 'chat-reaction';
+                badge.textContent = REACTION_EMOJI;
+                bubble.appendChild(badge);
+                requestAnimationFrame(() => badge.classList.add('pop')); // entrance pop
+            }
+        } else if (badge) {
+            badge.remove();
+        }
+    }
+
+    function burstHearts(x, y) {
+        const offsets = [[0, 0], [-20, -14], [18, -18]];
+        offsets.forEach(([dx, dy], i) => {
+            setTimeout(() => createHeart(x + dx, y + dy), i * 45);
+        });
+    }
+
+    async function reactToMessage(msg, clientX, clientY) {
+        if (!msg || !msg.id || msg.pending) return;
+        if (!chatState.currentIdentity || !chatState.chatUnlocked) return;
+        if (msg.sender === chatState.currentIdentity) return;   // own messages aren't reactable
+        if (chatState.reactionPending.has(msg.id)) return;      // one toggle in flight per message
+        if (!navigator.onLine) { showToast('You are offline 📡', true); return; }
+        chatState.reactionPending.add(msg.id);
+        const mine = !!(msg.reaction && msg.reaction.by === chatState.currentIdentity);
+        const live = chatState.messages.find(m => m.id === msg.id);
+        try {
+            const FV = firebase.firestore.FieldValue;
+            if (mine) {
+                await db.collection(CHATS_COL).doc(msg.id).update({ reaction: FV.delete() });
+                if (live) live.reaction = null;
+            } else {
+                burstHearts(clientX, clientY);                  // burst only when adding
+                haptic([10]);
+                await db.collection(CHATS_COL).doc(msg.id)
+                    .update({ reaction: { by: chatState.currentIdentity, at: FV.serverTimestamp() } });
+                if (live) live.reaction = { by: chatState.currentIdentity }; // optimistic until snapshot
+            }
+        } catch (err) {
+            console.warn('[Reaction] toggle failed:', msg.id, err && err.code ? err.code : err);
+            // No local rollback needed — the next authoritative snapshot corrects the badge.
+        } finally {
+            chatState.reactionPending.delete(msg.id);
+            const el = chatState.renderedIds.get(msg.id);
+            if (el && live) syncReactionBadge(el, live);
+        }
+    }
+
+    function initChatReactions() {
+        const container = document.getElementById('chat-messages');
+        if (!container || initChatReactions._inited) return;
+        initChatReactions._inited = true;
+        let lastTap = { id: null, time: 0, identity: null };
+
+        container.addEventListener('click', e => {
+            const bubble = e.target.closest('.chat-bubble');
+            if (!bubble || !bubble.dataset.id) return;
+            // Inner controls own their clicks: quote jumps, action buttons, links, media/lightbox
+            if (e.target.closest('.chat-quote-box, .chat-action-btn, a.chat-link, .chat-media-image, .chat-media-video')) return;
+            const msg = chatState.messages.find(m => m.id === bubble.dataset.id);
+            // Received text messages only — media bubbles click to lightbox, own messages open info sheet
+            if (!msg || msg.media || msg.pending || msg.sender === chatState.currentIdentity) return;
+            if (!chatState.currentIdentity || !chatState.chatUnlocked) return;
+            if (document.visibilityState !== 'visible') return;
+
+            const now = Date.now();
+            if (lastTap.id === msg.id && lastTap.identity === chatState.currentIdentity && now - lastTap.time <= DOUBLE_TAP_MS) {
+                lastTap = { id: null, time: 0, identity: null };
+                reactToMessage(msg, e.clientX, e.clientY);
+            } else {
+                lastTap = { id: msg.id, time: now, identity: chatState.currentIdentity };
+            }
+        });
     }
 
     // ─── Create Bubble ────────────────────────────────────
@@ -1973,10 +2245,13 @@ document.addEventListener('DOMContentLoaded', () => {
         senderLabel.textContent = message.sender;
         bubble.appendChild(senderLabel);
 
-        // Reply quote box (improved)
+        // Reply quote box (improved) — tappable: jumps to the original message
         if (message.replyTo) {
             const quoteBox = document.createElement('div');
             quoteBox.className = 'chat-quote-box';
+            quoteBox.setAttribute('role', 'button');
+            quoteBox.tabIndex = 0;
+            quoteBox.setAttribute('aria-label', 'Jump to the original message');
             const accent = document.createElement('div');
             accent.className = 'quote-accent-bar';
             const quoteSender = document.createElement('span');
@@ -1989,6 +2264,17 @@ document.addEventListener('DOMContentLoaded', () => {
             quoteBox.appendChild(accent);
             quoteBox.appendChild(quoteSender);
             quoteBox.appendChild(quoteText);
+            quoteBox.addEventListener('click', e => {
+                e.stopPropagation(); // not a bubble tap / double-tap candidate
+                jumpToQuotedMessage(message.replyTo.id);
+            });
+            quoteBox.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    jumpToQuotedMessage(message.replyTo.id);
+                }
+            });
             bubble.appendChild(quoteBox);
         }
 
@@ -2003,7 +2289,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (hasText) {
             const textEl = document.createElement('div');
             textEl.className = 'chat-message-text';
-            textEl.textContent = message.text;
+            setTextWithLinks(textEl, message.text);
+            textEl.dataset.raw = message.text;
             bubble.appendChild(textEl);
         }
 
@@ -2023,6 +2310,7 @@ document.addEventListener('DOMContentLoaded', () => {
         bubble.appendChild(metaRow);
         // Delivery/read tick: 🕓 pending → ✓ sent → ✓✓ read (see syncTick)
         syncTick(bubble, message);
+        syncReactionBadge(bubble, message);
 
         // Action buttons row (Reply + Edit for own messages)
         const actionsRow = document.createElement('div');
@@ -2263,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 replyTo,
                 isEdited: false,
                 media:     media || null,
-                readBy:    []   // read receipts start unread; recipient adds themselves via arrayUnion
+                readBy:    {}   // read receipts start unread; each reader writes their own timestamped key
             });
             if (media && chatState.pendingAttachment === sentAttachment) discardPendingAttachment();
         } catch (err) {
@@ -2341,6 +2629,41 @@ document.addEventListener('DOMContentLoaded', () => {
         return '';
     }
 
+    // ─── Safe linkify ────────────────────────────────────
+    // Renders plain-text URLs as real links WITHOUT innerHTML — only
+    // createElement + textContent, so the XSS posture is unchanged.
+    // Only http(s)/www. schemes are matched, so "javascript:" can never pass.
+    const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+
+    function setTextWithLinks(el, text) {
+        el.textContent = '';
+        let last = 0;
+        URL_RE.lastIndex = 0;
+        let m;
+        while ((m = URL_RE.exec(text)) !== null) {
+            let url = m[0];
+            // Trim trailing punctuation back into plain text ("see foo.com." keeps the dot out)
+            const trail = url.match(/[.,!?;:)]+$/);
+            if (trail && url.length - trail[0].length >= 5) url = url.slice(0, url.length - trail[0].length);
+            if (m.index > last) el.appendChild(document.createTextNode(text.slice(last, m.index)));
+            if (url.length >= 5 && /^(https?:\/\/|www\.)/i.test(url)) {
+                const a = document.createElement('a');
+                a.className = 'chat-link';
+                a.href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+                a.textContent = url;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer nofollow';
+                el.appendChild(a);
+            } else {
+                // Too short/trimmed to be a real link — keep it as literal text
+                el.appendChild(document.createTextNode(text.slice(m.index, m.index + url.length)));
+            }
+            last = m.index + url.length;
+            URL_RE.lastIndex = last; // resume right after what we consumed
+        }
+        if (last < text.length) el.appendChild(document.createTextNode(text.slice(last)));
+    }
+
     // ─── Header Polish: sliding toggle glider + compress-on-scroll ──
     // Called once (guarded by chatSceneInited in initChatScene)
     function initHeaderPolish() {
@@ -2387,18 +2710,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (fab) {
                         const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
                         fab.classList.toggle('visible', distFromBottom > 300);
-                        // Reaching the bottom clears the unread dot
-                        if (distFromBottom < 80) fab.classList.remove('unread');
+                        // Reaching the bottom = everything is seen; the divider
+                        // persists while scrolled up so missed messages stay marked
+                        if (distFromBottom < 80 && chatState.unreadCount > 0) {
+                            setUnreadCount(0);
+                            clearNewMessagesDivider();
+                        }
                     }
                 });
             }, { passive: true });
         }
 
-        // FAB tap: glide to bottom + soft haptic
+        // FAB tap: glide to bottom + soft haptic; arriving counts as "all seen"
         if (fab) {
             fab.addEventListener('click', () => {
                 if (chatMessages) smoothScrollToBottom(chatMessages);
-                fab.classList.remove('unread');
+                setUnreadCount(0);
+                clearNewMessagesDivider();
                 haptic([6]);
             });
         }
@@ -2685,6 +3013,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return wrap;
     }
 
+    let lightboxReturnFocus = null;
+
     function openLightbox(src, altText) {
         const lb  = document.getElementById('chat-lightbox');
         const img = document.getElementById('chat-lightbox-img');
@@ -2693,6 +3023,9 @@ document.addEventListener('DOMContentLoaded', () => {
         img.alt = altText || 'Photo';
         lb.style.display = 'flex';
         document.body.classList.add('chat-lightbox-open');
+        lightboxReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const closeBtn = document.getElementById('chat-lightbox-close');
+        if (closeBtn) closeBtn.focus({ preventScroll: true });
     }
 
     function closeLightbox() {
@@ -2702,6 +3035,221 @@ document.addEventListener('DOMContentLoaded', () => {
         lb.style.display = 'none';
         if (img) img.removeAttribute('src');
         document.body.classList.remove('chat-lightbox-open');
+        if (lightboxReturnFocus && lightboxReturnFocus.isConnected) {
+            lightboxReturnFocus.focus({ preventScroll: true });
+        }
+        lightboxReturnFocus = null;
+    }
+
+    // ─── Message Info Bottom Sheet (long-press a sent message) ──
+    // Shows the sent time plus who read the message and when (readBy map).
+    let msgInfoSheetInited = false;
+    const longPressState   = { timer: null, x: 0, y: 0, valid: false };
+    let suppressNextClick  = false; // swallow the click that follows a successful long-press
+    let msgInfoReturnFocus = null;  // element to restore focus to on sheet close
+
+    function initMessageInfoSheet() {
+        if (msgInfoSheetInited) return;
+        msgInfoSheetInited = true;
+        const container = document.getElementById('chat-messages');
+        const overlay   = document.getElementById('msg-info-overlay');
+        if (!container || !overlay) return;
+
+        // Long-press detection — Pointer Events cover touch, mouse and pen alike.
+        // Delegated on #chat-messages so reconciliation (bubbles created/updated
+        // in place) never needs per-bubble listeners.
+        container.addEventListener('pointerdown', e => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;      // left press only
+            const bubble = e.target.closest('.chat-bubble');
+            if (!bubble || !bubble.dataset.id) return;
+            const msg = chatState.messages.find(m => m.id === bubble.dataset.id);
+            // Meaningful on SENT messages only ("who read MY message")
+            if (!msg || msg.sender !== chatState.currentIdentity || msg.pending) return;
+            longPressState.x = e.clientX;
+            longPressState.y = e.clientY;
+            longPressState.valid = true;
+            clearTimeout(longPressState.timer);
+            longPressState.timer = setTimeout(() => {
+                longPressState.timer = null;
+                if (!longPressState.valid) return;
+                longPressState.valid = false;
+                haptic(14);
+                openMessageInfoSheet(msg.id);
+                suppressNextClick = true;                                 // release would otherwise click through
+            }, LONG_PRESS_MS);
+        }, { passive: true });
+
+        const cancelLongPress = e => {
+            if (longPressState.timer && e.type === 'pointermove') {
+                const dx = e.clientX - longPressState.x, dy = e.clientY - longPressState.y;
+                if ((dx * dx) + (dy * dy) > 144) {                        // moved >12px → it's a scroll
+                    clearTimeout(longPressState.timer);
+                    longPressState.timer = null;
+                }
+                return;
+            }
+            clearTimeout(longPressState.timer);
+            longPressState.timer = null;
+        };
+        container.addEventListener('pointermove', cancelLongPress, { passive: true });
+        container.addEventListener('pointerup', cancelLongPress, { passive: true });
+        container.addEventListener('pointercancel', cancelLongPress, { passive: true });
+        container.addEventListener('pointerleave', cancelLongPress, { passive: true });
+
+        // Mobile long-press must not summon the browser menu or text selection
+        container.addEventListener('contextmenu', e => {
+            if (e.target.closest('.chat-bubble')) e.preventDefault();
+        });
+
+        // One-shot capture-phase click swallow (fires before Reply/Edit handlers)
+        document.addEventListener('click', e => {
+            if (!suppressNextClick) return;
+            suppressNextClick = false;
+            e.stopPropagation();
+            e.preventDefault();
+        }, true);
+
+        overlay.addEventListener('click', e => { if (e.target === overlay) closeMessageInfoSheet(); });
+        const closeBtn = document.getElementById('msg-info-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeMessageInfoSheet);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMessageInfoSheet(); });
+
+        // Swipe-down-to-close: sheet follows the finger, springs back or dismisses.
+        // Only engages when the sheet's inner scroll is at the top, so long content
+        // still scrolls normally (CSS touch-action: pan-y cooperates).
+        const sheet = document.getElementById('msg-info-sheet');
+        if (sheet) {
+            let drag = null;
+            sheet.addEventListener('pointerdown', e => {
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                if (sheet.scrollTop > 0) return;                          // scrolled content: let it scroll
+                if (e.target.closest('.msg-info-close')) return;          // don't hijack the close button
+                drag = { startY: e.clientY, dy: 0, pointerId: e.pointerId };
+                try { sheet.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+            });
+            sheet.addEventListener('pointermove', e => {
+                if (!drag || e.pointerId !== drag.pointerId) return;
+                drag.dy = Math.max(0, e.clientY - drag.startY);           // downward only
+                if (drag.dy > 8) {
+                    suppressNextClick = true;                             // release must not hit a button
+                    sheet.style.transition = 'none';
+                    sheet.style.transform = `translateY(${drag.dy}px)`;
+                    overlay.style.opacity = String(Math.max(0.25, 1 - drag.dy / 400));
+                }
+            });
+            const endDrag = e => {
+                if (!drag || e.pointerId !== drag.pointerId) return;
+                const shouldClose = drag.dy > 90;
+                sheet.style.transition = '';                              // CSS spring transition resumes
+                sheet.style.transform = '';
+                overlay.style.opacity = '';
+                drag = null;
+                if (shouldClose) closeMessageInfoSheet();                 // slides out via .open removal
+            };
+            sheet.addEventListener('pointerup', endDrag);
+            sheet.addEventListener('pointercancel', endDrag);
+        }
+    }
+
+    function formatInfoTimestamp(ms) {
+        if (!ms) return null;
+        const day  = formatDateLabel(ms); // Today / Yesterday / weekday, month day
+        const time = new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `${day} at ${time}`;
+    }
+
+    function buildInfoRow(iconText, label, timeText) {
+        const row = document.createElement('div');
+        row.className = 'msg-info-row';
+        const icon = document.createElement('span');
+        icon.className = 'msg-info-icon';
+        icon.textContent = iconText;
+        const wrap = document.createElement('span');
+        wrap.className = 'msg-info-labels';
+        const labelEl = document.createElement('span');
+        labelEl.className = 'msg-info-label';
+        labelEl.textContent = label;
+        const timeEl = document.createElement('span');
+        timeEl.className = 'msg-info-time';
+        timeEl.textContent = timeText;
+        wrap.appendChild(labelEl);
+        wrap.appendChild(timeEl);
+        row.appendChild(icon);
+        row.appendChild(wrap);
+        return row;
+    }
+
+    function renderMessageInfoBody(body, msg) {
+        body.innerHTML = '';
+
+        body.appendChild(buildInfoRow('📨', 'Sent', formatInfoTimestamp(msg.timestamp) || 'Sending…'));
+
+        const readHead = document.createElement('div');
+        readHead.className = 'msg-info-section';
+        readHead.textContent = 'Read by';
+        body.appendChild(readHead);
+
+        // The recipient is the reader on a sent message (never the sender themselves)
+        const readers = ['Bhatari', 'Bhandhari'].filter(id => id !== msg.sender && hasReadEntry(msg, id));
+        if (readers.length === 0) {
+            const none = document.createElement('div');
+            none.className = 'msg-info-empty';
+            none.textContent = 'No reads yet';
+            body.appendChild(none);
+        } else {
+            readers.forEach(id => {
+                const at = msg.readBy[id];
+                const when = at ? formatInfoTimestamp(at) : 'Earlier · time not recorded'; // legacy array entry
+                body.appendChild(buildInfoRow('👁', id, when));
+            });
+        }
+    }
+
+    function openMessageInfoSheet(msgId) {
+        const overlay = document.getElementById('msg-info-overlay');
+        const quote   = document.getElementById('msg-info-quote');
+        const body    = document.getElementById('msg-info-body');
+        if (!overlay || !quote || !body) return;
+        const msg = chatState.messages.find(m => m.id === msgId);
+        if (!msg) return;
+
+        chatState.infoSheetMessageId = msgId;
+
+        const preview = quoteTextForMessage(msg);
+        quote.textContent = preview;
+        quote.style.display = preview ? '' : 'none';
+
+        renderMessageInfoBody(body, msg);
+
+        msgInfoReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        overlay.style.display = 'flex';
+        requestAnimationFrame(() => {
+            overlay.classList.add('open');
+            const closeBtn = document.getElementById('msg-info-close');
+            if (closeBtn) closeBtn.focus({ preventScroll: true });
+        });
+        document.body.classList.add('msg-info-open');
+    }
+
+    function refreshMessageInfoSheet() {
+        if (!chatState.infoSheetMessageId) return;
+        const body = document.getElementById('msg-info-body');
+        const msg  = chatState.messages.find(m => m.id === chatState.infoSheetMessageId);
+        if (!body || !msg) { closeMessageInfoSheet(); return; }
+        renderMessageInfoBody(body, msg);
+    }
+
+    function closeMessageInfoSheet() {
+        const overlay = document.getElementById('msg-info-overlay');
+        if (!overlay || overlay.style.display === 'none') return;
+        chatState.infoSheetMessageId = null;
+        overlay.classList.remove('open');
+        document.body.classList.remove('msg-info-open');
+        setTimeout(() => { if (!chatState.infoSheetMessageId) overlay.style.display = 'none'; }, 240); // after slide-out
+        if (msgInfoReturnFocus && msgInfoReturnFocus.isConnected) {
+            msgInfoReturnFocus.focus({ preventScroll: true });
+        }
+        msgInfoReturnFocus = null;
     }
 
     // ─── Media: Video Bubbles (lag-free player) ──────────
@@ -2984,12 +3532,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) return;
 
+        // Cancel a pending fade-out from a previous stop/start cycle, otherwise the
+        // reused bubble would stay invisible (inline opacity:0) until it got removed
+        if (chatState.remoteTyping.removeTimer) {
+            clearTimeout(chatState.remoteTyping.removeTimer);
+            chatState.remoteTyping.removeTimer = null;
+        }
         if (chatState.remoteTyping.timer) clearTimeout(chatState.remoteTyping.timer);
 
-        let bubble = chatMessages.querySelector('.typing-indicator-bubble');
-        if (!bubble) {
+        let bubble = chatState.remoteTyping.el;
+        const side = sender === 'Bhatari' ? 'left' : 'right';
+        if (bubble && bubble.isConnected) {
+            // Reuse: refresh side + label and clear any fading inline styles from a prior hide
+            bubble.className = `chat-bubble ${side} typing-indicator-bubble`;
+            bubble.style.opacity = '';
+            bubble.style.transition = '';
+            const lbl = bubble.querySelector('.chat-sender-label');
+            if (lbl) lbl.textContent = sender;
+        } else {
             bubble = document.createElement('div');
-            bubble.className = `chat-bubble ${sender === 'Bhatari' ? 'left' : 'right'} typing-indicator-bubble bubble-enter`;
+            bubble.className = `chat-bubble ${side} typing-indicator-bubble bubble-enter`;
             bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-enter'), { once: true });
             const label = document.createElement('div');
             label.className = 'chat-sender-label';
@@ -3000,14 +3562,11 @@ document.addEventListener('DOMContentLoaded', () => {
             bubble.appendChild(label);
             bubble.appendChild(dots);
             chatMessages.appendChild(bubble);
-        } else {
-            // Update side if identity switched
-            bubble.className = `chat-bubble ${sender === 'Bhatari' ? 'left' : 'right'} typing-indicator-bubble`;
-            const lbl = bubble.querySelector('.chat-sender-label');
-            if (lbl) lbl.textContent = sender;
+            chatState.remoteTyping.el = bubble;
         }
 
         smoothScrollToBottom(chatMessages);
+        syncEmptyState(); // greeting card must not co-exist with the typing bubble
         chatState.remoteTyping.sender = sender;
         // Auto-hide after 6s if no update
         chatState.remoteTyping.timer = setTimeout(hideRemoteTypingIndicator, 6000);
@@ -3015,22 +3574,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function hideRemoteTypingIndicator() {
         if (chatState.remoteTyping.timer) { clearTimeout(chatState.remoteTyping.timer); chatState.remoteTyping.timer = null; }
-        const chatMessages = document.getElementById('chat-messages');
-        if (chatMessages) {
-            const bubble = chatMessages.querySelector('.typing-indicator-bubble');
-            if (bubble) {
-                bubble.style.transition = 'opacity 0.3s ease';
-                bubble.style.opacity = '0';
-                setTimeout(() => bubble.remove(), 300);
-            }
+        const bubble = chatState.remoteTyping.el;
+        chatState.remoteTyping.el = null;
+        if (bubble && bubble.isConnected) {
+            bubble.style.transition = 'opacity 0.3s ease';
+            bubble.style.opacity = '0';
+            chatState.remoteTyping.removeTimer = setTimeout(() => bubble.remove(), 300);
         }
         chatState.remoteTyping.sender = null;
+        syncEmptyState();
     }
 
     // ─── Input auto-resize helper ────────────────────────
+    // Cap matches .chat-input max-height (140px) in style.css
     function resizeChatInput(el) {
         el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+        el.style.height = Math.min(el.scrollHeight, 140) + 'px';
     }
 
     // ─── Keyboard Handling for Mobile ─────────────────────
@@ -3074,16 +3633,81 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Connection Status ────────────────────────────────
+    // Pill above the input bar: amber while reconnecting, green blip on
+    // (re)connect that fades out — never a permanent fixture.
+    let lastConnState = null;
     function updateConnectionStatus(isConnected) {
         const chatStatus = document.getElementById('chat-status');
         if (!chatStatus) return;
+        if (isConnected === lastConnState) return; // snapshots fire often — animate on CHANGE only
+        lastConnState = isConnected;
+        clearTimeout(chatStatus._fadeTimer);
         if (isConnected) {
             chatStatus.textContent = '✅ Connected';
-            chatStatus.className = 'chat-status connected';
+            chatStatus.className = 'chat-status connected visible';
+            chatStatus._fadeTimer = setTimeout(() => chatStatus.classList.remove('visible'), 1800);
         } else {
-            chatStatus.textContent = '⏳ Reconnecting...';
-            chatStatus.className = 'chat-status reconnecting';
+            chatStatus.textContent = '⏳ Reconnecting…';
+            chatStatus.className = 'chat-status reconnecting visible'; // persists until restored
         }
+    }
+
+    // ─── Presence (who currently has the chat open) ───────
+    // Firestore has no onDisconnect() like Realtime DB, so online-ness is a
+    // heartbeat: write every 25s, treat the other side as offline if their last
+    // beat is older than 75s (covers closed tabs, dead batteries, network loss).
+    function startPresence() {
+        stopPresence(); // restart-safe (identity switch / re-entry)
+        const me = chatState.currentIdentity;
+        if (!me) return;
+        chatState.presenceData = null;
+
+        const beat = online => {
+            PRESENCE_DOC.set(
+                { [me]: { online, at: firebase.firestore.FieldValue.serverTimestamp() } },
+                { merge: true }
+            ).catch(() => { /* silent — presence is best-effort */ });
+        };
+        beat(true);
+        chatState.presenceHeartbeat = setInterval(() => {
+            if (document.visibilityState === 'visible') beat(true);
+            else beat(false); // tab hidden → drop to offline honestly
+        }, PRESENCE_HEARTBEAT_MS);
+
+        chatState.unsubPresence = PRESENCE_DOC.onSnapshot(doc => {
+            chatState.presenceData = doc.exists ? doc.data() : {};
+            refreshPresenceDot();
+        }, err => console.warn('[Presence] listener:', err));
+
+        // Re-evaluate staleness between snapshots so the dot decays to offline in real time
+        chatState.presenceEvalTimer = setInterval(refreshPresenceDot, 15000);
+    }
+
+    function stopPresence(markOffline = true) {
+        if (chatState.presenceHeartbeat) { clearInterval(chatState.presenceHeartbeat); chatState.presenceHeartbeat = null; }
+        if (chatState.presenceEvalTimer) { clearInterval(chatState.presenceEvalTimer); chatState.presenceEvalTimer = null; }
+        if (chatState.unsubPresence) { chatState.unsubPresence(); chatState.unsubPresence = null; }
+        if (markOffline && chatState.currentIdentity) {
+            PRESENCE_DOC.set(
+                { [chatState.currentIdentity]: { online: false, at: firebase.firestore.FieldValue.serverTimestamp() } },
+                { merge: true }
+            ).catch(() => { /* noop */ });
+        }
+        chatState.presenceData = null;
+        const dot = document.getElementById('presence-dot');
+        if (dot) dot.classList.remove('online');
+    }
+
+    function refreshPresenceDot() {
+        const dot = document.getElementById('presence-dot');
+        if (!dot || !chatState.currentIdentity) return;
+        const other = getOtherIdentity(chatState.currentIdentity);
+        const entry = chatState.presenceData && chatState.presenceData[other];
+        const atMs = entry && entry.at && typeof entry.at.toMillis === 'function' ? entry.at.toMillis() : null;
+        const online = !!(entry && entry.online === true && atMs && (Date.now() - atMs) < PRESENCE_STALE_MS);
+        dot.classList.toggle('online', online);
+        dot.title = online ? `${other} is online` : `${other} offline`;
+        dot.setAttribute('aria-label', online ? `${other} is online` : `${other} is offline`);
     }
 
 
