@@ -288,7 +288,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     left: 0;
     width: 100vw;
     height: 100vh;
-    display: none; /* asleep scenes must not layout/animate underneath Chat */
+    display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -302,7 +302,6 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .scene.scene-active {
-    display: flex;
     opacity: 1;
     visibility: visible;
     transform: scale(1);
@@ -311,7 +310,6 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .scene.scene-exit {
-    display: flex;
     opacity: 0;
     transform: scale(1.05);
     visibility: hidden;
@@ -1911,9 +1909,15 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 /* Override general scene layout constraints for the Chat Scene */
 #scene-chat {
+    display: flex;
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
+}
+
+#scene-chat.scene-active,
+#scene-chat.scene-exit {
+    display: flex;
 }
 
 /* Chat Scene Container - Full viewport height with dynamic units */
@@ -1933,7 +1937,9 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 .chat-header {
     flex-shrink: 0;
     padding: 0.85rem 1.25rem;
-    background: #1a0f2e;
+    background: rgba(26, 15, 46, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid rgba(199, 125, 255, 0.15);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     touch-action: none; /* gestures on the header must never reach the page scroller */
@@ -1946,7 +1952,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .chat-title {
-    font-family: 'Outfit', 'Playfair Display', serif;
+    font-family: 'Playfair Display', 'Outfit', serif;
     font-size: 1.35rem;
     font-weight: 600;
     font-style: italic;
@@ -1966,6 +1972,8 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     border: 1px solid rgba(199, 125, 255, 0.25);
     border-radius: 20px;
     padding: 3px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
     position: relative; /* anchor for the sliding glider */
 }
@@ -2288,7 +2296,9 @@ a.chat-link {
 .chat-input-bar {
     flex-shrink: 0;
     padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
-    background: #1a0f2e;
+    background: rgba(26, 15, 46, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid rgba(199, 125, 255, 0.2);
     display: flex;
     align-items: center;
