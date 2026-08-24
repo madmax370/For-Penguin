@@ -1909,15 +1909,9 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 /* Override general scene layout constraints for the Chat Scene */
 #scene-chat {
-    display: flex;
     padding: 0;
     align-items: stretch;
     justify-content: stretch;
-}
-
-#scene-chat.scene-active,
-#scene-chat.scene-exit {
-    display: flex;
 }
 
 /* Chat Scene Container - Full viewport height with dynamic units */
@@ -1952,7 +1946,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .chat-title {
-    font-family: 'Playfair Display', 'Outfit', serif;
+    font-family: 'Playfair Display', serif;
     font-size: 1.35rem;
     font-weight: 600;
     font-style: italic;
