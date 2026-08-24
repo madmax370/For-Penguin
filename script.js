@@ -93,6 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         mainContent.style.opacity = '1';
                         mainContent.style.transform = 'scale(1)';
                     });
+                    // Drop the transform after the intro so position:fixed chat
+                    // locks to the real viewport (a parent transform breaks it).
+                    setTimeout(() => { mainContent.style.transform = 'none'; }, 1300);
 
                     // Start the birthday experience
                     initMainApp();
@@ -3518,47 +3521,46 @@ document.addEventListener('DOMContentLoaded', () => {
         el.style.height = Math.min(el.scrollHeight, 140) + 'px';
     }
 
-    // ─── Keyboard Handling for Mobile ─────────────────────
-    // Adjust chat layout when keyboard appears on mobile
+    // ─── Visible-viewport lock (Android Chrome URL bar + keyboard) ──
+    // 100vh/100dvh is taller than the visible area, so the header slides
+    // under the browser chrome and a black gap appears below the input.
+    function syncVisibleViewport() {
+        const vv = window.visualViewport;
+        const h = vv ? vv.height : window.innerHeight;
+        const top = vv ? vv.offsetTop : 0;
+        const root = document.documentElement;
+        root.style.setProperty('--vv-height', Math.round(h) + 'px');
+        root.style.setProperty('--vv-top', Math.round(top) + 'px');
+        const chatScene = document.getElementById('scene-chat');
+        if (chatScene) {
+            const keyboardOpen = vv && (window.innerHeight - vv.height > 100);
+            chatScene.classList.toggle('keyboard-visible', !!keyboardOpen);
+        }
+    }
+
     function initKeyboardHandling() {
-        // Attach visualViewport listeners only once — re-entering the chat scene must
-        // not stack duplicate resize/scroll handlers that force repeated scroll-to-bottom
         if (keyboardHandlingInited) return;
         keyboardHandlingInited = true;
 
-        if (typeof window.visualViewport !== 'undefined') {
-            const chatScene = document.getElementById('scene-chat');
-            const chatSceneContainer = chatScene ? chatScene.querySelector('.chat-scene') : null;
-            const chatMessages = document.getElementById('chat-messages');
-            
-            if (!chatScene || !chatMessages || !chatSceneContainer) return;
-
-            let kbTimer = null;
-            const applyViewport = () => {
-                const currentHeight = window.visualViewport.height;
-                const isKeyboardOpen = window.innerHeight - currentHeight > 100;
-                if (isKeyboardOpen) {
-                    const prev = parseFloat(chatSceneContainer.style.height) || 0;
-                    if (Math.abs(prev - currentHeight) > 8) {
-                        chatSceneContainer.style.height = `${currentHeight}px`;
-                    }
-                    chatScene.classList.add('keyboard-visible');
-                    // Only pin to the live edge if the user was already following it
-                    const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
-                    if (nearBottom) chatMessages.scrollTop = chatMessages.scrollHeight;
-                } else {
-                    if (chatSceneContainer.style.height) chatSceneContainer.style.height = '';
-                    chatScene.classList.remove('keyboard-visible');
-                }
-            };
-            const handleViewportChange = () => {
-                if (kbTimer) return;
-                kbTimer = setTimeout(() => { kbTimer = null; applyViewport(); }, 80);
-            };
-
-            window.visualViewport.addEventListener('resize', handleViewportChange);
-            applyViewport();
+        syncVisibleViewport();
+        let vvTick = false;
+        const onVv = () => {
+            if (vvTick) return;
+            vvTick = true;
+            requestAnimationFrame(() => {
+                vvTick = false;
+                syncVisibleViewport();
+                const chatMessages = document.getElementById('chat-messages');
+                if (!chatMessages) return;
+                const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+                if (nearBottom) chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        };
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', onVv);
+            window.visualViewport.addEventListener('scroll', onVv);
         }
+        window.addEventListener('resize', onVv, { passive: true });
     }
 
     // ─── Connection Status ────────────────────────────────
