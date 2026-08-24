@@ -3609,17 +3609,18 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const handleViewportChange = () => {
                 const currentHeight = window.visualViewport.height;
-                chatSceneContainer.style.height = `${currentHeight}px`;
                 
                 // If keyboard is open (height is significantly less than window.innerHeight)
                 const isKeyboardOpen = window.innerHeight - currentHeight > 100;
                 if (isKeyboardOpen) {
+                    chatSceneContainer.style.height = `${currentHeight}px`;
                     chatScene.classList.add('keyboard-visible');
                     // Scroll to bottom
                     setTimeout(() => {
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                     }, 50);
                 } else {
+                    chatSceneContainer.style.height = '';
                     chatScene.classList.remove('keyboard-visible');
                 }
             };
