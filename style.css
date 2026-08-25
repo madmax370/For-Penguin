@@ -35,6 +35,8 @@
     --dur-ui: 220ms;
     --dur-bubble: 380ms;
     --dur-glide: 450ms;
+    /* P2: dynamic input bar height — updated by JS via ResizeObserver */
+    --input-bar-height: 72px;
 }
 
 /* ===== RESET & BASE ===== */
@@ -1940,11 +1942,12 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 .chat-header {
     flex-shrink: 0;
     padding: 0.85rem 1.25rem;
+    padding-top: calc(0.85rem + env(safe-area-inset-top, 0px));
     background: rgba(26, 15, 46, 0.85);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px) saturate(1.15);
+    -webkit-backdrop-filter: blur(20px) saturate(1.15);
     border-bottom: 1px solid rgba(199, 125, 255, 0.15);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255,255,255,0.06) inset;
     touch-action: none; /* gestures on the header must never reach the page scroller */
     z-index: 10;
     display: flex;
@@ -2056,9 +2059,13 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     overflow-y: auto;
     overflow-x: hidden;
     padding: var(--chat-spacing-md);
+    /* P1+P2 Fix: reserve breathing room above input bar so last bubble never hides — dynamic via --input-bar-height */
+    padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: var(--chat-spacing-sm);
+    position: relative; /* anchor for absolute-positioned hiding typing bubble */
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain; /* stop mobile pull-to-refresh hijack */
     /* No permanent scroll-behavior here — deliberate smooth glides use .smooth-scroll */
@@ -2148,13 +2155,50 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     margin-bottom: var(--chat-spacing-sm);
 }
 
+/* P1 Fix: last bubble/divider should not add extra bottom margin — prevents double gap + hidden last bubble feeling */
+.chat-messages .chat-bubble:last-child,
+.chat-messages .chat-date-divider:last-child,
+.chat-messages .chat-new-divider:last-child,
+.chat-messages .chat-bubble.grouped-end:last-child {
+    margin-bottom: 0 !important;
+}
+
+/* P1 Fix: typing indicator hiding state — remove from flex flow immediately while fading visually */
+.typing-indicator-bubble.hiding {
+    position: absolute !important;
+    bottom: 0;
+    left: var(--chat-spacing-md, 1rem);
+    opacity: 0 !important;
+    transform: translateY(10px) scale(0.96);
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s var(--ease-out-quint);
+}
+
 /* Left Bubble - Bhatari (Premium Glassmorphism) */
 .chat-bubble.left {
     align-self: flex-start;
-    background: #241536;
-    border: 1px solid rgba(199, 125, 255, 0.15);
+    background: linear-gradient(135deg, rgba(36, 21, 54, 0.92) 0%, rgba(26, 15, 46, 0.78) 100%);
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    border: 1px solid rgba(199, 125, 255, 0.18);
     border-bottom-left-radius: var(--chat-radius-sm);
-    box-shadow: var(--chat-shadow-soft), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+    box-shadow: var(--chat-shadow-soft), inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(199,125,255,0.06) inset;
+}
+
+/* P4: subtle tail for left bubble */
+.chat-bubble.left::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: -6px;
+    width: 12px;
+    height: 12px;
+    background: inherit;
+    clip-path: polygon(100% 0, 0 100%, 100% 100%);
+    border-left: 1px solid rgba(199, 125, 255, 0.18);
+    border-bottom: 1px solid rgba(199, 125, 255, 0.18);
+    transform: rotate(0deg);
+    pointer-events: none;
 }
 
 /* Right Bubble - Bhandhari (Rich Gradient) */
@@ -2162,7 +2206,27 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     align-self: flex-end;
     background: var(--chat-bubble-right-gradient);
     border-bottom-right-radius: var(--chat-radius-sm);
-    box-shadow: var(--chat-shadow-deep), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+    box-shadow: var(--chat-shadow-deep), inset 0 1px 1px rgba(255, 255, 255, 0.18), 0 0 0 1px rgba(255,255,255,0.08) inset;
+}
+
+/* P4: subtle tail for right bubble */
+.chat-bubble.right::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    right: -6px;
+    width: 12px;
+    height: 12px;
+    background: linear-gradient(135deg, #7b2cbf 0%, #5a189a 100%);
+    clip-path: polygon(0 0, 0 100%, 100% 100%);
+    pointer-events: none;
+}
+
+/* Hide tails on grouped continuation bubbles — only run start gets tail */
+.chat-bubble.grouped-mid::after,
+.chat-bubble.grouped-end::after,
+.chat-bubble.has-media::after {
+    display: none;
 }
 
 /* Hover Effect - Subtle Lift (hover-capable devices only — on touch, a sticky
@@ -2239,13 +2303,16 @@ a.chat-link {
 /* Reply Container (above input bar) */
 .chat-reply-container {
     flex-shrink: 0;
-    background: #1a0f2e;
-    border-top: 1px solid rgba(199, 125, 255, 0.2);
+    background: rgba(26, 15, 46, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(199, 125, 255, 0.22);
     padding: 0.65rem 1rem;
     display: flex;
     align-items: center;
     gap: 0.75rem;
     animation: slideUp 0.25s ease forwards;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.15);
 }
 
 @keyframes slideUp {
@@ -2298,16 +2365,22 @@ a.chat-link {
 /* Input Bar - Premium Fixed Bottom */
 .chat-input-bar {
     flex-shrink: 0;
-    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
-    background: rgba(26, 15, 46, 0.95);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid rgba(199, 125, 255, 0.2);
+    padding: 0.6rem 0.85rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
+    background: rgba(20, 12, 36, 0.96);
+    backdrop-filter: blur(24px) saturate(1.2);
+    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    border-top: 1px solid rgba(199, 125, 255, 0.22);
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: var(--chat-spacing-xs);
     position: relative;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+    /* P3: stronger separation so input never visually merges with bubbles */
+    box-shadow: 0 -1px 0 rgba(199,125,255,0.18), 0 -12px 32px rgba(0,0,0,0.35), 0 -2px 12px rgba(123,44,191,0.15);
+    transition: box-shadow 0.25s ease;
+}
+
+.chat-input-bar:focus-within {
+    box-shadow: 0 -1px 0 rgba(199,125,255,0.35), 0 -12px 32px rgba(0,0,0,0.4), 0 -4px 18px rgba(123,44,191,0.22);
 }
 
 /* Modern Chat Input - Premium Auto-expanding Pill */
@@ -2357,7 +2430,8 @@ a.chat-link {
     border-color: rgba(199, 125, 255, 0.7);
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.08) 100%);
     box-shadow: 0 0 0 5px rgba(199, 125, 255, 0.18), 0 8px 25px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transform: translateY(-2px);
+    /* P3: reduce lift to prevent visual hiding under status pill */
+    transform: translateY(-1px);
 }
 
 /* Mobile optimization for chat input */
@@ -2475,6 +2549,53 @@ a.chat-link {
     width: fit-content;
 }
 
+/* P3: Dedicated typing bar outside scroll — WhatsApp-style pill above input */
+.chat-typing-bar {
+    flex-shrink: 0;
+    min-height: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: max-height 0.28s var(--ease-out-quint), opacity 0.22s ease, transform 0.22s var(--ease-out-quint), padding 0.22s ease;
+    background: rgba(26, 15, 46, 0.92);
+    border-top: 1px solid transparent;
+    padding: 0 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.78rem;
+    color: rgba(224, 170, 255, 0.85);
+    pointer-events: none;
+}
+
+.chat-typing-bar.has-typing {
+    max-height: 42px;
+    opacity: 1;
+    transform: translateY(0);
+    padding: 0.5rem 1rem;
+    border-top-color: rgba(199, 125, 255, 0.15);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.15);
+}
+
+.chat-typing-bar .typing-dots {
+    padding: 0;
+}
+
+.chat-typing-bar .typing-dots span {
+    width: 6px;
+    height: 6px;
+    background: #c77dff;
+    box-shadow: 0 0 6px rgba(199,125,255,0.6);
+}
+
+.chat-typing-label {
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    font-style: italic;
+}
+
 .typing-dots {
     display: flex;
     align-items: center;
@@ -2530,6 +2651,8 @@ a.chat-link {
     
     .chat-messages {
         padding: 0.75rem;
+        padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
+        scroll-padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
     }
     
     .chat-input-bar {
@@ -2550,7 +2673,7 @@ a.chat-link {
 
 /* Keyboard Visible State - Adjust layout when mobile keyboard appears */
 .keyboard-visible .chat-messages {
-    padding-bottom: 0.5rem;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     flex: 1 1 auto;
 }
 
@@ -2576,8 +2699,16 @@ a.chat-link {
         opacity: 1;
     }
 
-    .chat-reply-container {
+    .chat-reply-container,
+    .chat-attachment-container,
+    .chat-typing-bar,
+    .typing-indicator-bubble.hiding {
         animation: none;
+        transition: none;
+    }
+
+    .chat-typing-bar.has-typing {
+        transform: none;
     }
 }
 
@@ -2659,7 +2790,9 @@ a.chat-link {
     margin: 1rem 0 0.5rem 0;
     padding: 0.35rem 1rem;
     border-radius: 16px;
-    background: #1a0f2e;
+    background: rgba(26, 15, 46, 0.88);
+    backdrop-filter: blur(12px) saturate(1.1);
+    -webkit-backdrop-filter: blur(12px) saturate(1.1);
     border: 1px solid rgba(199, 125, 255, 0.25);
     color: rgba(199, 125, 255, 0.9);
     font-family: 'Outfit', sans-serif;
@@ -2670,6 +2803,10 @@ a.chat-link {
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     pointer-events: none;
     transition: all 0.3s var(--transition-smooth);
+    /* P4: sticky date markers — stays visible while scrolling through a day */
+    position: sticky;
+    top: 0.5rem;
+    z-index: 5;
 }
 
 @media (max-width: 768px) {
@@ -2702,6 +2839,11 @@ a.chat-link {
 .chat-action-btn:hover {
     color: #fff;
     background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-action-btn:active {
+    transform: scale(0.92);
+    background: rgba(199, 125, 255, 0.2);
 }
 
 .chat-bubble-actions {
@@ -3138,13 +3280,16 @@ a.chat-link {
 /* Attachment Strip (mirrors .chat-reply-container) */
 .chat-attachment-container {
     flex-shrink: 0;
-    background: #1a0f2e;
-    border-top: 1px solid rgba(199, 125, 255, 0.2);
+    background: rgba(26, 15, 46, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(199, 125, 255, 0.22);
     padding: 0.65rem 1rem;
     display: flex;
     align-items: center;
     gap: 0.75rem;
     animation: slideUp 0.25s ease forwards;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.15);
 }
 
 .chat-attachment-thumb {
@@ -3924,8 +4069,8 @@ body.msg-info-open {
 .chat-scroll-fab {
     position: absolute;
     right: 1rem;
-    /* Float above the input bar (+ iOS home indicator) */
-    bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+    /* P2: Float above the dynamic input bar (+ iOS home indicator) — uses --input-bar-height */
+    bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
     width: 44px;
     height: 44px;
     border-radius: 50%;

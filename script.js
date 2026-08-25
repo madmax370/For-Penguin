@@ -1696,7 +1696,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) return;
         let emptyState = chatMessages.querySelector('.chat-empty-state');
-        const shouldShow = chatState.messages.length === 0 && !chatMessages.querySelector('.typing-indicator-bubble');
+        const typingBubblePresent = !!chatMessages.querySelector('.typing-indicator-bubble:not(.hiding)');
+        const typingBar = document.getElementById('chat-typing-bar');
+        const typingBarActive = !!(typingBar && typingBar.classList.contains('has-typing'));
+        const shouldShow = chatState.messages.length === 0 && !typingBubblePresent && !typingBarActive;
         if (shouldShow && !emptyState) {
             emptyState = document.createElement('div');
             emptyState.className = 'chat-empty-state';
@@ -1899,8 +1902,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // After the first pass, future messages enter instantly (no stagger)
         chatInitialStaggerDone = true;
 
-        // Get typing bubble to keep it at bottom
-        const typingBubble = chatMessages.querySelector('.typing-indicator-bubble');
+        // Get typing bubble to keep it at bottom (ignore hiding bubbles that are fading out)
+        const typingBubble = chatMessages.querySelector('.typing-indicator-bubble:not(.hiding)');
         if (typingBubble && lastInsertedNode && typingBubble.previousElementSibling !== lastInsertedNode) {
             chatMessages.appendChild(typingBubble);
         }
@@ -2498,6 +2501,8 @@ document.addEventListener('DOMContentLoaded', () => {
         chatState.replyToMessage = { id: msgId, text, sender };
         const container = document.getElementById('chat-reply-container');
         const quote     = document.getElementById('chat-reply-quote');
+        const chatMessages = document.getElementById('chat-messages');
+        const wasAtBottom = chatMessages ? (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80) : false;
         if (container && quote) {
             quote.innerHTML = ''; // Clear previous preview
             const senderSpan = document.createElement('span');
@@ -2516,12 +2521,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const chatInput = document.getElementById('chat-input');
         if (chatInput) chatInput.focus();
+        // P2: reply bar height changes — keep last bubble visible
+        syncInputBarHeight();
+        if (wasAtBottom && chatMessages) {
+            requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
+        }
     }
 
     function cancelReply() {
         chatState.replyToMessage = null;
         const container = document.getElementById('chat-reply-container');
         if (container) container.style.display = 'none';
+        // P2: reply bar hidden — update dynamic height
+        syncInputBarHeight();
     }
 
     // ─── Media: Cloudinary URL Helpers ───────────────────
@@ -2822,6 +2834,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (container) container.style.display = 'none';
         const sendBtn = document.getElementById('chat-send-btn');
         if (sendBtn) sendBtn.disabled = false;
+        // P2: attachment bar hidden — update dynamic height
+        syncInputBarHeight();
     }
 
     function renderAttachmentStrip() {
@@ -2872,6 +2886,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sendBtn) sendBtn.disabled = false;
         }
         updateAttachmentStripProgress();
+        // P2: attachment strip height changed — keep last bubble visible
+        syncInputBarHeight();
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const wasAtBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 120;
+            if (wasAtBottom) requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
+        }
     }
 
     function updateAttachmentStripProgress() {
@@ -3456,6 +3477,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─── Remote Typing Indicator ─────────────────────────
+    // P3: typing bar outside scroll — prevents layout shift + ghost gap
+    function renderTypingBar(sender) {
+        const bar = document.getElementById('chat-typing-bar');
+        if (!bar) return false;
+        bar.innerHTML = '';
+        const dots = document.createElement('div');
+        dots.className = 'typing-dots';
+        dots.innerHTML = '<span></span><span></span><span></span>';
+        const label = document.createElement('span');
+        label.className = 'chat-typing-label';
+        label.textContent = sender + ' is typing…';
+        bar.appendChild(dots);
+        bar.appendChild(label);
+        bar.style.display = 'flex';
+        // trigger transition
+        requestAnimationFrame(() => bar.classList.add('has-typing'));
+        syncInputBarHeight();
+        return true;
+    }
+
+    function clearTypingBar() {
+        const bar = document.getElementById('chat-typing-bar');
+        if (!bar) return;
+        bar.classList.remove('has-typing');
+        setTimeout(() => {
+            if (!bar.classList.contains('has-typing')) {
+                bar.style.display = 'none';
+                bar.innerHTML = '';
+                syncInputBarHeight();
+            }
+        }, 280);
+    }
+
     function showRemoteTypingIndicator(sender) {
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) return;
@@ -3468,34 +3522,50 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (chatState.remoteTyping.timer) clearTimeout(chatState.remoteTyping.timer);
 
-        let bubble = chatState.remoteTyping.el;
-        const side = sender === 'Bhatari' ? 'left' : 'right';
-        if (bubble && bubble.isConnected) {
-            // Reuse: refresh side + label and clear any fading inline styles from a prior hide
-            bubble.className = `chat-bubble ${side} typing-indicator-bubble`;
-            bubble.style.opacity = '';
-            bubble.style.transition = '';
-            const lbl = bubble.querySelector('.chat-sender-label');
-            if (lbl) lbl.textContent = sender;
+        // P3: prefer dedicated typing bar outside scroll if present — no ghost gap
+        const bar = document.getElementById('chat-typing-bar');
+        const useBar = !!bar;
+        if (useBar) {
+            renderTypingBar(sender);
+            // Clean up any legacy bubble that might still be in DOM from previous version
+            if (chatState.remoteTyping.el && chatState.remoteTyping.el.isConnected) {
+                chatState.remoteTyping.el.remove();
+            }
+            chatState.remoteTyping.el = null;
         } else {
-            bubble = document.createElement('div');
-            bubble.className = `chat-bubble ${side} typing-indicator-bubble bubble-enter`;
-            bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-enter'), { once: true });
-            const label = document.createElement('div');
-            label.className = 'chat-sender-label';
-            label.textContent = sender;
-            const dots = document.createElement('div');
-            dots.className = 'typing-dots';
-            dots.innerHTML = '<span></span><span></span><span></span>';
-            bubble.appendChild(label);
-            bubble.appendChild(dots);
-            chatMessages.appendChild(bubble);
-            chatState.remoteTyping.el = bubble;
+            let bubble = chatState.remoteTyping.el;
+            const side = sender === 'Bhatari' ? 'left' : 'right';
+            if (bubble && bubble.isConnected) {
+                // Reuse: refresh side + label and clear any fading inline styles from a prior hide
+                bubble.className = `chat-bubble ${side} typing-indicator-bubble`;
+                bubble.classList.remove('hiding');
+                bubble.style.opacity = '';
+                bubble.style.transition = '';
+                bubble.style.position = '';
+                bubble.style.transform = '';
+                bubble.style.bottom = '';
+                bubble.style.left = '';
+                const lbl = bubble.querySelector('.chat-sender-label');
+                if (lbl) lbl.textContent = sender;
+            } else {
+                bubble = document.createElement('div');
+                bubble.className = `chat-bubble ${side} typing-indicator-bubble bubble-enter`;
+                bubble.addEventListener('animationend', () => bubble.classList.remove('bubble-enter'), { once: true });
+                const label = document.createElement('div');
+                label.className = 'chat-sender-label';
+                label.textContent = sender;
+                const dots = document.createElement('div');
+                dots.className = 'typing-dots';
+                dots.innerHTML = '<span></span><span></span><span></span>';
+                bubble.appendChild(label);
+                bubble.appendChild(dots);
+                chatMessages.appendChild(bubble);
+                chatState.remoteTyping.el = bubble;
+            }
+            const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+            if (nearBottom) smoothScrollToBottom(chatMessages);
         }
-
-        const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
-        if (nearBottom) smoothScrollToBottom(chatMessages);
-        syncEmptyState(); // greeting card must not co-exist with the typing bubble
+        syncEmptyState(); // greeting card must not co-exist with the typing bubble/bar
         chatState.remoteTyping.sender = sender;
         // Auto-hide after 6s if no update
         chatState.remoteTyping.timer = setTimeout(hideRemoteTypingIndicator, 6000);
@@ -3505,20 +3575,81 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chatState.remoteTyping.timer) { clearTimeout(chatState.remoteTyping.timer); chatState.remoteTyping.timer = null; }
         const bubble = chatState.remoteTyping.el;
         chatState.remoteTyping.el = null;
+        // P3: clear dedicated bar first
+        clearTypingBar();
         if (bubble && bubble.isConnected) {
-            bubble.style.transition = 'opacity 0.3s ease';
+            // P1 Fix: remove from flex flow immediately to prevent ghost gap below last bubble,
+            // while still fading visually via .hiding class (position:absolute + opacity transition)
+            bubble.classList.add('hiding');
+            bubble.style.transition = 'opacity 0.25s ease, transform 0.25s var(--ease-out-quint)';
+            // Force reflow to ensure transition starts from current state
+            void bubble.offsetWidth;
             bubble.style.opacity = '0';
-            chatState.remoteTyping.removeTimer = setTimeout(() => bubble.remove(), 300);
+            bubble.style.transform = 'translateY(10px) scale(0.96)';
+            chatState.remoteTyping.removeTimer = setTimeout(() => {
+                bubble.remove();
+                syncEmptyState();
+            }, 280);
         }
         chatState.remoteTyping.sender = null;
+        // Immediate sync so empty state doesn't wait 300ms while invisible bubble still counted
         syncEmptyState();
     }
 
     // ─── Input auto-resize helper ────────────────────────
     // Cap matches .chat-input max-height (140px) in style.css
     function resizeChatInput(el) {
+        const chatMessages = document.getElementById('chat-messages');
+        const wasAtBottom = chatMessages ? (chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80) : false;
         el.style.height = 'auto';
         el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+        // P2: keep last bubble visible when input grows, and update dynamic height var
+        syncInputBarHeight();
+        if (wasAtBottom && chatMessages) {
+            requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
+        }
+    }
+
+    // ─── P2: Dynamic Input Bar Height (ResizeObserver → --input-bar-height) ──
+    // Measures .chat-input-bar + reply + attachment strips so .chat-messages
+    // padding-bottom always matches the actual visible chrome height.
+    let inputBarHeightObserver = null;
+    function syncInputBarHeight() {
+        const inputBar = document.querySelector('.chat-input-bar');
+        const replyBar = document.getElementById('chat-reply-container');
+        const attachBar = document.getElementById('chat-attachment-container');
+        let h = 0;
+        if (inputBar) h += inputBar.offsetHeight;
+        if (replyBar && replyBar.style.display !== 'none' && replyBar.offsetHeight > 0) h += replyBar.offsetHeight;
+        if (attachBar && attachBar.style.display !== 'none' && attachBar.offsetHeight > 0) h += attachBar.offsetHeight;
+        // Fallback to 72px if measurement is 0 (e.g. during init, hidden scene)
+        if (h < 20) h = 72;
+        const root = document.documentElement;
+        root.style.setProperty('--input-bar-height', h + 'px');
+        const chatScene = document.querySelector('.chat-scene');
+        if (chatScene) chatScene.style.setProperty('--input-bar-height', h + 'px');
+    }
+
+    function initDynamicInputHeight() {
+        if (inputBarHeightObserver) return;
+        const inputBar = document.querySelector('.chat-input-bar');
+        const replyBar = document.getElementById('chat-reply-container');
+        const attachBar = document.getElementById('chat-attachment-container');
+        const chatInput = document.getElementById('chat-input');
+        if (!inputBar) return;
+        syncInputBarHeight();
+        if ('ResizeObserver' in window) {
+            inputBarHeightObserver = new ResizeObserver(() => {
+                syncInputBarHeight();
+            });
+            inputBarHeightObserver.observe(inputBar);
+            if (replyBar) inputBarHeightObserver.observe(replyBar);
+            if (attachBar) inputBarHeightObserver.observe(attachBar);
+            if (chatInput) inputBarHeightObserver.observe(chatInput);
+        } else {
+            // Fallback: window resize
+            window.addEventListener('resize', syncInputBarHeight, { passive: true });
+        }
     }
 
     // ─── Visible-viewport lock (Android Chrome URL bar + keyboard) ──
@@ -3543,6 +3674,8 @@ document.addEventListener('DOMContentLoaded', () => {
         keyboardHandlingInited = true;
 
         syncVisibleViewport();
+        syncInputBarHeight();
+        initDynamicInputHeight();
         let vvTick = false;
         const onVv = () => {
             if (vvTick) return;
@@ -3550,6 +3683,7 @@ document.addEventListener('DOMContentLoaded', () => {
             requestAnimationFrame(() => {
                 vvTick = false;
                 syncVisibleViewport();
+                syncInputBarHeight();
                 const chatMessages = document.getElementById('chat-messages');
                 if (!chatMessages) return;
                 const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
@@ -3587,31 +3721,56 @@ document.addEventListener('DOMContentLoaded', () => {
     // Firestore has no onDisconnect() like Realtime DB, so online-ness is a
     // heartbeat: write every 25s, treat the other side as offline if their last
     // beat is older than 75s (covers closed tabs, dead batteries, network loss).
+    // P4 Fix: presence dot robustness — rules may block presence/* if not added,
+    // pending serverTimestamp should count as online, and hidden tabs should NOT
+    // immediately go offline (let stale window handle it) to prevent flicker.
     function startPresence() {
-        stopPresence(); // restart-safe (identity switch / re-entry)
+        stopPresence(false); // restart-safe (identity switch / re-entry) — don't mark offline on restart
         const me = chatState.currentIdentity;
         if (!me || !PRESENCE_DOC) return;
         chatState.presenceData = null;
 
-        const beat = online => {
+        const beat = (online) => {
+            if (!PRESENCE_DOC || !chatState.currentIdentity || !chatState.chatUnlocked) return;
+            if (document.visibilityState !== 'visible' && online) {
+                // Skip heartbeat while hidden — don't mark offline, let stale timer handle
+                return;
+            }
             PRESENCE_DOC.set(
                 { [me]: { online, at: firebase.firestore.FieldValue.serverTimestamp() } },
                 { merge: true }
-            ).catch(() => { /* silent — presence is best-effort */ });
+            ).catch((err) => {
+                console.warn('[Presence] write failed — check Firestore Rules for presence/* :', err && err.code ? err.code : err);
+            });
         };
         beat(true);
         chatState.presenceHeartbeat = setInterval(() => {
-            if (document.visibilityState === 'visible') beat(true);
-            else beat(false); // tab hidden → drop to offline honestly
+            if (document.visibilityState === 'visible' && chatState.chatUnlocked && chatState.currentIdentity) {
+                beat(true);
+            }
+            // hidden → do nothing, don't write offline (prevents dot flicker when friend switches app briefly)
         }, PRESENCE_HEARTBEAT_MS);
 
         chatState.unsubPresence = PRESENCE_DOC.onSnapshot(doc => {
             chatState.presenceData = doc.exists ? doc.data() : {};
             refreshPresenceDot();
-        }, err => console.warn('[Presence] listener:', err));
+        }, err => {
+            console.warn('[Presence] listener failed — check Firestore Rules for presence/* :', err && err.code ? err.code : err);
+            // Fallback: try to keep dot gray but don't crash
+            const dot = document.getElementById('presence-dot');
+            if (dot) {
+                dot.classList.remove('online');
+                dot.title = 'Presence unavailable — check Firestore Rules';
+            }
+        });
 
         // Re-evaluate staleness between snapshots so the dot decays to offline in real time
         chatState.presenceEvalTimer = setInterval(refreshPresenceDot, 15000);
+
+        // Best-effort offline on page close — not on hidden (privacy re-lock handles explicit offline)
+        window.addEventListener('beforeunload', () => {
+            try { stopPresence(true); } catch (e) { /* noop */ }
+        }, { once: true });
     }
 
     function stopPresence(markOffline = true) {
@@ -3634,11 +3793,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!dot || !chatState.currentIdentity) return;
         const other = getOtherIdentity(chatState.currentIdentity);
         const entry = chatState.presenceData && chatState.presenceData[other];
-        const atMs = entry && entry.at && typeof entry.at.toMillis === 'function' ? entry.at.toMillis() : null;
-        const online = !!(entry && entry.online === true && atMs && (Date.now() - atMs) < PRESENCE_STALE_MS);
+        if (!entry) {
+            dot.classList.remove('online');
+            dot.title = `${other} offline`;
+            dot.setAttribute('aria-label', `${other} is offline`);
+            return;
+        }
+        // P4 Fix: pending serverTimestamp (local write) has no toMillis yet — treat as fresh (now) like typing logic
+        let atMs = null;
+        if (entry.at) {
+            atMs = typeof entry.at.toMillis === 'function' ? entry.at.toMillis() : Date.now();
+        }
+        const online = !!(entry.online === true && atMs && (Date.now() - atMs) < PRESENCE_STALE_MS);
         dot.classList.toggle('online', online);
         dot.title = online ? `${other} is online` : `${other} offline`;
         dot.setAttribute('aria-label', online ? `${other} is online` : `${other} is offline`);
+        // Debug hint
+        if (!online && entry.online === true) {
+            // If entry says online but stale, it means heartbeat stopped >75s ago
+            // Could be friend closed tab, network loss, or rules blocking
+        }
     }
 
 
