@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-08-26
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the recent Chat Scene UI work and the current mobile composer keyboard behavior follow-up. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -178,7 +178,9 @@ Message bubbles are keyboard-focusable so hidden actions remain discoverable wit
 ### Composer
 
 - The composer is an auto-growing textarea capped at 140px.
-- Enter sends a message; Shift+Enter adds a new line.
+- On touch/mobile devices, the keyboard Return/Enter key inserts a new line, matching the mobile chat behavior; messages are sent with the explicit Send button.
+- On desktop, an unmodified Enter sends a message; Shift+Enter inserts a new line everywhere.
+- The textarea uses `enterkeyhint="enter"` to request a newline/Return action from mobile keyboards.
 - The send button is disabled and visually muted when there is no text, no ready attachment, or no selected identity.
 - The send button becomes active when text or a completed attachment is available.
 - Uploading an attachment keeps sending disabled until the upload is ready.
@@ -458,7 +460,15 @@ The following changes were made on 2026-08-26 in the current working tree:
 - Both bubble tails were changed from sharp CSS triangles to softer rounded rotated shapes.
 - Grouped continuation bubbles and media bubbles retain their existing tail rules.
 
-These updates are currently present in `script.js` and `style.css` and remain uncommitted in the working tree. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file is also still deleted from the working tree.
+### Mobile keyboard newline fix — 2026-08-26
+
+- The chat input now listens for `keydown` instead of the deprecated `keypress` event.
+- On touch/mobile devices, keyboard Return/Enter is left native so it inserts a newline; the explicit Send button is the mobile send action.
+- Desktop keeps the existing unmodified-Enter-to-send shortcut, while Shift+Enter remains a newline.
+- IME/composition events are ignored to avoid accidental sends while a mobile input method is composing text.
+- The textarea declares `enterkeyhint="enter"` to request a Return/newline key from mobile browsers.
+
+The mobile keyboard fix is currently uncommitted in `index.html`, `script.js`, and `project-context.md`. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
 
 ---
 

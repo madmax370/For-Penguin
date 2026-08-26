@@ -1214,9 +1214,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // This code is kept for compatibility if chat is already unlocked
 
             chatSendBtn.addEventListener('click', handleSend);
-            chatInput.addEventListener('keypress', e => {
-                // Enter sends; Shift+Enter inserts a newline (standard chat behavior)
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+            chatInput.addEventListener('keydown', e => {
+                if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+
+                // A phone keyboard's Return/Enter key is a line-break control,
+                // like WhatsApp. Only the explicit Send button sends on touch
+                // devices. Keep the faster Enter-to-send shortcut on desktop,
+                // while Shift+Enter remains a newline everywhere.
+                const isTouchDevice = (navigator.maxTouchPoints || 0) > 0 ||
+                    (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+                if (isTouchDevice || e.shiftKey) return;
+
+                e.preventDefault();
+                handleSend();
             });
             chatInput.addEventListener('input', handleOutgoingTyping);
             if (chatReplyCancel) chatReplyCancel.addEventListener('click', cancelReply);
