@@ -826,7 +826,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (remaining > 0) return; // still in cooldown
 
         // Disable button
-        if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="notify-icon" aria-hidden="true">⏳</span><span class="notify-label">Sending…</span>';
+        }
 
         try {
             const res = await fetch(
@@ -847,7 +850,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.warn('Notify failed:', err);
             showToast('Could not send notification 😢', true);
-            if (btn) { btn.disabled = false; btn.innerHTML = '<span class="notify-icon">🔔</span> Notify Bhatari'; }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="notify-icon" aria-hidden="true">🔔</span><span class="notify-label">Notify Bhatari</span>';
+            }
             return;
         }
 
@@ -863,7 +869,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 notifyCooldownTimer = null;
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = '<span class="notify-icon">🔔</span> Notify Bhatari';
+                    btn.innerHTML = '<span class="notify-icon" aria-hidden="true">🔔</span><span class="notify-label">Notify Bhatari</span>';
                 }
             } else {
                 updateNotifyBtn(btn, secLeft);
@@ -872,7 +878,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateNotifyBtn(btn, secLeft) {
-        if (btn) btn.innerHTML = `⏳ Wait ${secLeft}s`;
+        if (btn) {
+            btn.innerHTML = `<span class="notify-icon" aria-hidden="true">⏳</span><span class="notify-label">Wait ${secLeft}s</span>`;
+        }
     }
 
     // ─── Toast (styling lives in style.css #chat-toast; JS drives classes + timers) ──
@@ -938,6 +946,12 @@ document.addEventListener('DOMContentLoaded', () => {
         presenceData: null,       // last presence/status snapshot payload
         presenceHeartbeat: null,  // setInterval handle for own heartbeat writes
         presenceEvalTimer: null,  // setInterval handle re-evaluating the other side's staleness
+        presenceIdentity: null,   // identity owning the active presence session
+        presenceSessionId: null,  // unique tab/session key for multi-tab correctness
+        presenceBeat: null,       // immediate heartbeat function for reconnect recovery
+        presenceListenerError: false,
+        presenceRunId: 0,         // invalidates stale listeners/timers after restarts
+        presenceLifecycleBound: false,
         unsubPresence: null       // presence doc listener unsubscribe
     };
 
@@ -1600,6 +1614,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chatState.currentIdentity) {
             initReadReceiptObserver();
             observeAllIncomingBubbles();
+            // Presence is identity-scoped too. Restart it after a manual toggle
+            // so the new identity owns the heartbeat and dot target is correct.
+            startPresence();
         }
     }
 
@@ -2704,6 +2721,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
             window.addEventListener('resize', positionGlider, { passive: true });
+            if ('ResizeObserver' in window) {
+                const toggleResizeObserver = new ResizeObserver(() => {
+                    requestAnimationFrame(positionGlider);
+                });
+                toggleResizeObserver.observe(toggle);
+            }
         }
 
         // Header compresses once the user starts scrolling (rAF-throttled, passive)
@@ -3785,100 +3808,225 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Presence (who currently has the chat open) ───────
     // Firestore has no onDisconnect() like Realtime DB, so online-ness is a
-    // heartbeat: write every 25s, treat the other side as offline if their last
-    // beat is older than 75s (covers closed tabs, dead batteries, network loss).
-    // P4 Fix: presence dot robustness — rules may block presence/* if not added,
-    // pending serverTimestamp should count as online, and hidden tabs should NOT
-    // immediately go offline (let stale window handle it) to prevent flicker.
+    // heartbeat: write every 25s, treat the other side as offline when every
+    // active session is older than 75s. Each tab gets its own session so one
+    // tab closing cannot incorrectly mark another tab for the same identity off.
+    // The legacy top-level identity fields are still written/read for compatibility
+    // with an older version of the Chat Scene.
+    function createPresenceSessionId() {
+        return 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    }
+
+    function writePresenceState(identity, sessionId, online) {
+        if (!identity || !sessionId || !PRESENCE_DOC || typeof firebase === 'undefined' || !firebase.firestore) {
+            return Promise.resolve(false);
+        }
+        return PRESENCE_DOC.set({
+            // Keep the old shape working for already-open/older clients.
+            [identity]: {
+                online,
+                at: firebase.firestore.FieldValue.serverTimestamp()
+            },
+            // New clients aggregate this map, which is safe across multiple tabs.
+            sessions: {
+                [sessionId]: {
+                    identity,
+                    online,
+                    at: firebase.firestore.FieldValue.serverTimestamp()
+                }
+            }
+        }, { merge: true }).then(() => true);
+    }
+
+    function presenceTimestampMs(value) {
+        if (!value) return null;
+        if (typeof value.toMillis === 'function') {
+            const ms = value.toMillis();
+            return Number.isFinite(ms) ? ms : null;
+        }
+        if (value instanceof Date) {
+            const ms = value.getTime();
+            return Number.isFinite(ms) ? ms : null;
+        }
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value) || value <= 0) return null;
+            return value < 1e12 ? value * 1000 : value;
+        }
+        if (typeof value === 'string') {
+            const ms = Date.parse(value);
+            return Number.isFinite(ms) ? ms : null;
+        }
+        if (typeof value.seconds === 'number' && Number.isFinite(value.seconds)) {
+            return value.seconds * 1000 + ((value.nanoseconds || 0) / 1e6);
+        }
+        if (typeof value._seconds === 'number' && Number.isFinite(value._seconds)) {
+            return value._seconds * 1000 + ((value._nanoseconds || 0) / 1e6);
+        }
+        return null;
+    }
+
+    function isFreshPresenceEntry(entry) {
+        if (!entry || entry.online !== true) return false;
+        const atMs = presenceTimestampMs(entry.at);
+        if (!atMs) return false;
+        // A clock that is slightly ahead should not make a valid heartbeat fail.
+        const ageMs = Math.max(0, Date.now() - atMs);
+        return ageMs < PRESENCE_STALE_MS;
+    }
+
+    function setPresenceDotState(state, other = null) {
+        const dot = document.getElementById('presence-dot');
+        if (!dot) return;
+        const name = other || 'Presence';
+        dot.classList.toggle('online', state === 'online');
+        dot.dataset.presenceState = state;
+        if (state === 'online') {
+            dot.title = `${name} is online`;
+            dot.setAttribute('aria-label', `${name} is online`);
+        } else if (state === 'offline') {
+            dot.title = `${name} offline`;
+            dot.setAttribute('aria-label', `${name} is offline`);
+        } else if (state === 'checking') {
+            dot.title = `Checking ${name} presence…`;
+            dot.setAttribute('aria-label', `Checking ${name} presence`);
+        } else if (state === 'unavailable') {
+            dot.title = 'Presence unavailable — check Firestore Rules';
+            dot.setAttribute('aria-label', 'Presence unavailable');
+        } else {
+            dot.title = 'Presence unknown';
+            dot.setAttribute('aria-label', 'Presence unknown');
+        }
+    }
+
     function startPresence() {
-        stopPresence(false); // restart-safe (identity switch / re-entry) — don't mark offline on restart
+        // A restart gets a new session ID. This prevents a delayed offline write
+        // from an old identity/session from overwriting the new online state.
+        stopPresence(true);
         const me = chatState.currentIdentity;
-        if (!me || !PRESENCE_DOC) return;
+        if (!me || !PRESENCE_DOC) {
+            setPresenceDotState('unknown');
+            return;
+        }
+
+        const sessionId = createPresenceSessionId();
+        const runId = ++chatState.presenceRunId;
+        chatState.presenceIdentity = me;
+        chatState.presenceSessionId = sessionId;
         chatState.presenceData = null;
+        chatState.presenceListenerError = false;
+        setPresenceDotState('checking', getOtherIdentity(me));
+
+        const isActive = () => (
+            runId === chatState.presenceRunId &&
+            chatState.currentIdentity === me &&
+            chatState.presenceIdentity === me &&
+            chatState.presenceSessionId === sessionId
+        );
 
         const beat = (online) => {
-            if (!PRESENCE_DOC || !chatState.currentIdentity || !chatState.chatUnlocked) return;
-            if (document.visibilityState !== 'visible' && online) {
-                // Skip heartbeat while hidden — don't mark offline, let stale timer handle
+            if (!isActive() || !chatState.chatUnlocked) return;
+            if (online && (document.visibilityState !== 'visible' || navigator.onLine === false)) {
+                // Hidden/offline tabs stop extending their lease. The last valid
+                // heartbeat will naturally expire instead of falsely staying online.
                 return;
             }
-            PRESENCE_DOC.set(
-                { [me]: { online, at: firebase.firestore.FieldValue.serverTimestamp() } },
-                { merge: true }
-            ).catch((err) => {
-                console.warn('[Presence] write failed — check Firestore Rules for presence/* :', err && err.code ? err.code : err);
+            writePresenceState(me, sessionId, online).catch(err => {
+                if (isActive()) {
+                    console.warn('[Presence] write failed — check Firestore Rules for presence/* :', err && err.code ? err.code : err);
+                }
             });
         };
-        beat(true);
-        chatState.presenceHeartbeat = setInterval(() => {
-            if (document.visibilityState === 'visible' && chatState.chatUnlocked && chatState.currentIdentity) {
-                beat(true);
-            }
-            // hidden → do nothing, don't write offline (prevents dot flicker when friend switches app briefly)
-        }, PRESENCE_HEARTBEAT_MS);
+        chatState.presenceBeat = beat;
 
         chatState.unsubPresence = PRESENCE_DOC.onSnapshot(doc => {
+            if (!isActive()) return;
+            chatState.presenceListenerError = false;
             chatState.presenceData = doc.exists ? doc.data() : {};
             refreshPresenceDot();
         }, err => {
+            if (!isActive()) return;
+            chatState.presenceListenerError = true;
             console.warn('[Presence] listener failed — check Firestore Rules for presence/* :', err && err.code ? err.code : err);
-            // Fallback: try to keep dot gray but don't crash
-            const dot = document.getElementById('presence-dot');
-            if (dot) {
-                dot.classList.remove('online');
-                dot.title = 'Presence unavailable — check Firestore Rules';
-            }
+            setPresenceDotState('unavailable', getOtherIdentity(me));
         });
 
-        // Re-evaluate staleness between snapshots so the dot decays to offline in real time
+        beat(true);
+        chatState.presenceHeartbeat = setInterval(() => {
+            if (document.visibilityState === 'visible' && navigator.onLine !== false) beat(true);
+        }, PRESENCE_HEARTBEAT_MS);
+
+        // Re-evaluate staleness between snapshots so the dot decays to offline in real time.
         chatState.presenceEvalTimer = setInterval(refreshPresenceDot, 15000);
 
-        // Best-effort offline on page close — not on hidden (privacy re-lock handles explicit offline)
-        window.addEventListener('beforeunload', () => {
-            try { stopPresence(true); } catch (e) { /* noop */ }
-        }, { once: true });
+        // Bind lifecycle recovery once. Mobile browsers may skip beforeunload,
+        // so pagehide is included as a best-effort cleanup path.
+        if (!chatState.presenceLifecycleBound) {
+            const markPresenceOffline = () => {
+                try { stopPresence(true); } catch (e) { /* noop */ }
+            };
+            window.addEventListener('pagehide', markPresenceOffline);
+            window.addEventListener('beforeunload', markPresenceOffline);
+            window.addEventListener('offline', () => {
+                if (chatState.presenceIdentity) {
+                    setPresenceDotState('unavailable', getOtherIdentity(chatState.presenceIdentity));
+                }
+            }, { passive: true });
+            window.addEventListener('online', () => {
+                if (chatState.presenceBeat) {
+                    setPresenceDotState('checking', getOtherIdentity(chatState.presenceIdentity));
+                    chatState.presenceBeat(true);
+                }
+            }, { passive: true });
+            chatState.presenceLifecycleBound = true;
+        }
     }
 
     function stopPresence(markOffline = true) {
+        const activeIdentity = chatState.presenceIdentity;
+        const activeSessionId = chatState.presenceSessionId;
+        chatState.presenceRunId += 1;
         if (chatState.presenceHeartbeat) { clearInterval(chatState.presenceHeartbeat); chatState.presenceHeartbeat = null; }
         if (chatState.presenceEvalTimer) { clearInterval(chatState.presenceEvalTimer); chatState.presenceEvalTimer = null; }
         if (chatState.unsubPresence) { chatState.unsubPresence(); chatState.unsubPresence = null; }
-        if (markOffline && chatState.currentIdentity && PRESENCE_DOC) {
-            PRESENCE_DOC.set(
-                { [chatState.currentIdentity]: { online: false, at: firebase.firestore.FieldValue.serverTimestamp() } },
-                { merge: true }
-            ).catch(() => { /* noop */ });
-        }
+        chatState.presenceBeat = null;
+        chatState.presenceIdentity = null;
+        chatState.presenceSessionId = null;
         chatState.presenceData = null;
-        const dot = document.getElementById('presence-dot');
-        if (dot) dot.classList.remove('online');
+        chatState.presenceListenerError = false;
+        setPresenceDotState('unknown');
+
+        if (markOffline && activeIdentity && activeSessionId && PRESENCE_DOC) {
+            writePresenceState(activeIdentity, activeSessionId, false).catch(() => { /* best effort */ });
+        }
     }
 
     function refreshPresenceDot() {
         const dot = document.getElementById('presence-dot');
-        if (!dot || !chatState.currentIdentity) return;
-        const other = getOtherIdentity(chatState.currentIdentity);
-        const entry = chatState.presenceData && chatState.presenceData[other];
-        if (!entry) {
-            dot.classList.remove('online');
-            dot.title = `${other} offline`;
-            dot.setAttribute('aria-label', `${other} is offline`);
+        if (!dot || !chatState.currentIdentity) {
+            if (dot) setPresenceDotState('unknown');
             return;
         }
-        // P4 Fix: pending serverTimestamp (local write) has no toMillis yet — treat as fresh (now) like typing logic
-        let atMs = null;
-        if (entry.at) {
-            atMs = typeof entry.at.toMillis === 'function' ? entry.at.toMillis() : Date.now();
+
+        const other = getOtherIdentity(chatState.currentIdentity);
+        if (navigator.onLine === false || chatState.presenceListenerError) {
+            setPresenceDotState('unavailable', other);
+            return;
         }
-        const online = !!(entry.online === true && atMs && (Date.now() - atMs) < PRESENCE_STALE_MS);
-        dot.classList.toggle('online', online);
-        dot.title = online ? `${other} is online` : `${other} offline`;
-        dot.setAttribute('aria-label', online ? `${other} is online` : `${other} is offline`);
-        // Debug hint
-        if (!online && entry.online === true) {
-            // If entry says online but stale, it means heartbeat stopped >75s ago
-            // Could be friend closed tab, network loss, or rules blocking
+        const data = chatState.presenceData;
+        const entries = [];
+        const legacyEntry = data && data[other];
+        if (legacyEntry && typeof legacyEntry === 'object') entries.push(legacyEntry);
+
+        const sessions = data && data.sessions;
+        if (sessions && typeof sessions === 'object' && !Array.isArray(sessions)) {
+            Object.keys(sessions).forEach(sessionId => {
+                const entry = sessions[sessionId];
+                if (entry && entry.identity === other) entries.push(entry);
+            });
         }
+
+        const online = entries.some(isFreshPresenceEntry);
+        setPresenceDotState(online ? 'online' : 'offline', other);
     }
 
 

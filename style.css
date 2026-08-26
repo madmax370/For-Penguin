@@ -4146,6 +4146,77 @@ body.msg-info-open {
     transform: scale(0.92);
 }
 
+/* Smart compact header while the mobile keyboard is open.
+   Keep the important controls visible, but reclaim the second header row. */
+@media (max-width: 600px) {
+    #scene-chat.keyboard-visible .chat-header {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.65rem;
+        padding-top: calc(0.35rem + env(safe-area-inset-top, 0px));
+        padding-bottom: 0.35rem;
+    }
+
+    #scene-chat.keyboard-visible .chat-header-title-wrap {
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;
+        gap: 0.45rem;
+    }
+
+    #scene-chat.keyboard-visible .chat-title {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-right: 0;
+        font-size: 0.98rem;
+        transform: none;
+    }
+
+    #scene-chat.keyboard-visible .chat-identity-toggle {
+        width: auto;
+        flex: 0 1 auto;
+        padding: 2px;
+        border-radius: 18px;
+    }
+
+    #scene-chat.keyboard-visible .chat-identity-toggle .toggle-btn {
+        flex: 0 1 auto;
+        min-height: 36px;
+        padding: 0.35rem 0.45rem;
+        gap: 0.25rem;
+        font-size: 0.7rem;
+        white-space: nowrap;
+    }
+
+    #scene-chat.keyboard-visible .chat-identity-toggle .toggle-dot {
+        width: 5px;
+        height: 5px;
+    }
+
+    #scene-chat.keyboard-visible .notify-btn {
+        flex: 0 0 36px;
+        width: 36px;
+        min-width: 36px;
+        min-height: 36px;
+        height: 36px;
+        padding: 0;
+        gap: 0;
+        border-radius: 50%;
+        font-size: 0;
+    }
+
+    #scene-chat.keyboard-visible .notify-label {
+        display: none;
+    }
+
+    #scene-chat.keyboard-visible .notify-icon {
+        font-size: 1rem;
+        line-height: 1;
+    }
+}
+
 /* Visible focus rings for keyboard navigation (chat controls) */
 .chat-identity-toggle .toggle-btn:focus-visible,
 .notify-btn:focus-visible,

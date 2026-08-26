@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-08-26
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work and the current mobile composer keyboard behavior follow-up. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, and presence behavior hardening. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -127,9 +127,11 @@ These live outside the transformed scene elements so fixed positioning works cor
 - `viewport-fit=cover` is present in the viewport meta tag.
 - The Chat Scene itself no longer adds a second top safe-area inset; the header owns that spacing.
 - The compact header preserves the top safe-area inset while scrolling.
-- On narrow screens up to 600px, the header intentionally uses two rows:
+- On narrow screens up to 600px, the header uses two rows while the keyboard is closed:
   - title and notification control
   - full-width identity selector
+- While the mobile keyboard is open, the header switches to a compact single row so more messages remain visible.
+- The compact row keeps the presence indicator, Chat Screen title, both identity choices, and the notification control visible; the notification label becomes icon-only to save horizontal space.
 - The title is left-aligned beside the presence indicator. The notification control stays on the right.
 - The mobile chat container follows the height of the Chat Scene instead of introducing another independent viewport height.
 
@@ -137,9 +139,11 @@ These live outside the transformed scene elements so fixed positioning works cor
 
 - The title currently reads **Chat Screen**.
 - The presence indicator is a small dot whose state is updated by Firebase presence data.
-- The Notify button is only shown for the Bhandhari identity.
+- The Notify button is only shown for the Bhandhari identity and has an accessible label/title.
 - The identity toggle uses a sliding glider and colored identity dots.
 - Notification text has a minimum width and does not wrap during its cooldown state.
+- In the keyboard-open compact state, Notify Bhatari becomes a 36px icon button while preserving its action, disabled/loading state, and accessibility label.
+- The identity glider is repositioned through a `ResizeObserver` when the compact layout changes the toggle dimensions.
 
 ### Message list
 
@@ -243,9 +247,13 @@ Presence status is stored in:
 presence/status
 ```
 
-The active identity writes a heartbeat approximately every 25 seconds. The other identity is treated as offline when the heartbeat is older than approximately 75 seconds.
+The active identity writes a heartbeat approximately every 25 seconds. The other identity is treated as offline when every matching heartbeat is older than approximately 75 seconds.
 
-The header dot is green for a fresh online heartbeat and muted otherwise.
+Presence data keeps the legacy top-level `Bhatari`/`Bhandhari` fields for compatibility and also stores per-tab/session entries under `sessions`. A unique session ID prevents multiple tabs using the same identity from incorrectly marking one another offline. Manual identity switches stop the old session and start a fresh session for the new identity.
+
+The presence lifecycle uses visibility cleanup, `pagehide`, and `beforeunload` as best-effort offline paths, skips heartbeats while hidden/offline, and immediately resumes a heartbeat after network recovery. Stale listeners and writes are ignored after a presence restart.
+
+The header dot has explicit unknown, checking, unavailable, offline, and online states. It is green only when at least one matching fresh heartbeat exists; it is muted for missing, stale, invalid, unavailable, or disconnected presence data.
 
 ### Replies
 
@@ -468,7 +476,25 @@ The following changes were made on 2026-08-26 in the current working tree:
 - IME/composition events are ignored to avoid accidental sends while a mobile input method is composing text.
 - The textarea declares `enterkeyhint="enter"` to request a Return/newline key from mobile browsers.
 
-The mobile keyboard fix is currently uncommitted in `index.html`, `script.js`, and `project-context.md`. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
+### Smart compact chat header — 2026-08-26
+
+- When `#scene-chat` receives the existing `keyboard-visible` state on screens up to 600px wide, the two-row header collapses into a compact single row.
+- The compact row preserves the presence dot, Chat Screen title, Bhatari/Bhandhari selector, and notification action.
+- The notification button keeps its loading/cooldown semantics but hides its text label and shows the icon only in the compact state.
+- The identity toggle glider observes its container dimensions so it remains aligned after the responsive width change.
+- When the keyboard closes, the existing two-row mobile header layout returns automatically.
+
+### Presence behavior hardening — 2026-08-26
+
+- Presence is restarted when the selected identity changes, so the heartbeat and the “other person” dot target always match the active identity.
+- Presence writes now use unique per-tab session IDs and continue writing the legacy identity fields for compatibility.
+- The dot aggregates fresh sessions, so one tab closing cannot mark another tab with the same identity offline.
+- Stale asynchronous listeners and old-session writes are invalidated when presence restarts.
+- Presence timestamps accept Firestore timestamps plus safe legacy Date, number, string, and serialized timestamp values.
+- Missing, stale, malformed, unavailable, and disconnected states are rendered as non-online instead of producing a false green dot.
+- Page lifecycle cleanup and network recovery are handled as best effort without extending a hidden/offline session.
+
+The mobile keyboard, compact-header, and presence-hardening changes are currently uncommitted in `index.html`, `script.js`, `style.css`, and `project-context.md`. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
 
 ---
 
