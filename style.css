@@ -17,9 +17,9 @@
     --scene-transition: 1.2s cubic-bezier(0.22, 1, 0.36, 1);
     /* Premium Chat Variables */
     --chat-bubble-left-bg: rgba(26, 15, 46, 0.65);
-    --chat-bubble-right-gradient: linear-gradient(135deg, #7b2cbf 0%, #5a189a 100%);
+    --chat-bubble-right-gradient: linear-gradient(135deg, #8547c8 0%, #6327a7 100%);
     --chat-shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.15);
-    --chat-shadow-deep: 0 8px 30px rgba(123, 44, 191, 0.25);
+    --chat-shadow-deep: 0 9px 26px rgba(123, 44, 191, 0.28);
     --chat-blur-strength: 0px;
     --chat-radius-lg: 20px;
     --chat-radius-sm: 8px;
@@ -1934,8 +1934,8 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     position: relative;
     overflow: hidden;
     overscroll-behavior: none;
-    /* iOS Safe Area Support */
-    padding-top: env(safe-area-inset-top, 0px);
+    /* The header owns the top safe-area inset so it is applied only once. */
+    padding-top: 0;
 }
 
 /* Chat Header - Fixed at top */
@@ -2059,9 +2059,9 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     overflow-y: auto;
     overflow-x: hidden;
     padding: var(--chat-spacing-md);
-    /* P1+P2 Fix: reserve breathing room above input bar so last bubble never hides — dynamic via --input-bar-height */
-    padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
-    scroll-padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
+    /* The composer is a flex sibling, so keep only a small visual gap here. */
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
     gap: var(--chat-spacing-sm);
@@ -2097,6 +2097,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     padding: var(--chat-spacing-sm) var(--chat-spacing-md);
     border-radius: var(--chat-radius-lg);
     position: relative;
+    isolation: isolate;
     word-break: break-word;
     transition: transform var(--dur-micro) var(--transition-smooth), box-shadow 0.2s var(--transition-smooth);
     transform-origin: bottom center;
@@ -2177,27 +2178,27 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 /* Left Bubble - Bhatari (Premium Glassmorphism) */
 .chat-bubble.left {
     align-self: flex-start;
-    background: linear-gradient(135deg, rgba(36, 21, 54, 0.92) 0%, rgba(26, 15, 46, 0.78) 100%);
+    background: linear-gradient(135deg, rgba(47, 29, 66, 0.96) 0%, rgba(34, 21, 53, 0.92) 100%);
     backdrop-filter: blur(14px) saturate(1.1);
     -webkit-backdrop-filter: blur(14px) saturate(1.1);
-    border: 1px solid rgba(199, 125, 255, 0.18);
+    border: 1px solid rgba(199, 125, 255, 0.28);
     border-bottom-left-radius: var(--chat-radius-sm);
-    box-shadow: var(--chat-shadow-soft), inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(199,125,255,0.06) inset;
+    box-shadow: var(--chat-shadow-soft), inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(199,125,255,0.09) inset;
 }
 
 /* P4: subtle tail for left bubble */
 .chat-bubble.left::after {
     content: '';
     position: absolute;
-    bottom: -1px;
-    left: -6px;
-    width: 12px;
-    height: 12px;
+    bottom: -5px;
+    left: -5px;
+    width: 14px;
+    height: 14px;
     background: inherit;
-    clip-path: polygon(100% 0, 0 100%, 100% 100%);
-    border-left: 1px solid rgba(199, 125, 255, 0.18);
-    border-bottom: 1px solid rgba(199, 125, 255, 0.18);
-    transform: rotate(0deg);
+    border-radius: 4px;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.14);
+    transform: rotate(45deg);
+    z-index: -1;
     pointer-events: none;
 }
 
@@ -2209,16 +2210,32 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     box-shadow: var(--chat-shadow-deep), inset 0 1px 1px rgba(255, 255, 255, 0.18), 0 0 0 1px rgba(255,255,255,0.08) inset;
 }
 
+/* Sent text bubbles get a soft top sheen and a clearer edge so they feel
+   intentional and present without competing with shared media. */
+.chat-bubble.right:not(.has-media) {
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 38%),
+        var(--chat-bubble-right-gradient);
+    border: 1px solid rgba(224, 170, 255, 0.38);
+    box-shadow:
+        var(--chat-shadow-deep),
+        inset 0 1px 1px rgba(255, 255, 255, 0.26),
+        0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
 /* P4: subtle tail for right bubble */
 .chat-bubble.right::after {
     content: '';
     position: absolute;
-    bottom: -1px;
-    right: -6px;
-    width: 12px;
-    height: 12px;
-    background: linear-gradient(135deg, #7b2cbf 0%, #5a189a 100%);
-    clip-path: polygon(0 0, 0 100%, 100% 100%);
+    bottom: -5px;
+    right: -5px;
+    width: 14px;
+    height: 14px;
+    background: var(--chat-bubble-right-gradient);
+    border-radius: 4px;
+    box-shadow: 0 3px 6px rgba(51, 16, 82, 0.22);
+    transform: rotate(45deg);
+    z-index: -1;
     pointer-events: none;
 }
 
@@ -2240,9 +2257,9 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 /* Sender Label - Enhanced Typography */
 .chat-sender-label {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 700;
-    color: rgba(199, 125, 255, 0.9);
+    color: rgba(214, 174, 255, 0.95);
     margin-bottom: 0.3rem;
     letter-spacing: 0.4px;
     text-transform: uppercase;
@@ -2250,7 +2267,24 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .chat-bubble.right .chat-sender-label {
-    color: rgba(255, 255, 255, 0.85);
+    color: rgba(255, 255, 255, 0.96);
+}
+
+.chat-bubble.right .chat-timestamp {
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.chat-bubble.right .chat-edited-tag {
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.chat-bubble.right .chat-action-btn {
+    color: rgba(255, 255, 255, 0.72);
+    text-shadow: 0 1px 3px rgba(28, 8, 48, 0.35);
+}
+
+.chat-bubble.right .chat-tick.tick-sent {
+    color: #e0aaff;
 }
 
 /* Message Text - Fluid Typography */
@@ -2290,8 +2324,8 @@ a.chat-link {
 }
 
 .chat-timestamp {
-    font-size: 0.65rem;
-    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.55);
     margin-top: 0.35rem;
     display: block;
     text-align: right;
@@ -2341,8 +2375,8 @@ a.chat-link {
 
 .chat-reply-cancel {
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
@@ -2494,7 +2528,11 @@ a.chat-link {
 }
 
 .chat-send-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.42;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(199, 125, 255, 0.18);
+    color: rgba(255, 255, 255, 0.45);
+    box-shadow: none;
     cursor: not-allowed;
     transform: none;
 }
@@ -2634,7 +2672,8 @@ a.chat-link {
 /* Mobile Optimization - Prevent keyboard overlap */
 @media (max-width: 480px) {
     .chat-scene {
-        height: 100dvh;
+        height: 100%;
+        max-height: 100%;
     }
     
     .chat-bubble {
@@ -2651,8 +2690,8 @@ a.chat-link {
     
     .chat-messages {
         padding: 0.75rem;
-        padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
-        scroll-padding-bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+        scroll-padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
     }
     
     .chat-input-bar {
@@ -2661,12 +2700,12 @@ a.chat-link {
     
     .chat-input {
         padding: 0.55rem 0.85rem;
-        font-size: 0.95rem;
+        font-size: 1rem;
     }
     
     .chat-send-btn {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         font-size: 1.1rem;
     }
 }
@@ -2747,12 +2786,17 @@ a.chat-link {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .notify-btn {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.35rem;
+    min-width: 8.5rem;
+    min-height: 36px;
     padding: 0.3rem 0.65rem;
     border-radius: 20px;
     background: rgba(255, 255, 255, 0.1);
@@ -2761,6 +2805,7 @@ a.chat-link {
     font-family: 'Outfit', sans-serif;
     font-size: 0.75rem;
     font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
     transition: all 0.25s ease;
     outline: none;
@@ -2782,6 +2827,39 @@ a.chat-link {
 
 .notify-icon {
     font-size: 0.85rem;
+}
+
+/* Keep the mobile header hierarchy intentional: title row, then identity row. */
+@media (max-width: 600px) {
+    .chat-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.4rem;
+    }
+
+    .chat-header-title-wrap {
+        width: 100%;
+        flex: 0 0 auto;
+        justify-content: flex-start;
+    }
+
+    .chat-title {
+        min-width: 0;
+        margin-right: auto;
+        overflow: hidden;
+        text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .chat-identity-toggle {
+        width: 100%;
+    }
+
+    .chat-identity-toggle .toggle-btn {
+        flex: 1 1 0;
+        justify-content: center;
+    }
 }
 
 /* Date Dividers - Premium Timeline Markers */
@@ -2850,13 +2928,47 @@ a.chat-link {
     display: flex;
     align-items: center;
     gap: 0.35rem;
+    max-height: 0;
+    margin-top: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: max-height var(--dur-ui) var(--ease-out-quint),
+                margin-top var(--dur-ui) var(--ease-out-quint),
+                opacity var(--dur-ui) var(--transition-smooth),
+                transform var(--dur-ui) var(--ease-out-quint);
+}
+
+/* Actions stay hidden until a message is selected, focused, or hovered. */
+.chat-bubble.actions-open .chat-bubble-actions,
+.chat-bubble:focus-within .chat-bubble-actions {
+    max-height: 64px;
     margin-top: 0.35rem;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+@media (hover: hover) {
+    .chat-bubble:hover .chat-bubble-actions {
+        max-height: 64px;
+        margin-top: 0.35rem;
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+    }
+}
+
+.chat-bubble:focus-visible {
+    outline: 2px solid rgba(199, 125, 255, 0.65);
+    outline-offset: 3px;
 }
 
 .chat-edited-tag {
-    font-size: 0.6rem;
+    font-size: 0.65rem;
     font-style: italic;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.55);
     margin-left: 0.35rem;
 }
 
@@ -3004,8 +3116,8 @@ a.chat-link {
 
 .quote-sender {
     font-weight: 700;
-    font-size: 0.72rem;
-    color: #c77dff;
+    font-size: 0.75rem;
+    color: #d6aeff;
     display: block;
     margin-bottom: 2px;
 }
@@ -3015,8 +3127,8 @@ a.chat-link {
 }
 
 .quote-text {
-    font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.76);
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -3363,14 +3475,14 @@ a.chat-link {
     padding: 0.4rem 0.7rem;
     border-radius: 999px;
     cursor: pointer;
-    min-height: 36px;
+    min-height: 44px;
     touch-action: manipulation;
 }
 
 .chat-attachment-cancel {
     flex-shrink: 0;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.08);
     border: none;
@@ -3825,8 +3937,8 @@ body.msg-info-open {
 /* Media — Mobile tightening */
 @media (max-width: 480px) {
     .chat-attach-btn {
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         font-size: 1rem;
     }
 
@@ -3948,7 +4060,7 @@ body.msg-info-open {
 /* Delivery/read tick in the bubble meta row (own messages only).
    min-width reserves room for ✓✓ so the tick upgrade never shifts the timestamp. */
 .chat-tick {
-    font-size: 0.62rem;
+    font-size: 0.68rem;
     margin-left: 4px;
     line-height: 1;
     display: inline-block;
@@ -4021,7 +4133,7 @@ body.msg-info-open {
 }
 
 .chat-header.compact {
-    padding-top: 0.45rem;
+    padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
     padding-bottom: 0.45rem;
 }
 

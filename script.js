@@ -1182,6 +1182,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Initialize chat lock overlay
         initChatLockOverlay();
+        syncSendButtonState();
 
         // Only wire up listeners once
         if (!chatSceneInited) {
@@ -1228,6 +1229,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Double-tap heart reactions on received messages (wired once)
             initChatReactions();
+
+            // Message actions stay quiet until a bubble is selected (wired once)
+            initChatMessageActions();
 
             // Header polish: sliding toggle glider + compress-on-scroll (also one-time)
             initHeaderPolish();
@@ -2159,6 +2163,45 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Keep Reply/Edit actions quiet until the user selects a message. Hover
+    // reveals them on desktop; click/focus reveals them on touch and keyboard.
+    function initChatMessageActions() {
+        const container = document.getElementById('chat-messages');
+        if (!container || initChatMessageActions._inited) return;
+        initChatMessageActions._inited = true;
+
+        const closeOpenActions = except => {
+            container.querySelectorAll('.chat-bubble.actions-open').forEach(bubble => {
+                if (bubble !== except) bubble.classList.remove('actions-open');
+            });
+        };
+
+        container.addEventListener('click', e => {
+            const bubble = e.target.closest('.chat-bubble');
+            if (!bubble || !bubble.dataset.id) {
+                closeOpenActions(null);
+                return;
+            }
+
+            // Let the action, quote, link, and media handlers keep ownership of
+            // their clicks; selecting the surrounding bubble is for discovery.
+            if (e.target.closest('.chat-action-btn, .chat-quote-box, a.chat-link, .chat-media-image, .chat-media-video, .chat-reaction')) return;
+
+            closeOpenActions(bubble);
+            bubble.classList.toggle('actions-open');
+        });
+
+        container.addEventListener('keydown', e => {
+            if (e.key !== 'Escape') return;
+            const bubble = e.target.closest('.chat-bubble');
+            if (bubble) bubble.classList.remove('actions-open');
+        });
+
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.chat-bubble')) closeOpenActions(null);
+        });
+    }
+
     // ─── Create Bubble ────────────────────────────────────
     function createBubble(message) {
         const bubble = document.createElement('div');
@@ -2166,6 +2209,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const hasMedia = !!(message.media && (message.media.type === 'image' || message.media.type === 'video'));
         bubble.className = bubbleClassName(message);
         bubble.dataset.id = message.id;
+        bubble.tabIndex = 0;
+        bubble.setAttribute('aria-label', `${message.sender} message`);
 
         // Sender label
         const senderLabel = document.createElement('div');
@@ -2435,6 +2480,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) { /* noop */ } }
     }
 
+    // Keep the send control honest: it is enabled only when text or a finished
+    // attachment is available, and the chat identity has been selected.
+    function syncSendButtonState() {
+        const sendBtn = document.getElementById('chat-send-btn');
+        if (!sendBtn) return;
+        const chatInput = document.getElementById('chat-input');
+        const att = chatState.pendingAttachment;
+        const hasText = !!(chatInput && chatInput.value.trim());
+        const uploadFinished = !!(att && att.status === 'ready' && att.media);
+        const uploadInProgress = !!(att && att.status === 'uploading');
+        const canSend = !!chatState.currentIdentity && !uploadInProgress && (hasText || uploadFinished);
+        sendBtn.disabled = !canSend;
+        sendBtn.classList.toggle('armed', canSend);
+    }
+
     function handleSend() {
         if (!chatState.currentIdentity) return; // identity required — selector overlay owns pre-identity state
         const chatInput = document.getElementById('chat-input');
@@ -2460,6 +2520,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         chatInput.value = '';
+        syncSendButtonState();
         resizeChatInput(chatInput);
         sendMessage(text, media);
         clearOutgoingTyping();
@@ -2827,13 +2888,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const att = chatState.pendingAttachment;
         if (att && att.previewUrl) { try { URL.revokeObjectURL(att.previewUrl); } catch (e) { /* noop */ } }
         chatState.pendingAttachment = null;
+        syncSendButtonState();
     }
 
     function clearAttachmentUI() {
         const container = document.getElementById('chat-attachment-container');
         if (container) container.style.display = 'none';
-        const sendBtn = document.getElementById('chat-send-btn');
-        if (sendBtn) sendBtn.disabled = false;
+        syncSendButtonState();
         // P2: attachment bar hidden — update dynamic height
         syncInputBarHeight();
     }
@@ -2845,7 +2906,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const statusEl    = document.getElementById('chat-attachment-status');
         const retryBtn    = document.getElementById('chat-attachment-retry');
         const progressWrap = container ? container.querySelector('.chat-attachment-progress') : null;
-        const sendBtn     = document.getElementById('chat-send-btn');
         const att = chatState.pendingAttachment;
         if (!container) return;
         if (!att) { container.style.display = 'none'; return; }
@@ -2873,18 +2933,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (att.status === 'uploading') {
             if (progressWrap) progressWrap.style.display = 'block';
             if (retryBtn) retryBtn.style.display = 'none';
-            if (sendBtn) sendBtn.disabled = true; // one attachment at a time; send waits for upload
         } else if (att.status === 'ready') {
             if (progressWrap) progressWrap.style.display = 'none';
             if (statusEl) statusEl.textContent = '✓ Ready to send';
             if (retryBtn) retryBtn.style.display = 'none';
-            if (sendBtn) sendBtn.disabled = false;
         } else { // 'error'
             if (progressWrap) progressWrap.style.display = 'none';
             if (statusEl) statusEl.textContent = 'Upload failed';
             if (retryBtn) retryBtn.style.display = 'inline-flex';
-            if (sendBtn) sendBtn.disabled = false;
         }
+        syncSendButtonState();
         updateAttachmentStripProgress();
         // P2: attachment strip height changed — keep last bubble visible
         syncInputBarHeight();
@@ -3445,9 +3503,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatInput = document.getElementById('chat-input');
         if (chatInput) {
             resizeChatInput(chatInput);
-            // Armed send button: glows when there's something to send
-            const sendBtn = document.getElementById('chat-send-btn');
-            if (sendBtn) sendBtn.classList.toggle('armed', chatInput.value.trim().length > 0);
+            syncSendButtonState();
         }
         const now = Date.now();
         if (now - chatState.lastTypingSentTime > 3000) {
