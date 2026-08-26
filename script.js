@@ -198,12 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Privacy: full chat teardown — identity is never silently resumed.
             // Next unlock = PIN again, then "Who are you?" again.
             cleanupReadReceiptObserver();
-            chatState.currentIdentity = null;
-            chatState.chatUnlocked = false;
-            chatState.pinInput = '';
-            hideIdentitySelector();
-            const chatLockOverlay = document.getElementById('chat-lock-overlay');
-            if (chatLockOverlay) chatLockOverlay.classList.remove('hidden');
+            relockChatForLifecycle();
             const notifyBtn = document.getElementById('notify-bhatari-btn');
             if (notifyBtn) notifyBtn.style.display = 'none';
             document.querySelectorAll('#chat-identity-toggle .toggle-btn').forEach(b => {
@@ -229,6 +224,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // A reload/navigation destroys JavaScript memory, but pagehide also
+    // invalidates a digest that may still be resolving during teardown.
+    window.addEventListener('pagehide', () => {
+        // Also relock bfcache restores; pagehide is not always followed by a
+        // full JavaScript teardown when the browser keeps a page snapshot.
+        relockChatForLifecycle();
+    });
+    window.addEventListener('pageshow', () => {
+        const chatScene = document.getElementById('scene-chat');
+        if (chatScene && chatScene.classList.contains('scene-active') && !chatState.chatUnlocked) {
+            armChatPinHistoryGuard();
+            initChatLockOverlay();
+        }
+    });
+
 
     // ===================================================
     //  SCENE CONTROLLER — Cinematic Flow Manager
@@ -247,6 +257,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         reset() {
+            // Resetting the scene is a teardown boundary for the PIN as well.
+            chatState.pinVerificationRunId++;
+            chatState.identitySelectionRunId++;
+            chatState.pinVerificationInFlight = false;
+            chatState.pinInput = '';
+            chatState.sendInFlight = false;
+            chatState.identitySelecting = false;
+            clearChatPinTimers();
+            resetGifPickerForLifecycle(true);
+
             // Hide all scenes
             this.scenes.forEach(id => {
                 const el = document.getElementById(id);
@@ -321,6 +341,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (leavingId === 'scene-chat') {
                     cleanupReadReceiptObserver();
                     closeMessageInfoSheet();
+                    // Scene teardown invalidates any pending digest/send and drops
+                    // the runtime-only PIN buffer without changing existing chat state.
+                    chatState.pinVerificationRunId++;
+                    chatState.identitySelectionRunId++;
+                    chatState.pinVerificationInFlight = false;
+                    chatState.pinInput = '';
+                    chatState.sendInFlight = false;
+                    clearChatPinTimers();
+                    resetGifPickerForLifecycle(true);
                     document.body.classList.remove('scene-chat-active');
                 }
                 if (leavingId === 'scene-ladder') {
@@ -797,6 +826,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const CLOUDINARY_UPLOAD_PRESET  = 'chat_videos'; // unsigned upload preset name
     const CLOUDINARY_UPLOAD_URL     = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CLOUD_NAME + '/auto/upload';
     const CLOUDINARY_URL_PREFIX     = 'https://res.cloudinary.com/';
+    // GIPHY web key: visible by design because this app calls GIPHY directly.
+    // Replace this value if the key is rotated; never treat it as a server secret.
+    const GIPHY_API_KEY             = 'uFmNuub4QWQAWW3uwaKHtEuvKHoEhPAU';
+    const GIPHY_API_BASE            = 'https://api.giphy.com/v1';
+    const GIPHY_RATING              = 'g';
+    const GIPHY_RESULT_LIMIT        = 18;
+    const GIPHY_QUERY_MAX_LENGTH    = 50;
+    const GIPHY_REQUEST_TIMEOUT_MS  = 10000;
+    const GIPHY_ID_RE               = /^[A-Za-z0-9_-]{1,128}$/;
+    const GIPHY_MEDIA_HOST_RE       = /(^|\.)giphy\.com$/i;
     const MAX_IMAGE_BYTES           = 25 * 1024 * 1024;   // 25 MB
     const MAX_VIDEO_BYTES           = 100 * 1024 * 1024;  // 100 MB
 
@@ -927,13 +966,34 @@ document.addEventListener('DOMContentLoaded', () => {
         editingMessageId: null,   // Track which message is being edited
         editBoxes: new Map(),     // messageId → { bubble, textEl, editBox, originalText }
         chatUnlocked: false,      // Chat lock state
-        pinInput: '',             // Current PIN input
+        pinInput: '',             // Current PIN input (memory-only; never written to DOM/storage)
         failedAttempts: 0,        // Failed PIN attempts
         lockoutEndTime: 0,        // Lockout end time
+        pinVerificationInFlight: false,
+        pinVerificationRunId: 0,  // invalidates async PIN results after reset/hide
+        pinLockoutTimer: null,    // lockout countdown interval
+        pinErrorTimer: null,      // transient error message timer
+        pinSuccessTimer: null,    // delayed identity selector after successful unlock
         pendingAttachment: null,  // { file, previewUrl, kind, fileName, fileSize, status: 'uploading'|'ready'|'error', progress, media, xhr }
+        pendingGif: null,         // selected GIPHY item awaiting explicit Send
+        sendInFlight: false,      // duplicate-send guard
+        chatAddMenuOpen: false,   // attachment/GIF chooser state
+        giphyPickerOpen: false,
+        giphySearchTimer: null,
+        giphySearchAbortController: null,
+        giphySearchRunId: 0,
+        giphySearchOffset: 0,
+        giphySearchQuery: '',
+        giphySearchItems: [],
+        giphySearchHasMore: false,
+        giphySearchLoading: false,
+        giphyRuntimeById: new Map(), // in-memory only; never persisted to Firestore/localStorage
+        giphyLookupById: new Map(),  // active metadata lookups, keyed by GIPHY ID
+        giphyLifecycleRunId: 0,      // invalidates media hydration after relock/teardown
         activeVideo: null,        // Currently playing <video> element (one at a time)
         mediaObserver: null,      // IntersectionObserver singleton for auto-pausing off-screen videos
         identitySelecting: false, // Double-click guard for the identity-selection overlay
+        identitySelectionRunId: 0, // invalidates stale identity selection after relock
         readObserver: null,       // IntersectionObserver singleton for read receipts (starts after identity selection)
         readTimers: new Map(),    // messageId → { timerId, identity } dwell timers
         readPending: new Set(),   // messageIds with a read-receipt write in flight (prevents duplicates)
@@ -964,12 +1024,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Trust boundary: Firestore media payloads are user-controlled — keep only
-    // whitelisted fields, coerce types, and force the URL through the Cloudinary gate
+    // whitelisted fields and force each media type through its provider gate.
+    // GIPHY message records intentionally contain an ID, not a stored media URL.
     function sanitizeMedia(m) {
         if (!m || typeof m !== 'object') return null;
+        const num = v => (typeof v === 'number' && isFinite(v) && v > 0) ? v : 0;
+
+        if (m.type === 'gif') {
+            if (m.provider !== 'giphy' || typeof m.providerId !== 'string' || !GIPHY_ID_RE.test(m.providerId)) return null;
+            const allowedRenditions = new Set(['fixed_width', 'fixed_width_small', 'fixed_height', 'downsized_medium', 'original']);
+            const rendition = allowedRenditions.has(m.rendition) ? m.rendition : 'fixed_width';
+            const title = typeof m.title === 'string' ? m.title.slice(0, 160) : '';
+            const alt = typeof m.alt === 'string' ? m.alt.slice(0, 160) : (title || 'GIF shared in chat');
+            return {
+                type: 'gif',
+                provider: 'giphy',
+                providerId: m.providerId,
+                rendition,
+                width: num(m.width),
+                height: num(m.height),
+                title,
+                alt,
+                rating: m.rating === 'g' ? 'g' : ''
+            };
+        }
+
         if (m.type !== 'image' && m.type !== 'video') return null;
         if (!isCloudinaryUrl(m.url)) return null;
-        const num = v => (typeof v === 'number' && isFinite(v) && v > 0) ? v : 0;
         return {
             type:     m.type,
             publicId: typeof m.publicId === 'string' ? m.publicId : '',
@@ -1015,165 +1096,498 @@ document.addEventListener('DOMContentLoaded', () => {
     let keyboardHandlingInited = false;
 
     // ─── Chat Lock / PIN Logic ────────────────────────────
+    // The PIN is entered through the custom keypad and keyboard handlers only.
+    // No input/form field exists, so password managers have no credential field
+    // to detect or save. The lockout record never contains the PIN itself.
+    const CHAT_PIN_HASH = '277375b99e186c72ac38ac47b03199038342fe0389be8765476fa2be0c5b5649';
+    const CHAT_PIN_LENGTH = 4;
+    const CHAT_PIN_MAX_ATTEMPTS = 3;
+    const CHAT_PIN_LOCKOUT_MS = 15000;
+    const CHAT_PIN_ATTEMPT_WINDOW_MS = 5 * 60 * 1000;
+    const CHAT_PIN_LOCKOUT_KEY = 'for-penguin-chat-pin-lockout-v1';
+
+    function getChatPinStorageAreas() {
+        const areas = [];
+        try {
+            if (window.localStorage) areas.push(window.localStorage);
+        } catch (e) { /* storage unavailable */ }
+        try {
+            if (window.sessionStorage && areas.indexOf(window.sessionStorage) === -1) {
+                areas.push(window.sessionStorage);
+            }
+        } catch (e) { /* storage unavailable */ }
+        return areas;
+    }
+
+    function clearStoredChatPinLockout() {
+        getChatPinStorageAreas().forEach(storage => {
+            try { storage.removeItem(CHAT_PIN_LOCKOUT_KEY); } catch (e) { /* noop */ }
+        });
+    }
+
+    function readStoredChatPinLockout() {
+        let raw = null;
+        for (const storage of getChatPinStorageAreas()) {
+            try {
+                raw = storage.getItem(CHAT_PIN_LOCKOUT_KEY);
+                if (raw) break;
+            } catch (e) { /* try the next storage area */ }
+        }
+        if (!raw) return { attempts: 0, lockoutEndTime: 0 };
+
+        try {
+            const saved = JSON.parse(raw);
+            const attempts = Number.isInteger(saved.attempts) ? saved.attempts : 0;
+            const lockoutEndTime = Number.isFinite(saved.lockoutEndTime) ? saved.lockoutEndTime : 0;
+            const updatedAt = Number.isFinite(saved.updatedAt) ? saved.updatedAt : 0;
+            const now = Date.now();
+            const malformedLockout = lockoutEndTime < 0 ||
+                lockoutEndTime > now + CHAT_PIN_LOCKOUT_MS + 1000 ||
+                (attempts < CHAT_PIN_MAX_ATTEMPTS && lockoutEndTime !== 0) ||
+                (attempts === CHAT_PIN_MAX_ATTEMPTS && lockoutEndTime === 0);
+            if (attempts < 0 || attempts > CHAT_PIN_MAX_ATTEMPTS || !updatedAt || updatedAt > now + 1000 || now - updatedAt > CHAT_PIN_ATTEMPT_WINDOW_MS || malformedLockout) {
+                clearStoredChatPinLockout();
+                return { attempts: 0, lockoutEndTime: 0 };
+            }
+            if (lockoutEndTime > 0 && lockoutEndTime <= now) {
+                clearStoredChatPinLockout();
+                return { attempts: 0, lockoutEndTime: 0 };
+            }
+            return { attempts, lockoutEndTime };
+        } catch (e) {
+            clearStoredChatPinLockout();
+            return { attempts: 0, lockoutEndTime: 0 };
+        }
+    }
+
+    function writeStoredChatPinLockout(attempts, lockoutEndTime = 0) {
+        const value = JSON.stringify({ attempts, lockoutEndTime, updatedAt: Date.now() });
+        for (const storage of getChatPinStorageAreas()) {
+            try {
+                storage.setItem(CHAT_PIN_LOCKOUT_KEY, value);
+                return;
+            } catch (e) { /* try the next storage area */ }
+        }
+    }
+
+    function clearChatPinTimers() {
+        if (chatState.pinLockoutTimer) {
+            clearInterval(chatState.pinLockoutTimer);
+            chatState.pinLockoutTimer = null;
+        }
+        if (chatState.pinErrorTimer) {
+            clearTimeout(chatState.pinErrorTimer);
+            chatState.pinErrorTimer = null;
+        }
+        if (chatState.pinSuccessTimer) {
+            clearTimeout(chatState.pinSuccessTimer);
+            chatState.pinSuccessTimer = null;
+        }
+    }
+
+    function relockChatForLifecycle() {
+        chatState.currentIdentity = null;
+        chatState.chatUnlocked = false;
+        chatState.pinVerificationRunId++;
+        chatState.identitySelectionRunId++;
+        chatState.pinVerificationInFlight = false;
+        chatState.pinInput = '';
+        chatState.sendInFlight = false;
+        chatState.identitySelecting = false;
+        clearChatPinTimers();
+        resetGifPickerForLifecycle(true);
+
+        const chatLockOverlay = document.getElementById('chat-lock-overlay');
+        if (chatLockOverlay) {
+            chatLockOverlay.classList.remove('hidden');
+            chatLockOverlay.setAttribute('aria-hidden', 'false');
+            chatLockOverlay.setAttribute('aria-busy', 'false');
+        }
+        hideIdentitySelector();
+        document.querySelectorAll('#chat-identity-toggle .toggle-btn').forEach(button => {
+            button.classList.remove('active');
+            button.setAttribute('aria-checked', 'false');
+        });
+    }
+
+    let chatPinHistoryGuardActive = false;
+    let chatPinHistoryGuardUrl = '';
+
+    function armChatPinHistoryGuard() {
+        if (chatPinHistoryGuardActive || !window.history || !window.history.pushState) return;
+        try {
+            chatPinHistoryGuardUrl = window.location.href;
+            const state = window.history.state && typeof window.history.state === 'object'
+                ? window.history.state
+                : {};
+            window.history.pushState({ ...state, __forPenguinChatPinGuard: true }, '', chatPinHistoryGuardUrl);
+            chatPinHistoryGuardActive = true;
+        } catch (e) { /* history may be unavailable in an embedded document */ }
+    }
+
+    function removeChatPinHistoryGuard() {
+        if (!chatPinHistoryGuardActive) return;
+        try {
+            const state = window.history.state && typeof window.history.state === 'object'
+                ? { ...window.history.state }
+                : {};
+            delete state.__forPenguinChatPinGuard;
+            window.history.replaceState(state, '', window.location.href);
+        } catch (e) { /* noop */ }
+        chatPinHistoryGuardActive = false;
+        chatPinHistoryGuardUrl = '';
+    }
+
+    function handleChatPinHistoryNavigation() {
+        const chatScene = document.getElementById('scene-chat');
+        if (!chatScene || !chatScene.classList.contains('scene-active') || chatState.chatUnlocked) return;
+
+        // Back/Forward must never turn a pending or partially entered PIN into
+        // an unlocked chat. Restore the app URL and start from a clean buffer.
+        relockChatForLifecycle();
+        if (chatPinHistoryGuardActive && window.history && window.history.pushState) {
+            try {
+                const state = window.history.state && typeof window.history.state === 'object'
+                    ? window.history.state
+                    : {};
+                window.history.pushState({ ...state, __forPenguinChatPinGuard: true }, '', chatPinHistoryGuardUrl || window.location.href);
+            } catch (e) { /* noop */ }
+        }
+        initChatLockOverlay();
+    }
+
+    window.addEventListener('popstate', handleChatPinHistoryNavigation);
+
     function initChatLockOverlay() {
         const lockOverlay = document.getElementById('chat-lock-overlay');
         const pinDisplay = document.getElementById('chat-pin-display');
         const pinPad = document.getElementById('chat-pin-pad');
         const pinError = document.getElementById('chat-pin-error');
-        const pinInputField = document.getElementById('chat-pin-input-field');
-        
+        const pinStatus = document.getElementById('chat-pin-status');
+
         if (!lockOverlay || !pinDisplay || !pinPad) return;
 
-        // Prevent browser autofill/save password by randomizing attributes
-        if (pinInputField) {
-            pinInputField.setAttribute('autocomplete', 'off');
-            pinInputField.setAttribute('autocorrect', 'off');
-            pinInputField.setAttribute('autocapitalize', 'off');
-            pinInputField.setAttribute('spellcheck', 'false');
-            // Randomize name and id to prevent browser recognition
-            const randomSuffix = Date.now().toString(36) + Math.random().toString(36).substr(2);
-            pinInputField.setAttribute('name', 'chat_pin_' + randomSuffix);
-            pinInputField.setAttribute('id', 'chat-pin-input-' + randomSuffix);
-            // Make readonly to prevent native keyboard, use custom keypad instead
-            pinInputField.setAttribute('readonly', 'true');
-        }
+        const updatePinStatus = (message) => {
+            if (pinStatus) pinStatus.textContent = message;
+        };
 
-        // Check for lockout on scene enter
-        const now = Date.now();
-        if (chatState.lockoutEndTime > now) {
-            const remaining = Math.ceil((chatState.lockoutEndTime - now) / 1000);
-            pinError.textContent = `Too many attempts. Try again in ${remaining}s.`;
-            pinError.style.display = 'block';
-            setTimeout(() => {
-                chatState.failedAttempts = 0;
-                chatState.lockoutEndTime = 0;
-                pinError.style.display = 'none';
-            }, remaining * 1000);
-        }
-
-        // Handle PIN key clicks — attach the listener only once; re-entering the
-        // chat scene must not stack duplicate handlers (a single tap would otherwise
-        // add multiple digits and the 4-digit check would never fire)
-        if (!chatLockOverlayInited) {
-            chatLockOverlayInited = true;
-            pinPad.addEventListener('click', (e) => {
-                const key = e.target.closest('.pin-key');
-                if (!key) return;
-
-                // Haptic feedback
-                if (navigator.vibrate) navigator.vibrate(10);
-
-                const digit = key.dataset.digit;
-                const action = key.dataset.action;
-
-                if (action === 'clear') {
-                    chatState.pinInput = '';
-                    updatePinDots();
-                    pinError.style.display = 'none';
-                    return;
-                }
-
-                if (action === 'back') {
-                    chatState.pinInput = chatState.pinInput.slice(0, -1);
-                    updatePinDots();
-                    pinError.style.display = 'none';
-                    return;
-                }
-
-                if (digit && chatState.pinInput.length < 4) {
-                    chatState.pinInput += digit;
-                    updatePinDots();
-
-                    // Check if PIN is complete
-                    if (chatState.pinInput.length === 4) {
-                        verifyPin();
-                    }
-                }
-            });
-        }
-
-        function updatePinDots() {
+        const updatePinDots = () => {
+            const count = Math.min(chatState.pinInput.length, CHAT_PIN_LENGTH);
             const dots = pinDisplay.querySelectorAll('.pin-dot');
             dots.forEach((dot, index) => {
-                if (index < chatState.pinInput.length) {
-                    dot.classList.add('filled');
-                } else {
-                    dot.classList.remove('filled');
+                dot.classList.toggle('filled', index < count);
+            });
+            pinDisplay.setAttribute('aria-label', `${count} of ${CHAT_PIN_LENGTH} digits entered`);
+            if (!chatState.pinVerificationInFlight) {
+                updatePinStatus(`${count} of ${CHAT_PIN_LENGTH} digits entered.`);
+            }
+        };
+
+        const setPinPadDisabled = (disabled) => {
+            pinPad.querySelectorAll('.pin-key').forEach(key => {
+                key.disabled = disabled;
+            });
+            lockOverlay.setAttribute('aria-busy', disabled ? 'true' : 'false');
+        };
+
+        const clearPinError = () => {
+            if (chatState.pinErrorTimer) {
+                clearTimeout(chatState.pinErrorTimer);
+                chatState.pinErrorTimer = null;
+            }
+            if (pinError) {
+                pinError.textContent = '';
+                pinError.style.display = 'none';
+            }
+        };
+
+        const showPinError = (message, transient = false) => {
+            if (!pinError) return;
+            if (chatState.pinErrorTimer) clearTimeout(chatState.pinErrorTimer);
+            pinError.textContent = message;
+            pinError.style.display = 'block';
+            if (transient) {
+                chatState.pinErrorTimer = setTimeout(() => {
+                    pinError.textContent = '';
+                    pinError.style.display = 'none';
+                    chatState.pinErrorTimer = null;
+                }, 2200);
+            }
+        };
+
+        const clearExpiredLockout = () => {
+            if (chatState.lockoutEndTime > 0 && chatState.lockoutEndTime <= Date.now()) {
+                chatState.failedAttempts = 0;
+                chatState.lockoutEndTime = 0;
+                clearStoredChatPinLockout();
+                clearPinError();
+                setPinPadDisabled(false);
+                updatePinStatus(`0 of ${CHAT_PIN_LENGTH} digits entered.`);
+            }
+        };
+
+        const isPinLockedOut = () => {
+            clearExpiredLockout();
+            return chatState.lockoutEndTime > Date.now();
+        };
+
+        const scheduleLockout = () => {
+            if (chatState.pinLockoutTimer) clearInterval(chatState.pinLockoutTimer);
+            const updateLockout = () => {
+                const remaining = Math.max(0, Math.ceil((chatState.lockoutEndTime - Date.now()) / 1000));
+                if (remaining <= 0) {
+                    clearExpiredLockout();
+                    if (chatState.pinLockoutTimer) {
+                        clearInterval(chatState.pinLockoutTimer);
+                        chatState.pinLockoutTimer = null;
+                    }
+                    return;
                 }
+                setPinPadDisabled(true);
+                showPinError(`Too many attempts. Try again in ${remaining}s.`);
+                updatePinStatus(`PIN entry locked. Try again in ${remaining} seconds.`);
+            };
+            updateLockout();
+            focusFirstAvailableKey();
+            chatState.pinLockoutTimer = setInterval(updateLockout, 1000);
+        };
+
+        const resetPinEntry = () => {
+            chatState.pinInput = '';
+            updatePinDots();
+            clearPinError();
+        };
+
+        const focusFirstAvailableKey = () => {
+            const firstKey = pinPad.querySelector('.pin-key:not(:disabled)');
+            const target = firstKey || lockOverlay;
+            try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+        };
+
+        const acceptDigit = (digit) => {
+            if (isPinLockedOut() || chatState.pinVerificationInFlight) return;
+            if (!/^[0-9]$/.test(digit) || chatState.pinInput.length >= CHAT_PIN_LENGTH) return;
+            chatState.pinInput += digit;
+            clearPinError();
+            updatePinDots();
+            if (navigator.vibrate) {
+                try { navigator.vibrate(10); } catch (e) { /* noop */ }
+            }
+            if (chatState.pinInput.length === CHAT_PIN_LENGTH) verifyPin();
+        };
+
+        const handlePinAction = (action) => {
+            if (isPinLockedOut() || chatState.pinVerificationInFlight) return;
+            if (action === 'clear') {
+                resetPinEntry();
+                return;
+            }
+            if (action === 'back') {
+                chatState.pinInput = chatState.pinInput.slice(0, -1);
+                clearPinError();
+                updatePinDots();
+            }
+        };
+
+        const finishVerificationError = (message) => {
+            if (!chatState.pinVerificationInFlight) return;
+            chatState.pinVerificationInFlight = false;
+            chatState.pinInput = '';
+            updatePinDots();
+            setPinPadDisabled(false);
+            clearPinError();
+            showPinError(message);
+            updatePinStatus('PIN verification failed. Try again.');
+        };
+
+        const handleFailedVerification = () => {
+            chatState.pinVerificationInFlight = false;
+            chatState.failedAttempts = Math.min(CHAT_PIN_MAX_ATTEMPTS, chatState.failedAttempts + 1);
+            chatState.pinInput = '';
+            updatePinDots();
+
+            const dots = pinDisplay.querySelectorAll('.pin-dot');
+            dots.forEach(dot => {
+                dot.classList.add('error');
+                setTimeout(() => dot.classList.remove('error'), 400);
+            });
+
+            if (chatState.failedAttempts >= CHAT_PIN_MAX_ATTEMPTS) {
+                chatState.lockoutEndTime = Date.now() + CHAT_PIN_LOCKOUT_MS;
+                writeStoredChatPinLockout(chatState.failedAttempts, chatState.lockoutEndTime);
+                scheduleLockout();
+            } else {
+                writeStoredChatPinLockout(chatState.failedAttempts, 0);
+                setPinPadDisabled(false);
+                showPinError(`Incorrect PIN. ${CHAT_PIN_MAX_ATTEMPTS - chatState.failedAttempts} attempts left.`, true);
+                updatePinStatus(`Incorrect PIN. ${CHAT_PIN_MAX_ATTEMPTS - chatState.failedAttempts} attempts remaining.`);
+            }
+        };
+
+        const handleSuccessfulVerification = () => {
+            chatState.pinVerificationInFlight = false;
+            chatState.chatUnlocked = true;
+            chatState.pinInput = '';
+            chatState.failedAttempts = 0;
+            chatState.lockoutEndTime = 0;
+            chatState.currentIdentity = null; // never silently resume an old identity
+            clearStoredChatPinLockout();
+            removeChatPinHistoryGuard();
+            clearChatPinTimers();
+            updatePinDots();
+            clearPinError();
+            setPinPadDisabled(true);
+            lockOverlay.classList.add('hidden');
+            lockOverlay.setAttribute('aria-hidden', 'true');
+            updatePinStatus('PIN accepted. Choose your identity.');
+
+            const dots = pinDisplay.querySelectorAll('.pin-dot');
+            dots.forEach(dot => {
+                dot.classList.remove('filled', 'error');
+                dot.style.background = '#4ade80';
+                dot.style.borderColor = '#4ade80';
+            });
+            setTimeout(() => {
+                dots.forEach(dot => {
+                    dot.style.background = '';
+                    dot.style.borderColor = '';
+                });
+            }, 500);
+
+            // Identity selection comes AFTER the PIN — the user must choose every time.
+            clearTimeout(chatState.pinSuccessTimer);
+            chatState.pinSuccessTimer = setTimeout(() => {
+                chatState.pinSuccessTimer = null;
+                if (!document.hidden && chatState.chatUnlocked) showIdentitySelector();
+            }, 600);
+        };
+
+        function verifyPin() {
+            if (isPinLockedOut() || chatState.pinVerificationInFlight) return;
+            const candidate = chatState.pinInput;
+            if (!/^[0-9]{4}$/.test(candidate)) return;
+
+            const verificationRunId = ++chatState.pinVerificationRunId;
+            chatState.pinVerificationInFlight = true;
+            chatState.pinInput = '';
+            updatePinDots();
+            clearPinError();
+            setPinPadDisabled(true);
+            updatePinStatus('Checking PIN…');
+
+            if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === 'undefined') {
+                finishVerificationError('Unable to verify PIN securely. Please reload and try again.');
+                return;
+            }
+
+            window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(candidate))
+                .then(hashBuffer => {
+                    if (verificationRunId !== chatState.pinVerificationRunId || document.hidden || lockOverlay.classList.contains('hidden')) return;
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    const inputHash = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
+                    if (inputHash === CHAT_PIN_HASH) {
+                        handleSuccessfulVerification();
+                    } else {
+                        handleFailedVerification();
+                    }
+                })
+                .catch(() => {
+                    if (verificationRunId === chatState.pinVerificationRunId && !document.hidden) {
+                        finishVerificationError('Unable to verify PIN securely. Please reload and try again.');
+                    }
+                });
+        }
+
+        const handlePinKeydown = (e) => {
+            if (e.key === 'Tab') {
+                const keys = Array.from(pinPad.querySelectorAll('.pin-key:not(:disabled)'));
+                e.preventDefault();
+                if (!keys.length) {
+                    focusFirstAvailableKey();
+                    return;
+                }
+                const currentIndex = keys.indexOf(document.activeElement);
+                const nextIndex = currentIndex === -1
+                    ? (e.shiftKey ? keys.length - 1 : 0)
+                    : (currentIndex + (e.shiftKey ? -1 : 1) + keys.length) % keys.length;
+                keys[nextIndex].focus();
+                return;
+            }
+
+            // Let Enter/Space activate a keypad button natively for keyboard and
+            // assistive-technology users; the delegated click handler does the work.
+            const focusedKey = e.target.closest && e.target.closest('.pin-key');
+            if (focusedKey && (e.key === 'Enter' || e.key === ' ')) return;
+            if (e.isComposing || e.keyCode === 229) return;
+
+            if (isPinLockedOut() || chatState.pinVerificationInFlight) {
+                if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt' && e.key !== 'Meta') e.preventDefault();
+                return;
+            }
+            const keyboardDigit = /^[0-9]$/.test(e.key)
+                ? e.key
+                : (/^Numpad[0-9]$/.test(e.code || '') ? e.code.slice(-1) : null);
+            if (keyboardDigit !== null) {
+                e.preventDefault();
+                acceptDigit(keyboardDigit);
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                handlePinAction('back');
+            } else if (e.key === 'Delete') {
+                e.preventDefault();
+                handlePinAction('back');
+            } else if (e.key === 'Escape') {
+                // Escape clears the current entry but never dismisses the required lock.
+                e.preventDefault();
+                handlePinAction('clear');
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (chatState.pinInput.length === CHAT_PIN_LENGTH) verifyPin();
+            }
+        };
+
+        if (!chatLockOverlayInited) {
+            chatLockOverlayInited = true;
+            pinPad.addEventListener('click', e => {
+                const key = e.target.closest('.pin-key');
+                if (!key || !pinPad.contains(key)) return;
+                if (isPinLockedOut() || chatState.pinVerificationInFlight) return;
+                const digit = key.dataset.digit;
+                const action = key.dataset.action;
+                if (digit) acceptDigit(digit);
+                else if (action) handlePinAction(action);
+            });
+            lockOverlay.addEventListener('keydown', handlePinKeydown);
+            document.addEventListener('focusin', e => {
+                if (!lockOverlay.classList.contains('hidden') && !lockOverlay.contains(e.target)) {
+                    focusFirstAvailableKey();
+                }
+            });
+            window.addEventListener('storage', e => {
+                if (e.key !== CHAT_PIN_LOCKOUT_KEY || chatState.chatUnlocked) return;
+                const saved = readStoredChatPinLockout();
+                chatState.failedAttempts = Math.max(chatState.failedAttempts, saved.attempts);
+                chatState.lockoutEndTime = Math.max(chatState.lockoutEndTime, saved.lockoutEndTime);
+                if (isPinLockedOut()) scheduleLockout();
             });
         }
 
-        function verifyPin() {
-            // SHA-256 hash of the correct PIN (matches main lock screen)
-            const CORRECT_PIN_HASH = '277375b99e186c72ac38ac47b03199038342fe0389be8765476fa2be0c5b5649';
-            
-            crypto.subtle.digest('SHA-256', new TextEncoder().encode(chatState.pinInput))
-                .then(hashBuffer => {
-                    const hashArray = Array.from(new Uint8Array(hashBuffer));
-                    const inputHash = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
-                    
-                    if (inputHash === CORRECT_PIN_HASH) {
-                        // Success - unlock chat gate (identity still unknown at this point)
-                        chatState.chatUnlocked = true;
-                        chatState.pinInput = '';
-                        chatState.failedAttempts = 0;
-                        chatState.currentIdentity = null; // never silently resume an old identity
-                        
-                        lockOverlay.classList.add('hidden');
-                        pinError.style.display = 'none';
-                        
-                        // Show success animation
-                        const dots = pinDisplay.querySelectorAll('.pin-dot');
-                        dots.forEach(dot => {
-                            dot.style.background = '#4ade80';
-                            dot.style.borderColor = '#4ade80';
-                        });
-                        
-                        setTimeout(() => {
-                            dots.forEach(dot => {
-                                dot.style.background = '';
-                                dot.style.borderColor = '';
-                            });
-                        }, 500);
-                        
-                        // Identity selection comes AFTER the PIN — the user must choose every time
-                        setTimeout(() => {
-                            showIdentitySelector();
-                        }, 600);
-                    } else {
-                        // Failed attempt
-                        chatState.failedAttempts++;
-                        chatState.pinInput = '';
-                        updatePinDots();
-                        
-                        const dots = pinDisplay.querySelectorAll('.pin-dot');
-                        dots.forEach(dot => {
-                            dot.classList.add('error');
-                            setTimeout(() => dot.classList.remove('error'), 400);
-                        });
-                        
-                        if (chatState.failedAttempts >= 3) {
-                            chatState.lockoutEndTime = Date.now() + 15000; // 15 second lockout
-                            pinError.textContent = 'Too many attempts. Locked for 15s.';
-                            pinError.style.display = 'block';
-                            
-                            setTimeout(() => {
-                                chatState.failedAttempts = 0;
-                                chatState.lockoutEndTime = 0;
-                                pinError.style.display = 'none';
-                            }, 15000);
-                        } else {
-                            pinError.textContent = `Incorrect PIN. ${3 - chatState.failedAttempts} attempts left. 🐧`;
-                            pinError.style.display = 'block';
-                            setTimeout(() => { pinError.style.display = 'none'; }, 2000);
-                        }
-                    }
-                })
-                .catch(err => {
-                    console.error('PIN verification error:', err);
-                    pinError.textContent = 'Error verifying PIN.';
-                    pinError.style.display = 'block';
-                });
+        const savedLockout = readStoredChatPinLockout();
+        chatState.failedAttempts = Math.max(chatState.failedAttempts, savedLockout.attempts);
+        chatState.lockoutEndTime = Math.max(chatState.lockoutEndTime, savedLockout.lockoutEndTime);
+        updatePinDots();
+
+        if (!chatState.chatUnlocked) {
+            lockOverlay.classList.remove('hidden');
+            lockOverlay.setAttribute('aria-hidden', 'false');
+            if (isPinLockedOut()) {
+                scheduleLockout();
+            } else {
+                setPinPadDisabled(false);
+                focusFirstAvailableKey();
+            }
+        } else {
+            lockOverlay.setAttribute('aria-hidden', 'true');
         }
     }
 
@@ -1193,6 +1607,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Initialize keyboard handling for mobile
         initKeyboardHandling();
+
+        // Keep browser Back/Forward from bypassing a locked Chat Scene.
+        if (!chatState.chatUnlocked) armChatPinHistoryGuard();
 
         // Initialize chat lock overlay
         initChatLockOverlay();
@@ -1245,8 +1662,10 @@ document.addEventListener('DOMContentLoaded', () => {
             chatInput.addEventListener('input', handleOutgoingTyping);
             if (chatReplyCancel) chatReplyCancel.addEventListener('click', cancelReply);
 
-            // Media attachments + lightbox (wired exactly once via chatSceneInited guard)
+            // Unified add menu + media attachments/GIF picker (wired once)
+            initChatAddMenu();
             initMediaAttachments();
+            initGifPicker();
 
             // Long-press "Message info" bottom sheet (wired once)
             initMessageInfoSheet();
@@ -1316,18 +1735,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Double-click / double-tap protection
         if (chatState.identitySelecting) return;
         chatState.identitySelecting = true;
+        const selectionRunId = ++chatState.identitySelectionRunId;
         const overlay = document.getElementById('chat-identity-overlay');
         if (overlay) overlay.querySelectorAll('.chat-identity-btn').forEach(b => { b.disabled = true; });
 
         try {
             await ensureFirebase();
         } catch (err) {
+            if (selectionRunId !== chatState.identitySelectionRunId) return;
             console.warn('Firebase load failed:', err);
             showToast('Could not connect to chat 😢', true);
             if (overlay) overlay.querySelectorAll('.chat-identity-btn').forEach(b => { b.disabled = false; });
             chatState.identitySelecting = false;
             return;
         }
+
+        if (selectionRunId !== chatState.identitySelectionRunId || !chatState.chatUnlocked || document.hidden) return;
 
         chatState.currentIdentity = identity;
         applyIdentityUI(identity);
@@ -1348,6 +1771,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const chatInput = document.getElementById('chat-input');
         if (chatInput) chatInput.focus();
         chatState.identitySelecting = false;
+        syncSendButtonState();
     }
 
     // Shared UI updates for both the initial selection and the manual toggle
@@ -1742,7 +2166,7 @@ document.addEventListener('DOMContentLoaded', () => {
             title.textContent = 'Say hi 💜';
             const sub = document.createElement('div');
             sub.className = 'chat-empty-sub';
-            sub.textContent = 'Start the conversation — photos and videos work too!';
+            sub.textContent = 'Start the conversation — photos, videos, and GIFs work too!';
             emptyState.appendChild(icon);
             emptyState.appendChild(title);
             emptyState.appendChild(sub);
@@ -1951,9 +2375,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function messageRenderSig(msg) {
         const readKeys = msg.readBy ? Object.keys(msg.readBy).sort().join(',') : '';
         const react = (msg.reaction && msg.reaction.by) ? msg.reaction.by : '';
+        const media = msg.media;
+        const mediaSig = media
+            ? [media.type || '', media.provider || '', media.providerId || '', media.rendition || '', media.width || 0, media.height || 0].join(':')
+            : '';
         return [
             msg.sender || '',
             msg.text || '',
+            mediaSig,
             msg.isEdited ? '1' : '0',
             msg.pending ? '1' : '0',
             msg.groupStart ? '1' : '0',
@@ -2031,7 +2460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Shared class list for a message bubble (grouping classes activate CSS at style.css)
     function bubbleClassName(message, extra = '') {
         const isBhatari = message.sender === 'Bhatari';
-        const hasMedia = !!(message.media && (message.media.type === 'image' || message.media.type === 'video'));
+        const hasMedia = !!(message.media && ['image', 'video', 'gif'].includes(message.media.type));
         let cls = `chat-bubble ${isBhatari ? 'left' : 'right'}`;
         if (message.pending) cls += ' pending';
         if (hasMedia) cls += ' has-media';
@@ -2173,7 +2602,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const bubble = e.target.closest('.chat-bubble');
             if (!bubble || !bubble.dataset.id) return;
             // Inner controls own their clicks: quote jumps, action buttons, links, media/lightbox
-            if (e.target.closest('.chat-quote-box, .chat-action-btn, a.chat-link, .chat-media-image, .chat-media-video')) return;
+            if (e.target.closest('.chat-quote-box, .chat-action-btn, a.chat-link, .chat-media-image, .chat-media-video, .chat-media-gif')) return;
             const msg = chatState.messages.find(m => m.id === bubble.dataset.id);
             // Received text messages only — media bubbles click to lightbox, own messages open info sheet
             if (!msg || msg.media || msg.pending || msg.sender === chatState.currentIdentity) return;
@@ -2212,7 +2641,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Let the action, quote, link, and media handlers keep ownership of
             // their clicks; selecting the surrounding bubble is for discovery.
-            if (e.target.closest('.chat-action-btn, .chat-quote-box, a.chat-link, .chat-media-image, .chat-media-video, .chat-reaction')) return;
+            if (e.target.closest('.chat-action-btn, .chat-quote-box, a.chat-link, .chat-media-image, .chat-media-video, .chat-media-gif, .chat-reaction')) return;
 
             closeOpenActions(bubble);
             bubble.classList.toggle('actions-open');
@@ -2233,7 +2662,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function createBubble(message) {
         const bubble = document.createElement('div');
         const hasText  = !!(message.text && message.text.trim());
-        const hasMedia = !!(message.media && (message.media.type === 'image' || message.media.type === 'video'));
+        const hasMedia = !!(message.media && ['image', 'video', 'gif'].includes(message.media.type));
         bubble.className = bubbleClassName(message);
         bubble.dataset.id = message.id;
         bubble.tabIndex = 0;
@@ -2280,9 +2709,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Media block (image or video) — inserted between reply quote and caption
         if (hasMedia) {
-            bubble.appendChild(message.media.type === 'image'
+            const mediaNode = message.media.type === 'image'
                 ? buildImageMedia(message)
-                : buildVideoMedia(message));
+                : message.media.type === 'video'
+                    ? buildVideoMedia(message)
+                    : buildGifMedia(message);
+            bubble.appendChild(mediaNode);
         }
 
         // Message text (skipped entirely for media-only messages)
@@ -2507,36 +2939,133 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navigator.vibrate) { try { navigator.vibrate(pattern); } catch (e) { /* noop */ } }
     }
 
+    function closeChatAddMenu(restoreFocus = true) {
+        const wrap = document.getElementById('chat-add-wrap');
+        const menu = document.getElementById('chat-add-menu');
+        const plus = document.getElementById('chat-plus-btn');
+        chatState.chatAddMenuOpen = false;
+        if (wrap) wrap.classList.remove('menu-open');
+        if (menu) {
+            menu.classList.remove('open');
+            menu.setAttribute('aria-hidden', 'true');
+        }
+        if (plus) plus.setAttribute('aria-expanded', 'false');
+        if (restoreFocus && plus && plus.isConnected && !plus.disabled) plus.focus({ preventScroll: true });
+    }
+
+    function getChatAddOptions() {
+        const menu = document.getElementById('chat-add-menu');
+        return menu ? Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(option => !option.disabled) : [];
+    }
+
+    function openChatAddMenu() {
+        const wrap = document.getElementById('chat-add-wrap');
+        const menu = document.getElementById('chat-add-menu');
+        const plus = document.getElementById('chat-plus-btn');
+        if (!wrap || !menu || !plus || plus.disabled || chatState.giphyPickerOpen) return;
+        chatState.chatAddMenuOpen = true;
+        wrap.classList.add('menu-open');
+        menu.classList.add('open');
+        menu.setAttribute('aria-hidden', 'false');
+        plus.setAttribute('aria-expanded', 'true');
+        requestAnimationFrame(() => {
+            const firstOption = getChatAddOptions()[0];
+            if (chatState.chatAddMenuOpen && firstOption) firstOption.focus({ preventScroll: true });
+        });
+    }
+
+    function toggleChatAddMenu() {
+        if (chatState.chatAddMenuOpen) closeChatAddMenu(false);
+        else openChatAddMenu();
+    }
+
+    function initChatAddMenu() {
+        const wrap = document.getElementById('chat-add-wrap');
+        const menu = document.getElementById('chat-add-menu');
+        const plus = document.getElementById('chat-plus-btn');
+        if (!wrap || !menu || !plus || initChatAddMenu._inited) return;
+        initChatAddMenu._inited = true;
+        plus.addEventListener('click', toggleChatAddMenu);
+        menu.addEventListener('keydown', event => {
+            const options = getChatAddOptions();
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeChatAddMenu();
+                return;
+            }
+            if (event.key === 'Tab') {
+                closeChatAddMenu(false);
+                return;
+            }
+            if (!options.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const current = options.indexOf(document.activeElement);
+            let next = event.key === 'Home' ? 0
+                : event.key === 'End' ? options.length - 1
+                : current < 0 ? 0
+                : (current + (event.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
+            options[next].focus({ preventScroll: true });
+        });
+        document.addEventListener('click', event => {
+            if (chatState.chatAddMenuOpen && !wrap.contains(event.target)) closeChatAddMenu(false);
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && chatState.chatAddMenuOpen) {
+                event.preventDefault();
+                closeChatAddMenu();
+            }
+        });
+    }
+
     // Keep the send control honest: it is enabled only when text or a finished
-    // attachment is available, and the chat identity has been selected.
+    // attachment/GIF is available, and the chat identity has been selected.
     function syncSendButtonState() {
         const sendBtn = document.getElementById('chat-send-btn');
-        if (!sendBtn) return;
+        const plusBtn = document.getElementById('chat-plus-btn');
+        const attachBtn = document.getElementById('chat-attach-btn');
+        const gifBtn = document.getElementById('chat-gif-btn');
         const chatInput = document.getElementById('chat-input');
         const att = chatState.pendingAttachment;
+        const gif = chatState.pendingGif;
         const hasText = !!(chatInput && chatInput.value.trim());
         const uploadFinished = !!(att && att.status === 'ready' && att.media);
         const uploadInProgress = !!(att && att.status === 'uploading');
-        const canSend = !!chatState.currentIdentity && !uploadInProgress && (hasText || uploadFinished);
-        sendBtn.disabled = !canSend;
-        sendBtn.classList.toggle('armed', canSend);
+        const hasGif = !!(gif && gif.media && gif.runtime);
+        const composerReady = !!chatState.currentIdentity && !chatState.sendInFlight;
+        const canSend = composerReady && !uploadInProgress && (hasText || uploadFinished || hasGif);
+
+        if (sendBtn) {
+            sendBtn.disabled = !canSend;
+            sendBtn.classList.toggle('armed', canSend);
+        }
+        if (plusBtn) plusBtn.disabled = !composerReady || chatState.giphyPickerOpen;
+        if (attachBtn) attachBtn.disabled = !composerReady || !!gif || chatState.giphyPickerOpen;
+        if (gifBtn) gifBtn.disabled = !composerReady || !!att || chatState.giphyPickerOpen;
     }
 
     function handleSend() {
-        if (!chatState.currentIdentity) return; // identity required — selector overlay owns pre-identity state
+        if (!chatState.currentIdentity || chatState.sendInFlight) return; // identity required and one send at a time
         const chatInput = document.getElementById('chat-input');
         if (!chatInput) return;
         const text = chatInput.value.trim();
 
         const att = chatState.pendingAttachment;
+        const gif = chatState.pendingGif;
         if (att && att.status === 'uploading') {
             showToast('Almost there — finishing upload ⏳', false);
             return;
         }
-        const media = att && att.status === 'ready' ? att.media : null;
+        const media = att && att.status === 'ready'
+            ? att.media
+            : (gif && gif.media ? gif.media : null);
         if (!text && !media) return;
+        if (!db) {
+            showToast('Chat is still connecting…', true);
+            return;
+        }
 
         // Send choreography: tick haptic + squash/launch micro-anim on the button
+        closeChatAddMenu(false);
         haptic(8);
         const sendBtn = document.getElementById('chat-send-btn');
         if (sendBtn) {
@@ -2546,24 +3075,37 @@ document.addEventListener('DOMContentLoaded', () => {
             sendBtn.classList.remove('armed');
         }
 
+        chatState.sendInFlight = true;
         chatInput.value = '';
         syncSendButtonState();
         resizeChatInput(chatInput);
-        sendMessage(text, media);
+        sendMessage(text, media, gif && media === gif.media ? gif : null);
         clearOutgoingTyping();
     }
 
-    async function sendMessage(text, media = null) {
-        if (!db) { showToast('Chat is still connecting…', true); return; }
+    async function sendMessage(text, media = null, sentGif = null) {
+        if (!db) {
+            showToast('Chat is still connecting…', true);
+            chatState.sendInFlight = false;
+            syncSendButtonState();
+            return;
+        }
+        const senderAtSend = chatState.currentIdentity;
+        const sendRunId = chatState.identitySelectionRunId;
         const replyTo = chatState.replyToMessage
             ? { id: chatState.replyToMessage.id, sender: chatState.replyToMessage.sender, text: chatState.replyToMessage.text }
             : null;
         cancelReply();
         const sentAttachment = chatState.pendingAttachment; // keep ref in case we must restore on failure
-        if (media) clearAttachmentUI();
+        if (media) {
+            if (sentAttachment && media === sentAttachment.media) clearAttachmentUI();
+            // Hide the GIF preview while sending, but keep the pending draft in
+            // memory so a failed Firestore write can restore it for retry.
+            if (sentGif && media === sentGif.media) hideGifPreview();
+        }
         try {
             await db.collection(CHATS_COL).add({
-                sender:    chatState.currentIdentity,
+                sender:    senderAtSend,
                 text:      text || '',
                 timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                 replyTo,
@@ -2571,16 +3113,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 media:     media || null,
                 readBy:    {}   // read receipts start unread; each reader writes their own timestamped key
             });
-            if (media && chatState.pendingAttachment === sentAttachment) discardPendingAttachment();
+            if (sendRunId === chatState.identitySelectionRunId && chatState.currentIdentity === senderAtSend) {
+                if (media && chatState.pendingAttachment === sentAttachment && sentAttachment) discardPendingAttachment();
+                if (media && chatState.pendingGif === sentGif && sentGif) clearGifPreview();
+            }
         } catch (err) {
+            if (sendRunId !== chatState.identitySelectionRunId || chatState.currentIdentity !== senderAtSend) return;
             console.error('Send error:', err);
-            // Restore the draft so a failed send never loses the typed text or the uploaded media
-            const chatInput = document.getElementById('chat-input');
-            if (chatInput && text) { chatInput.value = text; resizeChatInput(chatInput); }
+            // Restore the draft so a failed send never loses the typed text or media.
+            const currentInput = document.getElementById('chat-input');
+            if (currentInput && text) { currentInput.value = text; resizeChatInput(currentInput); }
             if (media && chatState.pendingAttachment === sentAttachment && sentAttachment) {
                 renderAttachmentStrip(); // strip comes back in "ready" state for retry
             }
+            if (media && chatState.pendingGif === sentGif && sentGif) renderGifPreview();
             showToast('Message failed to send 😢', true);
+        } finally {
+            if (sendRunId === chatState.identitySelectionRunId) {
+                chatState.sendInFlight = false;
+                syncSendButtonState();
+            }
         }
     }
 
@@ -2652,7 +3204,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reply quotes for media-only messages so the preview bar is never blank
     function quoteTextForMessage(message) {
         if (message.text && message.text.trim()) return message.text;
-        if (message.media) return message.media.type === 'video' ? '🎬 Video' : '📷 Photo';
+        if (message.media) {
+            if (message.media.type === 'video') return '🎬 Video';
+            if (message.media.type === 'gif') return 'GIF';
+            return '📷 Photo';
+        }
         return '';
     }
 
@@ -2773,6 +3329,679 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => el.classList.remove('smooth-scroll'), 600);
     }
 
+    // ─── GIFs: GIPHY picker, runtime metadata, and message media ─────
+    function isGiphyMediaUrl(url) {
+        if (typeof url !== 'string' || !url) return false;
+        try {
+            const parsed = new URL(url);
+            return parsed.protocol === 'https:' && GIPHY_MEDIA_HOST_RE.test(parsed.hostname);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function giphyNumber(value) {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 && number < 10000 ? number : 0;
+    }
+
+    function giphyText(value, fallback, maxLength = 160) {
+        if (typeof value !== 'string') return fallback;
+        const text = value.trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, maxLength);
+        return text || fallback;
+    }
+
+    function giphyImageUrl(images, rendition) {
+        const image = images && images[rendition];
+        return image && isGiphyMediaUrl(image.url) ? image.url : '';
+    }
+
+    function readGiphyRuntimeItem(item) {
+        if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !GIPHY_ID_RE.test(item.id)) return null;
+        if (item.rating !== GIPHY_RATING) return null;
+        const images = item.images && typeof item.images === 'object' ? item.images : {};
+        const thumbUrl = giphyImageUrl(images, 'fixed_width_small') ||
+            giphyImageUrl(images, 'fixed_width') || giphyImageUrl(images, 'fixed_height');
+        const displayRendition = giphyImageUrl(images, 'fixed_width') ? 'fixed_width'
+            : (giphyImageUrl(images, 'fixed_height') ? 'fixed_height' : 'downsized_medium');
+        const displayUrl = giphyImageUrl(images, displayRendition) || thumbUrl;
+        const fullUrl = giphyImageUrl(images, 'original') || displayUrl;
+        if (!thumbUrl || !displayUrl) return null;
+
+        const displayImage = images[displayRendition] || images.fixed_width || images.fixed_height || {};
+        const title = giphyText(item.title, 'GIF', 160);
+        return {
+            id: item.id,
+            title,
+            alt: giphyText(item.alt_text, title === 'GIF' ? 'GIF shared in chat' : title, 160),
+            rating: item.rating === 'g' ? 'g' : '',
+            thumbUrl,
+            displayUrl,
+            stillUrl: giphyImageUrl(images, 'original_still') || giphyImageUrl(images, 'fixed_width_still') || '',
+            fullUrl,
+            rendition: displayRendition,
+            width: giphyNumber(displayImage.width) || giphyNumber(item.images && item.images.original && item.images.original.width),
+            height: giphyNumber(displayImage.height) || giphyNumber(item.images && item.images.original && item.images.original.height)
+        };
+    }
+
+    function rememberGiphyItem(item) {
+        const runtime = readGiphyRuntimeItem(item);
+        if (!runtime) return null;
+        chatState.giphyRuntimeById.set(runtime.id, runtime);
+        // Keep the runtime-only map bounded; Firestore stores only the provider ID.
+        while (chatState.giphyRuntimeById.size > 120) {
+            const oldestId = chatState.giphyRuntimeById.keys().next().value;
+            chatState.giphyRuntimeById.delete(oldestId);
+        }
+        return runtime;
+    }
+
+    function gifMediaFromRuntime(runtime) {
+        if (!runtime) return null;
+        return {
+            type: 'gif',
+            provider: 'giphy',
+            providerId: runtime.id,
+            rendition: runtime.rendition || 'fixed_width',
+            width: runtime.width || 0,
+            height: runtime.height || 0,
+            title: runtime.title,
+            alt: runtime.alt,
+            rating: 'g'
+        };
+    }
+
+    function buildGifApiUrl(path, params = {}) {
+        const url = new URL(`${GIPHY_API_BASE}/${path}`);
+        url.searchParams.set('api_key', GIPHY_API_KEY);
+        Object.entries(params).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
+        });
+        return url;
+    }
+
+    async function fetchGiphyJson(url, controller) {
+        const timeout = setTimeout(() => {
+            if (controller) controller.abort();
+        }, GIPHY_REQUEST_TIMEOUT_MS);
+        try {
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+                signal: controller ? controller.signal : undefined
+            });
+            let payload = null;
+            try { payload = await response.json(); } catch (e) { /* invalid JSON */ }
+            if (!response.ok || !payload || !payload.data) {
+                const error = new Error('GIPHY request failed');
+                error.status = response.status || 0;
+                throw error;
+            }
+            return payload;
+        } finally {
+            clearTimeout(timeout);
+        }
+    }
+
+    function abortGiphySearch() {
+        if (chatState.giphySearchAbortController) {
+            try { chatState.giphySearchAbortController.abort(); } catch (e) { /* noop */ }
+            chatState.giphySearchAbortController = null;
+        }
+    }
+
+    function abortGiphyLookups() {
+        chatState.giphyLookupById.forEach(record => {
+            try { record.controller.abort(); } catch (e) { /* noop */ }
+        });
+        chatState.giphyLookupById.clear();
+    }
+
+    function abortGiphyRequests() {
+        abortGiphySearch();
+        abortGiphyLookups();
+    }
+
+    function resetGifPickerForLifecycle(clearRuntime = false) {
+        closeChatAddMenu(false);
+        chatState.giphyLifecycleRunId++;
+        chatState.giphySearchRunId++;
+        clearTimeout(chatState.giphySearchTimer);
+        chatState.giphySearchTimer = null;
+        abortGiphyRequests();
+        chatState.giphyPickerOpen = false;
+        chatState.giphySearchItems = [];
+        chatState.giphySearchOffset = 0;
+        chatState.giphySearchQuery = '';
+        chatState.giphySearchHasMore = false;
+        chatState.giphySearchLoading = false;
+        chatState.pendingGif = null;
+        if (clearRuntime) chatState.giphyRuntimeById.clear();
+
+        const picker = document.getElementById('chat-gif-picker');
+        if (picker) {
+            picker.classList.remove('open');
+            picker.style.display = 'none';
+            picker.setAttribute('aria-hidden', 'true');
+        }
+        document.body.classList.remove('chat-gif-open');
+        const preview = document.getElementById('chat-gif-preview');
+        if (preview) preview.style.display = 'none';
+        const previewThumb = document.getElementById('chat-gif-preview-thumb');
+        if (previewThumb) previewThumb.replaceChildren();
+        const results = document.getElementById('chat-gif-results');
+        if (results) {
+            results.replaceChildren();
+            results.setAttribute('aria-busy', 'false');
+        }
+        const loadMore = document.getElementById('chat-gif-load-more');
+        if (loadMore) loadMore.style.display = 'none';
+        const retry = document.getElementById('chat-gif-retry');
+        if (retry) retry.style.display = 'none';
+        const search = document.getElementById('chat-gif-search');
+        if (search) search.value = '';
+        syncSendButtonState();
+        syncInputBarHeight();
+    }
+
+    function refreshGiphyBubbles(providerId) {
+        if (!providerId) return;
+        chatState.renderedIds.forEach((bubble, messageId) => {
+            const message = chatState.messages.find(item => item.id === messageId);
+            if (!message || !message.media || message.media.type !== 'gif' || message.media.providerId !== providerId) return;
+            const oldMedia = bubble.querySelector('.chat-media-gif');
+            if (oldMedia) oldMedia.replaceWith(buildGifMedia(message));
+        });
+    }
+
+    function showGifErrorIn(container, message, retry) {
+        container.replaceChildren();
+        const box = document.createElement('div');
+        box.className = 'chat-media-error chat-gif-error';
+        const icon = document.createElement('span');
+        icon.className = 'chat-media-error-icon';
+        icon.textContent = 'GIF';
+        const label = document.createElement('span');
+        label.className = 'chat-media-error-text';
+        label.textContent = message || 'GIF unavailable';
+        box.appendChild(icon);
+        box.appendChild(label);
+        if (retry) {
+            const retryButton = document.createElement('button');
+            retryButton.className = 'chat-media-retry';
+            retryButton.type = 'button';
+            retryButton.textContent = '↻ Retry';
+            retryButton.addEventListener('click', event => {
+                event.stopPropagation();
+                retry();
+            });
+            box.appendChild(retryButton);
+        }
+        container.appendChild(box);
+    }
+
+    function ensureGiphyMetadata(providerId) {
+        if (!GIPHY_API_KEY || !GIPHY_ID_RE.test(providerId || '')) {
+            return Promise.reject(new Error('GIPHY is not configured'));
+        }
+        const current = chatState.giphyRuntimeById.get(providerId);
+        if (current) return Promise.resolve(current);
+        const active = chatState.giphyLookupById.get(providerId);
+        if (active) return active.promise;
+
+        const lifecycleRunId = chatState.giphyLifecycleRunId;
+        const controller = window.AbortController ? new AbortController() : null;
+        const url = buildGifApiUrl(`gifs/${encodeURIComponent(providerId)}`);
+        const promise = fetchGiphyJson(url, controller)
+            .then(payload => {
+                if (lifecycleRunId !== chatState.giphyLifecycleRunId) throw new Error('Stale GIPHY response');
+                const runtime = rememberGiphyItem(payload.data);
+                if (!runtime || runtime.id !== providerId) throw new Error('Invalid GIPHY response');
+                refreshGiphyBubbles(providerId);
+                return runtime;
+            })
+            .finally(() => {
+                const record = chatState.giphyLookupById.get(providerId);
+                if (record && record.promise === promise) chatState.giphyLookupById.delete(providerId);
+            });
+        chatState.giphyLookupById.set(providerId, { promise, controller });
+        return promise;
+    }
+
+    function buildGifMedia(message) {
+        const media = message.media;
+        const lifecycleRunId = chatState.giphyLifecycleRunId;
+        const wrap = document.createElement('div');
+        wrap.className = 'chat-media-gif';
+        wrap.dataset.giphyId = media.providerId;
+        wrap.style.aspectRatio = (media.width > 0 && media.height > 0)
+            ? `${media.width} / ${media.height}`
+            : '16 / 10';
+
+        const runtime = chatState.giphyRuntimeById.get(media.providerId);
+        if (!runtime) {
+            const loading = document.createElement('div');
+            loading.className = 'chat-gif-loading';
+            loading.textContent = GIPHY_API_KEY ? 'Loading GIF…' : 'GIF unavailable';
+            wrap.appendChild(loading);
+            if (GIPHY_API_KEY) {
+                ensureGiphyMetadata(media.providerId).catch(() => {
+                    if (lifecycleRunId !== chatState.giphyLifecycleRunId) return;
+                    if (wrap.isConnected) {
+                        showGifErrorIn(wrap, 'GIF unavailable', () => {
+                            wrap.replaceWith(buildGifMedia(message));
+                        });
+                    }
+                });
+            }
+            return wrap;
+        }
+
+        const img = document.createElement('img');
+        img.className = 'chat-gif-img';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.alt = media.alt || runtime.alt || 'GIF shared in chat';
+        img.referrerPolicy = 'no-referrer';
+        if (runtime.width > 0) img.width = runtime.width;
+        if (runtime.height > 0) img.height = runtime.height;
+        const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        img.src = reduceMotion && runtime.stillUrl ? runtime.stillUrl : runtime.displayUrl;
+        img.addEventListener('error', () => {
+            if (lifecycleRunId !== chatState.giphyLifecycleRunId) return;
+            showGifErrorIn(wrap, 'GIF unavailable', () => {
+                chatState.giphyRuntimeById.delete(media.providerId);
+                wrap.replaceWith(buildGifMedia(message));
+            });
+        });
+        img.addEventListener('click', event => {
+            event.stopPropagation();
+            openLightbox(runtime.fullUrl || runtime.displayUrl, img.alt);
+        });
+        wrap.appendChild(img);
+        return wrap;
+    }
+
+    function setGifPickerStatus(message) {
+        const status = document.getElementById('chat-gif-status');
+        if (status) status.textContent = message;
+    }
+
+    function setGifRetryVisible(visible) {
+        const retry = document.getElementById('chat-gif-retry');
+        if (retry) {
+            retry.style.display = visible ? 'inline-flex' : 'none';
+            retry.disabled = !visible;
+        }
+    }
+
+    function renderGifResults() {
+        const results = document.getElementById('chat-gif-results');
+        const loadMore = document.getElementById('chat-gif-load-more');
+        if (!results) return;
+        results.replaceChildren();
+
+        if (chatState.giphySearchLoading && !chatState.giphySearchItems.length) {
+            for (let index = 0; index < 6; index += 1) {
+                const skeleton = document.createElement('div');
+                skeleton.className = 'chat-gif-skeleton';
+                skeleton.setAttribute('aria-hidden', 'true');
+                results.appendChild(skeleton);
+            }
+        } else if (!chatState.giphySearchItems.length) {
+            const empty = document.createElement('p');
+            empty.className = 'chat-gif-empty';
+            empty.textContent = 'No GIFs found.';
+            results.appendChild(empty);
+        } else {
+            chatState.giphySearchItems.forEach(runtime => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'chat-gif-result';
+                button.dataset.giphyId = runtime.id;
+                button.setAttribute('aria-label', `Select GIF: ${runtime.title}`);
+                const img = document.createElement('img');
+                img.src = runtime.thumbUrl;
+                img.alt = runtime.alt;
+                img.loading = 'lazy';
+                img.decoding = 'async';
+                img.referrerPolicy = 'no-referrer';
+                let triedDisplayRendition = false;
+                img.addEventListener('error', () => {
+                    if (!triedDisplayRendition && runtime.displayUrl && runtime.displayUrl !== runtime.thumbUrl) {
+                        triedDisplayRendition = true;
+                        img.src = runtime.displayUrl;
+                        return;
+                    }
+                    button.remove();
+                });
+                button.appendChild(img);
+                button.addEventListener('click', () => selectGif(runtime.id));
+                results.appendChild(button);
+            });
+        }
+        if (loadMore) {
+            loadMore.style.display = chatState.giphySearchHasMore ? 'inline-flex' : 'none';
+            loadMore.disabled = chatState.giphySearchLoading;
+        }
+    }
+
+    async function fetchGifResults(query, offset = 0, append = false) {
+        if (!GIPHY_API_KEY) {
+            chatState.giphySearchLoading = false;
+            setGifRetryVisible(false);
+            renderGifResults();
+            setGifPickerStatus('GIF search is not configured yet.');
+            return;
+        }
+        if (navigator.onLine === false) {
+            chatState.giphySearchLoading = false;
+            setGifRetryVisible(true);
+            renderGifResults();
+            setGifPickerStatus('You appear to be offline. Reconnect and try again.');
+            return;
+        }
+        const trimmedQuery = (query || '').trim().slice(0, GIPHY_QUERY_MAX_LENGTH);
+        if (trimmedQuery && trimmedQuery.length < 2) {
+            chatState.giphySearchLoading = false;
+            setGifRetryVisible(false);
+            chatState.giphySearchItems = [];
+            chatState.giphySearchHasMore = false;
+            renderGifResults();
+            setGifPickerStatus('Type at least 2 characters to search.');
+            return;
+        }
+
+        const runId = ++chatState.giphySearchRunId;
+        clearTimeout(chatState.giphySearchTimer);
+        abortGiphySearch();
+        const controller = window.AbortController ? new AbortController() : null;
+        chatState.giphySearchAbortController = controller;
+        chatState.giphySearchQuery = trimmedQuery;
+        chatState.giphySearchOffset = offset;
+        chatState.giphySearchLoading = true;
+        const results = document.getElementById('chat-gif-results');
+        if (results) results.setAttribute('aria-busy', 'true');
+        setGifRetryVisible(false);
+        renderGifResults();
+        setGifPickerStatus(trimmedQuery ? 'Searching GIFs…' : 'Loading trending GIFs…');
+
+        const endpoint = trimmedQuery ? 'gifs/search' : 'gifs/trending';
+        const url = buildGifApiUrl(endpoint, {
+            q: trimmedQuery || undefined,
+            limit: GIPHY_RESULT_LIMIT,
+            offset,
+            rating: GIPHY_RATING,
+            lang: 'en',
+            bundle: 'messaging_non_clips'
+        });
+
+        try {
+            const payload = await fetchGiphyJson(url, controller);
+            if (runId !== chatState.giphySearchRunId || !chatState.giphyPickerOpen) return;
+            const incoming = Array.isArray(payload.data) ? payload.data.map(rememberGiphyItem).filter(Boolean) : [];
+            chatState.giphySearchItems = append
+                ? chatState.giphySearchItems.concat(incoming)
+                : incoming;
+            const pagination = payload.pagination && typeof payload.pagination === 'object' ? payload.pagination : {};
+            const received = Number(pagination.count) || incoming.length;
+            chatState.giphySearchOffset = offset + received;
+            const total = Number(pagination.total_count) || 0;
+            chatState.giphySearchHasMore = received > 0 && (total === 0 || offset + received < total);
+            chatState.giphySearchLoading = false;
+            setGifRetryVisible(false);
+            renderGifResults();
+            if (append && results) {
+                requestAnimationFrame(() => {
+                    if (!chatState.giphyPickerOpen || runId !== chatState.giphySearchRunId) return;
+                    const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    results.scrollTo({
+                        top: Math.max(0, results.scrollHeight - results.clientHeight),
+                        behavior: reducedMotion ? 'auto' : 'smooth'
+                    });
+                });
+            }
+            setGifPickerStatus(chatState.giphySearchItems.length
+                ? (trimmedQuery ? `${chatState.giphySearchItems.length} GIFs found.` : 'Trending GIFs.')
+                : 'No GIFs found.');
+        } catch (error) {
+            if (runId !== chatState.giphySearchRunId || (error && error.name === 'AbortError')) return;
+            chatState.giphySearchItems = append ? chatState.giphySearchItems : [];
+            chatState.giphySearchHasMore = false;
+            chatState.giphySearchLoading = false;
+            setGifRetryVisible(true);
+            renderGifResults();
+            const statusMessage = navigator.onLine === false
+                ? 'You appear to be offline. Reconnect and try again.'
+                : error && error.status === 429
+                    ? 'GIF search is rate limited. Please wait and try again.'
+                    : error && error.status >= 400
+                        ? 'GIPHY could not complete that request. Try again.'
+                        : 'GIFs could not load. Check your connection and try again.';
+            setGifPickerStatus(statusMessage);
+        } finally {
+            if (runId === chatState.giphySearchRunId) {
+                chatState.giphySearchAbortController = null;
+                if (results) results.setAttribute('aria-busy', 'false');
+            }
+        }
+    }
+
+    function scheduleGifSearch(query) {
+        clearTimeout(chatState.giphySearchTimer);
+        chatState.giphySearchTimer = null;
+        chatState.giphySearchRunId++;
+        abortGiphySearch();
+        chatState.giphySearchTimer = setTimeout(() => {
+            chatState.giphySearchTimer = null;
+            fetchGifResults(query, 0, false);
+        }, 300);
+    }
+
+    function renderGifPreview() {
+        const preview = document.getElementById('chat-gif-preview');
+        const thumb = document.getElementById('chat-gif-preview-thumb');
+        const name = document.getElementById('chat-gif-preview-name');
+        const status = document.getElementById('chat-gif-preview-status');
+        const pending = chatState.pendingGif;
+        if (!preview || !thumb) return;
+        if (!pending || !pending.runtime) {
+            preview.style.display = 'none';
+            syncSendButtonState();
+            syncInputBarHeight();
+            return;
+        }
+        thumb.replaceChildren();
+        const img = document.createElement('img');
+        img.src = pending.runtime.thumbUrl || pending.runtime.displayUrl;
+        img.alt = 'Selected GIF preview';
+        img.loading = 'eager';
+        img.decoding = 'async';
+        img.referrerPolicy = 'no-referrer';
+        img.addEventListener('error', () => {
+            if (pending.runtime.displayUrl && img.src !== pending.runtime.displayUrl) img.src = pending.runtime.displayUrl;
+        });
+        thumb.appendChild(img);
+        if (name) name.textContent = pending.runtime.title || 'GIF ready to send';
+        if (status) status.textContent = 'GIF selected · ready to send';
+        preview.style.display = 'flex';
+        syncSendButtonState();
+        syncInputBarHeight();
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const nearBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 120;
+            if (nearBottom) requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
+        }
+    }
+
+    function hideGifPreview() {
+        const preview = document.getElementById('chat-gif-preview');
+        if (preview) preview.style.display = 'none';
+        const thumb = document.getElementById('chat-gif-preview-thumb');
+        if (thumb) thumb.replaceChildren();
+        syncInputBarHeight();
+    }
+
+    function clearGifPreview(announce = false) {
+        chatState.pendingGif = null;
+        const preview = document.getElementById('chat-gif-preview');
+        if (preview) preview.style.display = 'none';
+        const thumb = document.getElementById('chat-gif-preview-thumb');
+        if (thumb) thumb.replaceChildren();
+        syncSendButtonState();
+        syncInputBarHeight();
+        if (announce) showToast('GIF removed', false);
+    }
+
+    function selectGif(providerId) {
+        if (!chatState.currentIdentity || !chatState.chatUnlocked) return;
+        if (chatState.pendingAttachment) {
+            showToast('Remove the current attachment before choosing a GIF', true);
+            return;
+        }
+        const runtime = chatState.giphyRuntimeById.get(providerId);
+        const media = gifMediaFromRuntime(runtime);
+        if (!runtime || !media) {
+            showToast('That GIF is unavailable', true);
+            return;
+        }
+        chatState.pendingGif = { media, runtime };
+        renderGifPreview();
+        closeGifPicker();
+    }
+
+    function openGifPicker() {
+        if (!chatState.currentIdentity || !chatState.chatUnlocked) return;
+        if (chatState.pendingAttachment) {
+            showToast('Remove the current attachment before choosing a GIF', true);
+            return;
+        }
+        const picker = document.getElementById('chat-gif-picker');
+        const search = document.getElementById('chat-gif-search');
+        if (!picker || chatState.giphyPickerOpen) return;
+        chatState.giphyPickerOpen = true;
+        syncSendButtonState();
+        picker.style.display = 'flex';
+        picker.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('chat-gif-open');
+        requestAnimationFrame(() => picker.classList.add('open'));
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) chatInput.blur();
+        if (search) {
+            search.value = '';
+            search.focus({ preventScroll: true });
+        }
+        fetchGifResults('', 0, false);
+    }
+
+    function closeGifPicker() {
+        const picker = document.getElementById('chat-gif-picker');
+        const button = document.getElementById('chat-plus-btn');
+        if (!picker) return;
+        chatState.giphyPickerOpen = false;
+        syncSendButtonState();
+        chatState.giphySearchRunId++;
+        clearTimeout(chatState.giphySearchTimer);
+        chatState.giphySearchTimer = null;
+        abortGiphySearch();
+        chatState.giphySearchItems = [];
+        chatState.giphySearchOffset = 0;
+        chatState.giphySearchQuery = '';
+        chatState.giphySearchHasMore = false;
+        chatState.giphySearchLoading = false;
+        const results = document.getElementById('chat-gif-results');
+        if (results) {
+            results.replaceChildren();
+            results.setAttribute('aria-busy', 'false');
+        }
+        const loadMore = document.getElementById('chat-gif-load-more');
+        if (loadMore) loadMore.style.display = 'none';
+        const retry = document.getElementById('chat-gif-retry');
+        if (retry) retry.style.display = 'none';
+        picker.classList.remove('open');
+        picker.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('chat-gif-open');
+        setTimeout(() => {
+            if (!chatState.giphyPickerOpen) picker.style.display = 'none';
+        }, 220);
+        if (button && button.isConnected) button.focus({ preventScroll: true });
+    }
+
+    function initGifPicker() {
+        if (initGifPicker._inited) return;
+        const gifButton = document.getElementById('chat-gif-btn');
+        const picker = document.getElementById('chat-gif-picker');
+        const closeButton = document.getElementById('chat-gif-close');
+        const search = document.getElementById('chat-gif-search');
+        const loadMore = document.getElementById('chat-gif-load-more');
+        const retry = document.getElementById('chat-gif-retry');
+        const results = document.getElementById('chat-gif-results');
+        const previewCancel = document.getElementById('chat-gif-preview-cancel');
+        if (!gifButton || !picker || !search || !results) return;
+        initGifPicker._inited = true;
+
+        gifButton.addEventListener('click', () => {
+            closeChatAddMenu(false);
+            openGifPicker();
+        });
+        if (closeButton) closeButton.addEventListener('click', closeGifPicker);
+        picker.addEventListener('click', event => {
+            if (event.target === picker) closeGifPicker();
+        });
+        search.addEventListener('input', () => {
+            const value = search.value.trim();
+            if (value.length === 1) {
+                clearTimeout(chatState.giphySearchTimer);
+                chatState.giphySearchTimer = null;
+                chatState.giphySearchRunId++;
+                abortGiphySearch();
+                chatState.giphySearchItems = [];
+                chatState.giphySearchHasMore = false;
+                chatState.giphySearchLoading = false;
+                renderGifResults();
+                setGifPickerStatus('Type at least 2 characters to search.');
+                return;
+            }
+            scheduleGifSearch(value);
+        });
+        search.addEventListener('keydown', event => {
+            if (event.key === 'Enter') event.preventDefault();
+        });
+        if (loadMore) loadMore.addEventListener('click', () => {
+            if (!chatState.giphySearchHasMore || chatState.giphySearchLoading) return;
+            fetchGifResults(chatState.giphySearchQuery, chatState.giphySearchOffset, true);
+        });
+        if (retry) retry.addEventListener('click', () => {
+            if (chatState.giphySearchLoading) return;
+            const append = chatState.giphySearchItems.length > 0;
+            fetchGifResults(chatState.giphySearchQuery, append ? chatState.giphySearchOffset : 0, append);
+        });
+        if (previewCancel) previewCancel.addEventListener('click', () => clearGifPreview(true));
+
+        picker.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                closeGifPicker();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = [search, closeButton, ...results.querySelectorAll('button'), retry, loadMore]
+                .filter(element => element && element.style.display !== 'none' && !element.disabled);
+            if (!focusable.length) {
+                event.preventDefault();
+                picker.focus();
+                return;
+            }
+            event.preventDefault();
+            const index = focusable.indexOf(document.activeElement);
+            const next = index === -1
+                ? (event.shiftKey ? focusable.length - 1 : 0)
+                : (index + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+            focusable[next].focus();
+        });
+    }
+
     // ─── Media: Attachment Picker & Upload ───────────────
     function initMediaAttachments() {
         const attachBtn     = document.getElementById('chat-attach-btn');
@@ -2783,7 +4012,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const lightboxClose = document.getElementById('chat-lightbox-close');
 
         if (attachBtn && fileInput) {
-            attachBtn.addEventListener('click', () => fileInput.click());
+            attachBtn.addEventListener('click', () => {
+                closeChatAddMenu(false);
+                fileInput.click();
+            });
             fileInput.addEventListener('change', () => {
                 const file = fileInput.files && fileInput.files[0];
                 fileInput.value = ''; // allow re-selecting the same file
@@ -2800,6 +4032,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleAttachmentSelected(file) {
+        if (chatState.pendingGif) {
+            showToast('Remove the selected GIF before attaching a photo or video', true);
+            return;
+        }
         if (!navigator.onLine) { showToast('You are offline 📡 media needs a connection', true); return; }
 
         const kind = file.type.startsWith('image/') ? 'image'

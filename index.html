@@ -224,34 +224,34 @@ You</p>
              ========================================= -->
         <div id="scene-chat" class="scene">
             <!-- Chat Security Lock Overlay -->
-            <div id="chat-lock-overlay" class="chat-lock-overlay">
+            <div id="chat-lock-overlay" class="chat-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="chat-lock-title" aria-describedby="chat-lock-subtitle chat-pin-status chat-pin-error" tabindex="-1">
                 <div class="chat-lock-box glass-card">
-                    <div class="chat-lock-icon">🔒</div>
-                    <h2 class="chat-lock-title glow-text">Chat Locked 💜</h2>
-                    <p class="chat-lock-subtitle">Enter 4-digit PIN to unlock chat</p>
-                    <!-- Hidden input to prevent browser autofill -->
-                    <input type="text" id="chat-pin-input-field" style="position:absolute;left:-9999px;top:-9999px;" tabindex="-1" aria-hidden="true">
-                    <div class="chat-pin-display" id="chat-pin-display">
-                        <span class="pin-dot"></span>
-                        <span class="pin-dot"></span>
-                        <span class="pin-dot"></span>
-                        <span class="pin-dot"></span>
+                    <div class="chat-lock-icon" aria-hidden="true">🔒</div>
+                    <h2 class="chat-lock-title glow-text" id="chat-lock-title">Chat Locked 💜</h2>
+                    <p class="chat-lock-subtitle" id="chat-lock-subtitle">Enter 4-digit PIN to unlock chat</p>
+                    <!-- PIN entry is memory-only and uses the custom keypad; no password-like input is present. -->
+                    <div class="chat-pin-display" id="chat-pin-display" role="img" aria-label="0 of 4 digits entered">
+                        <span class="pin-dot" aria-hidden="true"></span>
+                        <span class="pin-dot" aria-hidden="true"></span>
+                        <span class="pin-dot" aria-hidden="true"></span>
+                        <span class="pin-dot" aria-hidden="true"></span>
                     </div>
+                    <p id="chat-pin-status" class="chat-pin-status" role="status" aria-live="polite" aria-atomic="true">0 of 4 digits entered.</p>
                     <div class="chat-pin-pad" id="chat-pin-pad">
-                        <button type="button" class="pin-key" data-digit="1">1</button>
-                        <button type="button" class="pin-key" data-digit="2">2</button>
-                        <button type="button" class="pin-key" data-digit="3">3</button>
-                        <button type="button" class="pin-key" data-digit="4">4</button>
-                        <button type="button" class="pin-key" data-digit="5">5</button>
-                        <button type="button" class="pin-key" data-digit="6">6</button>
-                        <button type="button" class="pin-key" data-digit="7">7</button>
-                        <button type="button" class="pin-key" data-digit="8">8</button>
-                        <button type="button" class="pin-key" data-digit="9">9</button>
-                        <button type="button" class="pin-key pin-key-clear" data-action="clear">✕</button>
-                        <button type="button" class="pin-key" data-digit="0">0</button>
-                        <button type="button" class="pin-key pin-key-back" data-action="back">⌫</button>
+                        <button type="button" class="pin-key" data-digit="1" aria-label="Digit 1">1</button>
+                        <button type="button" class="pin-key" data-digit="2" aria-label="Digit 2">2</button>
+                        <button type="button" class="pin-key" data-digit="3" aria-label="Digit 3">3</button>
+                        <button type="button" class="pin-key" data-digit="4" aria-label="Digit 4">4</button>
+                        <button type="button" class="pin-key" data-digit="5" aria-label="Digit 5">5</button>
+                        <button type="button" class="pin-key" data-digit="6" aria-label="Digit 6">6</button>
+                        <button type="button" class="pin-key" data-digit="7" aria-label="Digit 7">7</button>
+                        <button type="button" class="pin-key" data-digit="8" aria-label="Digit 8">8</button>
+                        <button type="button" class="pin-key" data-digit="9" aria-label="Digit 9">9</button>
+                        <button type="button" class="pin-key pin-key-clear" data-action="clear" aria-label="Clear PIN">✕</button>
+                        <button type="button" class="pin-key" data-digit="0" aria-label="Digit 0">0</button>
+                        <button type="button" class="pin-key pin-key-back" data-action="back" aria-label="Delete last digit">⌫</button>
                     </div>
-                    <p id="chat-pin-error" class="chat-pin-error" style="display: none;">Incorrect PIN. Try again! 🐧</p>
+                    <p id="chat-pin-error" class="chat-pin-error" style="display: none;" role="alert" aria-live="assertive"></p>
                 </div>
             </div>
 
@@ -328,11 +328,36 @@ You</p>
                     <button class="chat-attachment-cancel" id="chat-attachment-cancel" type="button" aria-label="Cancel attachment">✕</button>
                 </div>
 
+                <!-- GIF Preview (Hidden by default) -->
+                <div class="chat-gif-preview" id="chat-gif-preview" style="display: none;" role="status" aria-live="polite">
+                    <div class="chat-gif-preview-thumb" id="chat-gif-preview-thumb"></div>
+                    <div class="chat-gif-preview-info">
+                        <span class="chat-gif-preview-name" id="chat-gif-preview-name">GIF ready to send</span>
+                        <span class="chat-gif-preview-status" id="chat-gif-preview-status">GIF selected</span>
+                    </div>
+                    <button class="chat-gif-preview-cancel" id="chat-gif-preview-cancel" type="button" aria-label="Remove selected GIF">✕</button>
+                </div>
+
                 <!-- Input Bar -->
                 <div class="chat-input-bar">
-                    <button class="chat-attach-btn" id="chat-attach-btn" type="button" aria-label="Attach photo or video" title="Attach photo or video">
-                        <span class="attach-icon">📎</span>
-                    </button>
+                    <div class="chat-add-wrap" id="chat-add-wrap">
+                        <button class="chat-plus-btn" id="chat-plus-btn" type="button" aria-label="Open add options" aria-controls="chat-add-menu" aria-expanded="false" title="Add photo, video, or GIF">
+                            <span class="chat-plus-icon" aria-hidden="true">＋</span>
+                            <span class="chat-plus-spark" aria-hidden="true">✦</span>
+                        </button>
+                        <div class="chat-add-menu" id="chat-add-menu" role="menu" aria-label="Add to message" aria-hidden="true">
+                            <button class="chat-add-option chat-attach-btn" id="chat-attach-btn" type="button" role="menuitem" aria-label="Attach photo or video" title="Attach photo or video">
+                                <span class="chat-add-option-icon" aria-hidden="true">📎</span>
+                                <span class="chat-add-option-label">Photo or video</span>
+                                <span class="chat-add-option-arrow" aria-hidden="true">›</span>
+                            </button>
+                            <button class="chat-add-option chat-gif-btn" id="chat-gif-btn" type="button" role="menuitem" aria-label="Open GIF picker" title="Send a GIF">
+                                <span class="chat-add-option-gif" aria-hidden="true">GIF</span>
+                                <span class="chat-add-option-label">GIFs</span>
+                                <span class="chat-add-option-arrow" aria-hidden="true">›</span>
+                            </button>
+                        </div>
+                    </div>
                     <input type="file" id="chat-file-input" accept="image/*,video/*" style="display: none;" aria-hidden="true">
                     <textarea class="chat-input" id="chat-input" placeholder="Type a message..." aria-label="Message" autocomplete="off" autocapitalize="sentences" enterkeyhint="enter" rows="1"></textarea>
                     <button class="chat-send-btn" id="chat-send-btn" type="button" aria-label="Send message">
@@ -347,9 +372,29 @@ You</p>
 
     <!-- Image Lightbox Overlay (Hidden by default).
          Lives at body level: .scene uses transforms, which would hijack position:fixed inside it. -->
-    <div class="chat-lightbox" id="chat-lightbox" style="display: none;" role="dialog" aria-label="Photo viewer">
-        <button class="chat-lightbox-close" id="chat-lightbox-close" type="button" aria-label="Close photo viewer">✕</button>
-        <img class="chat-lightbox-img" id="chat-lightbox-img" alt="Photo">
+    <div class="chat-lightbox" id="chat-lightbox" style="display: none;" role="dialog" aria-label="Media viewer">
+        <button class="chat-lightbox-close" id="chat-lightbox-close" type="button" aria-label="Close media viewer">✕</button>
+        <img class="chat-lightbox-img" id="chat-lightbox-img" alt="Shared media">
+    </div>
+
+    <!-- GIPHY GIF picker. Results and media URLs stay runtime-only; messages store the GIPHY ID. -->
+    <div class="chat-gif-picker" id="chat-gif-picker" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="chat-gif-title" aria-describedby="chat-gif-status" aria-hidden="true" tabindex="-1">
+        <div class="chat-gif-sheet">
+            <div class="chat-gif-header">
+                <h2 class="chat-gif-title" id="chat-gif-title">Choose a GIF</h2>
+                <button class="chat-gif-close" id="chat-gif-close" type="button" aria-label="Close GIF picker">✕</button>
+            </div>
+            <div class="chat-gif-search-row">
+                <label class="chat-gif-search-label" for="chat-gif-search">Search GIFs</label>
+                <input class="chat-gif-search" id="chat-gif-search" type="search" placeholder="Search GIFs…" autocomplete="off" enterkeyhint="search" maxlength="50">
+            </div>
+            <p class="chat-gif-status" id="chat-gif-status" role="status" aria-live="polite" aria-atomic="true">Trending GIFs will appear here.</p>
+            <div class="chat-gif-results" id="chat-gif-results" role="list" aria-label="GIF results" aria-busy="false"></div>
+            <div class="chat-gif-footer-actions">
+                <button class="chat-gif-retry" id="chat-gif-retry" type="button" style="display: none;">Try again</button>
+                <button class="chat-gif-load-more" id="chat-gif-load-more" type="button" style="display: none;">Load more</button>
+            </div>
+        </div>
     </div>
 
     <!-- Message Info Bottom Sheet (long-press a sent message).

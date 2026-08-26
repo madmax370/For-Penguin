@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-08-26
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, and presence behavior hardening. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, and GIPHY GIF integration. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -103,8 +103,10 @@ This is intentional privacy behavior, but it creates a longer re-entry flow.
 - `#chat-scroll-fab` — scroll-to-latest control and unread count
 - `#chat-reply-container` — reply preview above the composer
 - `#chat-attachment-container` — upload preview, progress, retry, and cancel controls
+- `#chat-gif-preview` — selected GIPHY GIF preview awaiting explicit Send
 - `.chat-input-bar`
-  - `#chat-attach-btn`
+  - `#chat-plus-btn` — unified add control
+  - `#chat-add-menu` — attachment/GIF options menu
   - `#chat-input`
   - `#chat-send-btn`
   - `#chat-status`
@@ -113,8 +115,9 @@ This is intentional privacy behavior, but it creates a longer re-entry flow.
 
 These live outside the transformed scene elements so fixed positioning works correctly:
 
-- `#chat-lightbox` — fullscreen photo viewer
+- `#chat-lightbox` — fullscreen photo/video viewer, including sent GIFs
 - `#msg-info-overlay` — message information bottom sheet opened by long-pressing a sent message
+- `#chat-gif-picker` — accessible responsive GIPHY picker with trending/search results
 
 ---
 
@@ -164,6 +167,7 @@ These live outside the transformed scene elements so fixed positioning works cor
 - Bubble tails use small rounded, rotated shapes rather than sharp triangular wedges.
 - Only the first bubble in a grouped run shows a tail. Media bubbles do not show tails.
 - Media bubbles use Cloudinary thumbnails and open images in the lightbox.
+- GIF bubbles use sanitized GIPHY metadata, lazy loading, stable dimensions, validated HTTPS GIPHY hosts, accessible alt text, runtime-only media URLs, retry placeholders, and the existing lightbox path.
 
 ### Bubble actions
 
@@ -192,6 +196,10 @@ Message bubbles are keyboard-focusable so hidden actions remain discoverable wit
 - Reply-cancel and attachment retry/cancel controls use larger touch areas.
 - The mobile input remains at 16px to avoid browser zoom when focused.
 - The composer uses bottom safe-area padding for devices with a home indicator.
+- One animated plus button opens the `#chat-add-menu` with Photo/video and GIF options; selecting a GIF fills `#chat-gif-preview` and never sends immediately.
+- GIFs and Cloudinary attachments are mutually exclusive in the composer. GIFs are sent only through the explicit Send button.
+- The picker loads G-rated standard GIFs from GIPHY Trending/Search with a 300ms debounced search, direct browser requests, request timeout/abort handling, stale-run guards, retry/error/empty/offline states, and a mobile bottom-sheet layout.
+- The picker has managed focus, Escape/outside dismissal, focus restoration, reduced-motion styles, lazy result images, fixed grid rows, an internal scroll area, and stable result dimensions. Load more appends new rows and smoothly reveals the newly loaded area instead of overlapping existing tiles.
 
 ---
 
@@ -199,9 +207,14 @@ Message bubbles are keyboard-focusable so hidden actions remain discoverable wit
 
 ### Chat PIN
 
-- Four-digit PIN entered with an on-screen keypad.
-- Includes clear and backspace controls.
-- Three failed attempts cause a short in-memory lockout.
+- The PIN is a four-digit access code entered through the existing on-screen keypad; there is no password-like, hidden, readonly, or off-screen input element.
+- Digits exist only in the runtime `chatState.pinInput` buffer. They are cleared after success, failure, lockout, hiding, relocking, scene teardown, and page teardown, and are never written to DOM text, accessibility labels, URLs, logs, analytics, or storage.
+- Clear, delete-last-digit, and hardware-keyboard controls are supported. Digit keys include the main keyboard and numpad; Backspace and Delete remove one digit; Escape clears the current entry; Enter verifies a complete four-digit entry. Tab is trapped within the accessible lock dialog.
+- The lock overlay is a modal dialog with managed focus, keypad labels, a digit-count announcement, busy state, and separate polite/assertive status messaging. It cannot be dismissed with Escape or bypassed through focus changes.
+- Input is bounded to ASCII digits and exactly four positions. Rapid taps, duplicate clicks, duplicate verification, malformed input, paste, autofill, and IME composition do not add unvalidated data or start duplicate checks.
+- SHA-256 verification runs asynchronously with a run ID so stale results cannot unlock a hidden, reset, or torn-down scene. Verification failures clear the buffer and do not expose exception details.
+- Three failed attempts trigger a 15-second lockout. Only attempt count, timestamp, and lockout expiry may be recorded in local/session storage for short-lived throttling; the PIN is never persisted. Expired or malformed lockout records are discarded.
+- Reloads, page visibility changes, scene teardown, and browser Back/Forward navigation invalidate pending checks and clear the runtime PIN. A history guard prevents locked Chat Scene navigation from bypassing the PIN; successful unlock removes that guard.
 - PIN success hides the PIN overlay but always requires identity selection afterward.
 
 ### Identity selection
@@ -308,7 +321,8 @@ Cloudinary is used for unsigned image and video uploads.
 - Failed uploads can be retried.
 - Images use a fullscreen lightbox.
 - Videos use a custom inline player with lazy playback, poster image, progress, mute, and fullscreen controls.
-- Only Cloudinary URLs are accepted when rendering stored media.
+- Cloudinary URLs are accepted only for Cloudinary image/video records. GIF records use a separate sanitized GIPHY provider path and never route media through Cloudinary.
+- GIF Firestore records prefer the GIPHY ID plus rendition/dimension/title metadata; direct GIPHY media URLs remain runtime-only and visible history hydrates them with de-duplicated GIPHY ID lookups when configured.
 
 ### Scroll and unread behavior
 
@@ -356,6 +370,24 @@ A current message can contain:
 }
 ```
 
+For a GIPHY GIF, `media` is a separate sanitized representation rather than a Cloudinary URL record:
+
+```js
+media: {
+  type: 'gif',
+  provider: 'giphy',
+  providerId: String,
+  rendition: 'fixed_width' | 'fixed_width_small' | 'fixed_height' | 'downsized_medium' | 'original',
+  width: Number,
+  height: Number,
+  title: String,
+  alt: String,
+  rating: 'g'
+}
+```
+
+GIPHY media URLs are kept in the runtime-only metadata map and are not written to Firestore. Historical visible GIFs hydrate by GIPHY ID with request de-duplication; without a configured key they show an unavailable placeholder.
+
 Older documents may contain `readBy` as an array. The current code normalizes legacy arrays in memory and migrates them when a read receipt is written.
 
 ---
@@ -376,6 +408,12 @@ The application uses:
 
 The client contains the Cloudinary cloud name and unsigned upload preset. The Cloudinary API secret must never be placed in client code.
 
+### GIPHY
+
+GIPHY is called directly from the browser because this application is static. `GIPHY_API_KEY` in `script.js` contains the owner-supplied visible web key and should be replaced if rotated; it is not a server secret. Requests use the Trending and Search endpoints with `rating=g`, `bundle=messaging_non_clips`, and no analytics/action-register calls. Stickers and Clips are excluded.
+
+The implementation avoids Cloudinary and avoids persisting/copying media binaries. Firestore stores the GIPHY ID plus rendition metadata where possible; direct media URLs remain runtime-only and visible history hydrates by ID. The official GIPHY documentation requires conspicuous “Powered By GIPHY” attribution for API integrations, but the product requirement currently rejects visible attribution. This is an unresolved terms/compliance conflict and must be resolved before production use; the current UI does not silently claim compliance.
+
 ### Telegram
 
 The Notify Bhatari action calls the Telegram Bot API directly from the browser. The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
@@ -384,9 +422,13 @@ The Notify Bhatari action calls the Telegram Bot API directly from the browser. 
 
 ## 9. Security and Privacy Notes
 
-The password and Chat PIN are checked by comparing a SHA-256 hash in the browser. This is casual obscurity, not server-enforced authentication. Anyone with developer tools can inspect or bypass the client-side gate.
+The password and Chat PIN are checked by comparing a SHA-256 hash in the browser. This is casual obscurity, not server-enforced authentication. Anyone with developer tools can inspect or bypass the client-side gate. The Chat PIN specifically uses a custom keypad and memory-only digit buffer to avoid presenting a credential-like field to password managers; this cannot control every third-party extension's heuristics.
+
+The Chat PIN lockout metadata may use local/session storage for a short-lived attempt window, but it contains no PIN or entered digits. The client also invalidates stale asynchronous checks and clears the runtime buffer across success, failure, lockout, visibility, page, scene, and history transitions.
 
 The identity selector is also a UI choice, not an authorization boundary. A visitor who passes the client-side gates can choose either identity unless Firestore Rules enforce stronger controls.
+
+GIPHY receives only the user's GIF search query and uses a browser-visible API key. Chat text, identities, PIN data, Firestore documents, and Cloudinary uploads are not sent to GIPHY by the GIF feature. The supplied key should be treated as exposed and rate-limited by the provider.
 
 Important security items:
 
@@ -494,7 +536,24 @@ The following changes were made on 2026-08-26 in the current working tree:
 - Missing, stale, malformed, unavailable, and disconnected states are rendered as non-online instead of producing a false green dot.
 - Page lifecycle cleanup and network recovery are handled as best effort without extending a hidden/offline session.
 
-The mobile keyboard, compact-header, and presence-hardening changes are currently uncommitted in `index.html`, `script.js`, `style.css`, and `project-context.md`. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
+### Chat PIN lock hardening — 2026-08-26
+
+- Removed the old off-screen input and randomized password-manager mitigation; the custom keypad is now the only PIN control and the four-digit buffer stays in JavaScript memory.
+- Added accessible digit/numpad keyboard handling, Backspace/Delete/Escape/Enter behavior, modal focus management, focus trapping, keypad labels, and status/error announcements.
+- Added exact-input validation, duplicate-verification guards, secure-hash capability checks, stale async-result invalidation, bounded attempts, a 15-second lockout, and short-lived lockout metadata without PIN data.
+- Added cleanup for paste/autofill attempts, rapid taps, visibility/page/scene teardown, relocking, reloads, and browser Back/Forward navigation. Successful PIN entry still requires fresh identity selection.
+- Existing Chat Scene behavior, including the compact header, mobile composer rules, presence, messages, replies, edits, reactions, media, receipts, typing, safe-area, and dynamic viewport handling, is unchanged.
+
+### GIPHY GIF integration — 2026-08-26
+
+- Added a unified animated plus control with Photo/video and GIF options, plus the accessible responsive picker, trending/search states, debounced direct GIPHY requests, `rating=g`, standard-GIF-only filtering, request cancellation, stale-result guards, retry/error/offline handling, and mobile bottom-sheet behavior.
+- Fixed GIF result layout with explicit non-overlapping grid rows, a constrained internal scroll region, smooth Load more reveal behavior, loading skeletons, and rendition fallbacks so each tile remains visible.
+- GIF selection is preview-first and explicit-send-only. Pending GIFs are mutually exclusive with Cloudinary attachments, and failed sends restore the text/GIF draft without duplicate sends.
+- Added a separate sanitized `media.type === 'gif'` representation, runtime-only GIPHY rendition metadata, lazy/dimension-stable rendering, HTTPS host validation, accessible alt text, and the existing media lightbox path.
+- Historical GIFs hydrate by de-duplicated GIPHY ID lookup. No GIPHY analytics/action-register calls are made, and no GIF binary is stored or routed through Cloudinary.
+- `GIPHY_API_KEY` now contains the owner-supplied browser-visible key and remains replaceable. The requested absence of visible GIPHY attribution conflicts with the provider's documented attribution requirement and remains a pre-production compliance decision.
+
+The Chat PIN and GIPHY changes are currently uncommitted and unpushed. The earlier mobile keyboard, compact-header, and presence-hardening changes are part of the synchronized baseline commit. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
 
 ---
 
@@ -553,4 +612,4 @@ There is no automated test suite. The following checks are currently appropriate
 - Keyboard focus and reduced-motion behavior
 - Offline and reconnect states
 
-The most recent read-only validation completed successfully for JavaScript syntax, Git whitespace checks, and public static preview responses.
+The most recent validation completed successfully for JavaScript syntax (`node --check script.js`), Git whitespace checks (`git diff --check`), GIF/PIN structure assertions, and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.
