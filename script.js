@@ -922,6 +922,56 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ─── Silent identity ping (Bhandhari) ───────────────────────────────
+    // Background Telegram notice fired the moment Bhandhari becomes the active
+    // chat identity. This is deliberately invisible to whoever is using the
+    // device: it never touches the DOM, never calls showToast(), never disables
+    // or relabels a button, logs nothing, and swallows every error. The
+    // cooldown collapses rapid re-selections (relock + re-pick, toggle bounce).
+    const IDENTITY_PING_COOLDOWN_MS = 60_000;
+    let identityPingLastSentAt = 0;
+
+    function identityPingStamp() {
+        try {
+            return new Intl.DateTimeFormat('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true,
+                timeZone: 'Asia/Kolkata'
+            }).format(new Date()) + ' IST';
+        } catch (e) {
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(d.getDate())} ${d.toLocaleString('en-IN', { month: 'short' })}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+    }
+
+    function notifyBhandhariSelected() {
+        if (chatState.currentIdentity !== 'Bhandhari') return; // Bhandhari only
+        const now = Date.now();
+        if (now - identityPingLastSentAt < IDENTITY_PING_COOLDOWN_MS) return; // dedupe
+        identityPingLastSentAt = now;
+
+        try {
+            // Fire-and-forget: no await, no loading state, no UI callback.
+            fetch(
+                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'omit',
+                    keepalive: true, // lands even if she closes the tab right after the tap
+                    body: JSON.stringify({
+                        chat_id: TG_CHAT_ID,
+                        text: `🐧 She just chose Bhandhari · ${identityPingStamp()}`
+                    })
+                }
+            ).catch(() => { /* silent by design — never surface a failure to her */ });
+        } catch (e) { /* silent by design */ }
+    }
+
     // ─── Toast (styling lives in style.css #chat-toast; JS drives classes + timers) ──
     function showToast(message, isError = false, type = 'default') {
         let toast = document.getElementById('chat-toast');
@@ -1796,6 +1846,11 @@ document.addEventListener('DOMContentLoaded', () => {
             editBtn.style.display = (ownerId === chatState.currentIdentity) ? 'inline-flex' : 'none';
         });
         refreshAllTicks();
+
+        // Silent Telegram ping whenever she becomes Bhandhari. Covers both entry
+        // points (post-PIN "Who are you?" overlay and the header identity toggle).
+        // Fire-and-forget — nothing here waits on it or reacts to it.
+        notifyBhandhariSelected();
     }
 
     // ─── Read Receipts (WhatsApp-style, visibility-based) ──
