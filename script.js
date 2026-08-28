@@ -1128,7 +1128,10 @@ document.addEventListener('DOMContentLoaded', () => {
         d.setHours(0,0,0,0);
         if (d.getTime() === today.getTime())     return 'Today';
         if (d.getTime() === yesterday.getTime()) return 'Yesterday';
-        return new Date(ts).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+        const opts = { weekday: 'long', month: 'long', day: 'numeric' };
+        // Disambiguate once a conversation spans more than one calendar year
+        if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+        return new Date(ts).toLocaleDateString([], opts);
     }
 
     function sameDay(ts1, ts2) {
@@ -1138,9 +1141,52 @@ document.addEventListener('DOMContentLoaded', () => {
                a.getDate()     === b.getDate();
     }
 
+    // Stable per-calendar-day key shared by day sections and their dividers
+    function dayKeyFor(ts) {
+        const d = new Date(ts);
+        return `day-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    }
+
     // ─── Scene Init ───────────────────────────────────────
     let chatSceneInited = false;
     let chatInitialStaggerDone = false; // cold-render cascade fires once per page load
+    let midnightDividerTimer = null;    // re-labels "Today"/"Yesterday" once local midnight passes
+
+    // Labels like "Today" go stale when the clock crosses midnight while the tab
+    // stays open. One self-rescheduling timer fires ~1.5s after the next local
+    // midnight and re-runs the (idempotent) reconcile, which refreshes every
+    // divider label. Rescheduled on each reconcile so it always tracks the next
+    // midnight; cleared on privacy re-lock.
+    function scheduleMidnightDividerRefresh() {
+        if (midnightDividerTimer) clearTimeout(midnightDividerTimer);
+        const now = new Date();
+        const nextMidnight = new Date(now);
+        nextMidnight.setHours(24, 0, 0, 0);
+        midnightDividerTimer = setTimeout(() => {
+            midnightDividerTimer = null;
+            reconcileMessages();
+        }, nextMidnight.getTime() - now.getTime() + 1500);
+    }
+
+    // Re-derive each divider's label from its stored timestamp so "Today"
+    // becomes "Yesterday" (etc.) after a day rollover. Re-pops changed labels.
+    function refreshDateDividers() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        chatMessages.querySelectorAll('.chat-day > .chat-date-divider').forEach(divider => {
+            const ts = Number(divider.dataset.ts);
+            if (!Number.isFinite(ts)) return;
+            const label = formatDateLabel(ts);
+            if (divider.textContent === label) return;
+            divider.textContent = label;
+            divider.setAttribute('aria-label', label);
+            divider.classList.remove('divider-pop');
+            void divider.offsetWidth; // restart the pop so the change is noticed
+            divider.classList.add('divider-pop');
+            divider.addEventListener('animationend', () => divider.classList.remove('divider-pop'), { once: true });
+        });
+    }
+
     // Guards against duplicate listener registration when the chat scene is re-entered
     let chatLockOverlayInited = false;
     let keyboardHandlingInited = false;
@@ -1245,6 +1291,7 @@ document.addEventListener('DOMContentLoaded', () => {
         chatState.sendInFlight = false;
         chatState.identitySelecting = false;
         clearChatPinTimers();
+        if (midnightDividerTimer) { clearTimeout(midnightDividerTimer); midnightDividerTimer = null; }
         resetGifPickerForLifecycle(true);
 
         const chatLockOverlay = document.getElementById('chat-lock-overlay');
@@ -2259,14 +2306,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const sceneActive = !!(sceneEl && sceneEl.classList.contains('scene-active'));
         const engaged = wasAtBottom && sceneActive;
 
-        // Compute sender runs for grouped rendering (same sender within 5 min = one run)
+        // Compute sender runs for grouped rendering (same sender within 5 min = one run).
+        // A date divider always breaks a run: a run may never straddle two days.
         const RUN_GAP_MS = 5 * 60 * 1000;
         for (let i = 0; i < chatState.messages.length; i++) {
             const cur = chatState.messages[i];
             const prev = chatState.messages[i - 1];
             const next = chatState.messages[i + 1];
-            const contPrev = prev && prev.sender === cur.sender && (cur.timestamp - prev.timestamp) < RUN_GAP_MS;
-            const contNext = next && next.sender === cur.sender && (next.timestamp - cur.timestamp) < RUN_GAP_MS;
+            const contPrev = prev && prev.sender === cur.sender && sameDay(prev.timestamp, cur.timestamp) && (cur.timestamp - prev.timestamp) < RUN_GAP_MS;
+            const contNext = next && next.sender === cur.sender && sameDay(next.timestamp, cur.timestamp) && (next.timestamp - cur.timestamp) < RUN_GAP_MS;
             cur.groupStart = !contPrev;
             cur.groupEnd   = !contNext;
         }
@@ -2298,66 +2346,63 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Build expected divider keys for current messages to remove orphaned dividers
-        const expectedDividerKeys = new Set();
+        // Build expected day keys for current messages and drop stale/empty day
+        // sections. Messages live inside `.chat-day` wrappers so the sticky date
+        // divider pins only while its own day is in view (WhatsApp-style push-out).
+        const expectedDayKeys = new Set();
         let tempLastDateTs = null;
         for (const msg of chatState.messages) {
             if (tempLastDateTs === null || !sameDay(tempLastDateTs, msg.timestamp)) {
-                const d = new Date(msg.timestamp);
-                const dividerKey = `divider-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-                expectedDividerKeys.add(dividerKey);
+                expectedDayKeys.add(dayKeyFor(msg.timestamp));
                 tempLastDateTs = msg.timestamp;
             }
         }
 
-        // Remove any date dividers in DOM that are no longer expected
-        const allDividers = chatMessages.querySelectorAll('.chat-date-divider');
-        for (const div of allDividers) {
-            const key = div.dataset.dividerKey;
-            if (!expectedDividerKeys.has(key)) {
-                div.remove();
+        chatMessages.querySelectorAll('.chat-day').forEach(section => {
+            if (!expectedDayKeys.has(section.dataset.dayKey) || !section.querySelector('.chat-bubble')) {
+                section.remove();
             }
-        }
+        });
 
         // Step 2: Append ONLY new messages at the end (no full rebuild)
-        let lastDateTs = null;
-        let lastInsertedNode = null;
+        let lastSection = null;
         let newBubblesThisPass = 0; // counts new bubbles for entrance stagger
 
         for (const msg of chatState.messages) {
-            // Handle date divider insertion
-            if (lastDateTs === null || !sameDay(lastDateTs, msg.timestamp)) {
-                const d = new Date(msg.timestamp);
-                const dividerKey = `divider-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-                let divider = chatMessages.querySelector(`[data-divider-key="${dividerKey}"]`);
-                if (!divider) {
-                    divider = document.createElement('div');
-                    divider.className = 'chat-date-divider divider-pop';
-                    divider.addEventListener('animationend', () => divider.classList.remove('divider-pop'), { once: true });
-                    divider.dataset.dividerKey = dividerKey;
-                    divider.textContent = formatDateLabel(msg.timestamp);
-                    // Insert at correct position
-                    if (lastInsertedNode) {
-                        lastInsertedNode.insertAdjacentElement('afterend', divider);
-                    } else {
-                        chatMessages.insertBefore(divider, chatMessages.firstChild);
-                    }
-                }
-                lastInsertedNode = divider;
-                lastDateTs = msg.timestamp;
+            // Resolve this message's day section, creating it (with its date
+            // divider) when a new day boundary appears mid-session
+            const dayKey = dayKeyFor(msg.timestamp);
+            let section = chatMessages.querySelector(`.chat-day[data-day-key="${dayKey}"]`);
+            if (!section) {
+                section = document.createElement('div');
+                section.className = 'chat-day';
+                section.dataset.dayKey = dayKey;
+                const divider = document.createElement('div');
+                divider.className = 'chat-date-divider divider-pop';
+                divider.addEventListener('animationend', () => divider.classList.remove('divider-pop'), { once: true });
+                divider.dataset.dividerKey = dayKey;
+                divider.dataset.ts = String(msg.timestamp);
+                const label = formatDateLabel(msg.timestamp);
+                divider.textContent = label;
+                divider.setAttribute('role', 'separator');
+                divider.setAttribute('aria-label', label);
+                section.appendChild(divider);
+                // Messages arrive in ascending order, so a new day is always latest
+                chatMessages.appendChild(section);
             }
+            lastSection = section;
 
             // "New messages" separator above the first message missed while away
             if (!newDividerPlaced && chatState.firstUnseenId && msg.id === chatState.firstUnseenId) {
                 const nd = document.createElement('div');
                 nd.className = 'chat-new-divider divider-pop';
                 nd.textContent = 'New messages';
-                if (lastInsertedNode) {
-                    lastInsertedNode.insertAdjacentElement('afterend', nd);
+                const unseenBubble = chatState.renderedIds.get(msg.id);
+                if (unseenBubble) {
+                    unseenBubble.insertAdjacentElement('beforebegin', nd);
                 } else {
-                    chatMessages.insertBefore(nd, chatMessages.firstChild);
+                    section.appendChild(nd);
                 }
-                lastInsertedNode = nd;
                 newDividerPlaced = true;
             }
 
@@ -2366,9 +2411,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (existing) {
                 // Update in place without moving
                 updateBubble(existing, msg);
-                lastInsertedNode = existing;
             } else {
-                // Create new bubble and append after last node
+                // Create new bubble and append inside its day section
                 const bubble = createBubble(msg);
                 // Receive haptic: soft nudge only for the other person's live messages
                 // while the user is engaged (watching the bottom, scene visible) —
@@ -2400,12 +2444,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, { once: true });
                 chatState.renderedIds.set(msg.id, bubble);
                 observeMessageForRead(bubble, msg); // read receipts: watch incoming visible bubbles
-                if (lastInsertedNode) {
-                    lastInsertedNode.insertAdjacentElement('afterend', bubble);
-                } else {
-                    chatMessages.insertBefore(bubble, chatMessages.firstChild);
-                }
-                lastInsertedNode = bubble;
+                section.appendChild(bubble);
             }
         }
 
@@ -2414,7 +2453,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Get typing bubble to keep it at bottom (ignore hiding bubbles that are fading out)
         const typingBubble = chatMessages.querySelector('.typing-indicator-bubble:not(.hiding)');
-        if (typingBubble && lastInsertedNode && typingBubble.previousElementSibling !== lastInsertedNode) {
+        if (typingBubble && lastSection && typingBubble.previousElementSibling !== lastSection) {
             chatMessages.appendChild(typingBubble);
         }
 
@@ -2425,6 +2464,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Info sheet stays live: a read receipt arriving while it's open updates the sheet
         refreshMessageInfoSheet();
+
+        // Keep labels current across a local midnight that passes while open
+        refreshDateDividers();
+        scheduleMidnightDividerRefresh();
     }
 
     function messageRenderSig(msg) {
@@ -3365,9 +3408,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }, { passive: true });
         }
 
-        // FAB tap: glide to bottom + soft haptic; arriving counts as "all seen"
+        // FAB tap: with unread messages, glide to the first missed one and flash
+        // it (the divider stays until the user actually reaches the bottom);
+        // otherwise plain glide to bottom + soft haptic.
         if (fab) {
             fab.addEventListener('click', () => {
+                const firstUnseen = chatState.firstUnseenId
+                    ? chatState.renderedIds.get(chatState.firstUnseenId)
+                    : null;
+                if (chatState.unreadCount > 0 && firstUnseen && firstUnseen.isConnected) {
+                    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+                    firstUnseen.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+                    firstUnseen.classList.remove('message-highlight');
+                    void firstUnseen.offsetWidth; // restart the flash if mid-animation
+                    firstUnseen.classList.add('message-highlight');
+                    firstUnseen.addEventListener('animationend', () => firstUnseen.classList.remove('message-highlight'), { once: true });
+                    setTimeout(() => firstUnseen.classList.remove('message-highlight'), 1600); // fallback
+                    haptic([6]);
+                    return;
+                }
                 if (chatMessages) smoothScrollToBottom(chatMessages);
                 setUnreadCount(0);
                 clearNewMessagesDivider();

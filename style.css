@@ -2862,6 +2862,16 @@ a.chat-link {
     }
 }
 
+/* Per-day section: wraps the date divider + that day's bubbles so the sticky
+   divider pins only while its own day is in view and gets pushed out by the
+   next day's section (WhatsApp/Telegram behavior). Keep gaps identical to the
+   message container so wrapping changes no spacing. */
+.chat-day {
+    display: flex;
+    flex-direction: column;
+    gap: var(--chat-spacing-sm);
+}
+
 /* Date Dividers - Premium Timeline Markers */
 .chat-date-divider {
     align-self: center;
@@ -2881,7 +2891,7 @@ a.chat-link {
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     pointer-events: none;
     transition: all 0.3s var(--transition-smooth);
-    /* P4: sticky date markers — stays visible while scrolling through a day */
+    /* P4: sticky date markers — pinned within its .chat-day section only */
     position: sticky;
     top: 0.5rem;
     z-index: 5;

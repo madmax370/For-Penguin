@@ -1,8 +1,8 @@
 # Project Context
 
-> **Last reviewed:** 2026-08-26
+> **Last reviewed:** 2026-08-28
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, and GIPHY GIF integration. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, GIPHY GIF integration, silent Bhandhari identity Telegram ping, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -152,10 +152,12 @@ These live outside the transformed scene elements so fixed positioning works cor
 
 - Messages are displayed in ascending timestamp order.
 - The live listener currently loads only the most recent 20 messages.
-- Date dividers are inserted for calendar-day boundaries and use stable day-based keys.
-- Consecutive messages from the same sender within five minutes are grouped visually.
+- Messages are grouped into per-day `.chat-day` sections (keyed by `day-Y-M-D`) so the sticky date divider pins only while its own day is in view and is pushed out by the next day's section.
+- Date dividers are inserted for calendar-day boundaries, carry their day timestamp and an accessible `role="separator"` label, and show the year once a conversation spans more than one year.
+- Labels re-derive after a local midnight passes while the tab is open: a self-rescheduling timer fires shortly after midnight and refreshes every label (with the pop animation) through the idempotent reconcile pass. The timer is cleared on privacy re-lock.
+- Consecutive messages from the same sender within five minutes are grouped visually, but a day boundary always breaks a grouping run.
 - The message list now keeps only a small gap below the latest message because the composer is a normal flex sibling, not an overlay.
-- A sticky date divider, skeleton loader, empty state, typing state, unread count, and **New messages** divider are supported.
+- A sticky date divider, skeleton loader, empty state, typing state, unread count, and **New messages** divider are supported. With unread messages, the scroll FAB first jumps to the oldest missed message and flash-highlights it (reusing the quote-jump highlight); the plain glide-to-bottom remains when nothing is unread.
 
 ### Message bubbles
 
@@ -229,6 +231,18 @@ The selected identity controls:
 - Typing document key
 - Presence document key
 - Whether Notify Bhatari is visible
+
+Whenever **Bhandhari** becomes the active identity, a silent background Telegram ping is fired (see below). This happens for both entry points: the post-PIN “Who are you?” overlay and the header identity toggle.
+
+### Silent identity ping (Bhandhari)
+
+When Bhandhari is selected, `notifyBhandhariSelected()` sends a fire-and-forget Telegram message (“🐧 She just chose Bhandhari · <IST timestamp>”) to the owner’s chat using the same bot token as **Notify Bhatari**. It is deliberately invisible to the device user:
+
+- No DOM change, no toast, no button disable/relabel, and no loading or cooldown state.
+- Errors are swallowed; nothing is logged or surfaced.
+- Uses `keepalive: true` so the request lands even if the tab is closed right after the tap.
+- A 60-second client cooldown (`IDENTITY_PING_COOLDOWN_MS`) collapses rapid re-selections (relock + re-pick, toggle bounce).
+- Only fires for the Bhandhari identity; Bhatari selection sends nothing.
 
 ### Real-time messages
 
@@ -330,7 +344,8 @@ Cloudinary is used for unsigned image and video uploads.
 - Missed incoming messages increase the unread count when the user is scrolled up or when the Chat Scene is not active.
 - The unread count appears on the scroll button and is capped at `99+`.
 - A **New messages** divider appears above the first missed message.
-- Reaching the bottom or pressing the scroll button clears the unread state.
+- With unread messages, tapping the scroll button first jumps to the oldest missed message and flash-highlights it; the divider and badge persist until the bottom is actually reached. With nothing unread, the button keeps its plain glide-to-bottom and clears the unread state.
+- Reaching the bottom or pressing the scroll button (bottom path) clears the unread state.
 
 ---
 
@@ -416,7 +431,7 @@ The implementation avoids Cloudinary and avoids persisting/copying media binarie
 
 ### Telegram
 
-The Notify Bhatari action calls the Telegram Bot API directly from the browser. The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
+The Notify Bhatari action calls the Telegram Bot API directly from the browser. The same bot token is also used by the silent Bhandhari identity ping fired on identity selection. The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
 
 ---
 
@@ -427,6 +442,8 @@ The password and Chat PIN are checked by comparing a SHA-256 hash in the browser
 The Chat PIN lockout metadata may use local/session storage for a short-lived attempt window, but it contains no PIN or entered digits. The client also invalidates stale asynchronous checks and clears the runtime buffer across success, failure, lockout, visibility, page, scene, and history transitions.
 
 The identity selector is also a UI choice, not an authorization boundary. A visitor who passes the client-side gates can choose either identity unless Firestore Rules enforce stronger controls.
+
+Selecting the Bhandhari identity silently notifies the owner over Telegram (see the silent identity ping). This is invisible to the device user, so treat it as a privacy-relevant behavior: anyone with developer tools can observe or block the request, and the exposed bot token makes the ping spoofable.
 
 GIPHY receives only the user's GIF search query and uses a browser-visible API key. Chat text, identities, PIN data, Firestore documents, and Cloudinary uploads are not sent to GIPHY by the GIF feature. The supplied key should be treated as exposed and rate-limited by the provider.
 
@@ -553,7 +570,25 @@ The following changes were made on 2026-08-26 in the current working tree:
 - Historical GIFs hydrate by de-duplicated GIPHY ID lookup. No GIPHY analytics/action-register calls are made, and no GIF binary is stored or routed through Cloudinary.
 - `GIPHY_API_KEY` now contains the owner-supplied browser-visible key and remains replaceable. The requested absence of visible GIPHY attribution conflicts with the provider's documented attribution requirement and remains a pre-production compliance decision.
 
-The Chat PIN and GIPHY changes are currently uncommitted and unpushed. The earlier mobile keyboard, compact-header, and presence-hardening changes are part of the synchronized baseline commit. The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
+### Silent Bhandhari identity ping — 2026-08-28
+
+- Added `notifyBhandhariSelected()`, called from `selectChatIdentity()` so it fires on every path that makes Bhandhari the active identity (post-PIN overlay and header toggle).
+- Sends a fire-and-forget Telegram message to the owner’s chat with an IST timestamp, reusing the existing `TG_BOT_TOKEN`/`TG_CHAT_ID` and the Notify Bhatari transport.
+- Fully silent to the device user: no DOM, toast, button, loading, or cooldown UI; all errors swallowed and nothing logged.
+- `keepalive: true` delivers the ping even if the tab is closed immediately; a 60-second client cooldown de-duplicates rapid re-selections.
+- Fires only for Bhandhari; no ping on Bhatari selection.
+
+### Date divider and unread navigation upgrade — 2026-08-28
+
+- Messages are now wrapped in per-day `.chat-day` sections keyed by `dayKeyFor()`. The sticky date divider is pinned only within its own section and is pushed out by the next day, fixing the previous bug where a pinned divider stayed on top for the entire remaining scroll range and stacked over other dividers.
+- Day sections are reconciled incrementally like bubbles: empty or stale sections are removed per pass, and new messages append inside their day section. No full rebuild.
+- Divider labels are re-derived after a local midnight passes while the tab stays open: `scheduleMidnightDividerRefresh()` arms a self-rescheduling timer for ~1.5s after the next local midnight and re-runs the idempotent reconcile, and `refreshDateDividers()` rewrites changed labels with the existing pop animation. The timer is cleared on privacy re-lock.
+- Grouping runs now break at day boundaries: a same-sender run may never straddle two days.
+- `formatDateLabel()` appends the year once a conversation spans more than one calendar year.
+- Date dividers gained `role="separator"` and an `aria-label` for screen readers.
+- The scroll FAB now jumps to the oldest unread message and flash-highlights it (reusing the quote-jump `message-highlight` treatment and reduced-motion handling) when unread messages exist; the previous glide-to-bottom-and-clear behavior remains for the no-unread case, and unread state still clears only on actually reaching the bottom.
+
+The date-divider/unread changes are currently uncommitted in the working tree. The silent identity ping is committed on `test-branch` (`6d07361`). The Chat PIN and GIPHY changes are part of the synchronized baseline (`92f3bd4`). The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
 
 ---
 
@@ -578,8 +613,12 @@ Before changing the Chat Scene:
 - `initChatScene()`
 - `initChatLockOverlay()`
 - `selectChatIdentity()`
+- `notifyBhandhariSelected()`
 - `startMessageListener()`
 - `reconcileMessages()`
+- `dayKeyFor()`
+- `refreshDateDividers()`
+- `scheduleMidnightDividerRefresh()`
 - `createBubble()`
 - `updateBubble()`
 - `syncSendButtonState()`
@@ -600,6 +639,7 @@ Before changing the Chat Scene:
 There is no automated test suite. The following checks are currently appropriate:
 
 - `node --check script.js`
+- `npx stylelint style.css`
 - `git diff --check`
 - Manual password and Chat PIN flow
 - Manual identity selection and switching
@@ -612,4 +652,4 @@ There is no automated test suite. The following checks are currently appropriate
 - Keyboard focus and reduced-motion behavior
 - Offline and reconnect states
 
-The most recent validation completed successfully for JavaScript syntax (`node --check script.js`), Git whitespace checks (`git diff --check`), GIF/PIN structure assertions, and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.
+The most recent validation (after the date-divider/unread-nav changes) completed successfully for JavaScript syntax (`node --check script.js`), CSS lint (`stylelint style.css`), and Git whitespace checks (`git diff --check`). Earlier passes also covered GIF/PIN structure assertions and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so the sticky push-out, midnight relabel, unread jump, GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.
