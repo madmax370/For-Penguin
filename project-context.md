@@ -1,8 +1,8 @@
 # Project Context
 
-> **Last reviewed:** 2026-08-28
+> **Last reviewed:** 2026-08-30
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, GIPHY GIF integration, silent Bhandhari identity Telegram ping, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, GIPHY GIF integration, silent Bhatari/Bhandhari identity Telegram pings, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -232,17 +232,17 @@ The selected identity controls:
 - Presence document key
 - Whether Notify Bhatari is visible
 
-Whenever **Bhandhari** becomes the active identity, a silent background Telegram ping is fired (see below). This happens for both entry points: the post-PIN “Who are you?” overlay and the header identity toggle.
+Whenever **Bhatari** or **Bhandhari** becomes the active identity, a silent background Telegram ping is fired (see below). This happens for both entry points: the post-PIN “Who are you?” overlay and the header identity toggle.
 
-### Silent identity ping (Bhandhari)
+### Silent identity ping (Bhatari / Bhandhari)
 
-When Bhandhari is selected, `notifyBhandhariSelected()` sends a fire-and-forget Telegram message (“🐧 She just chose Bhandhari · <IST timestamp>”) to the owner’s chat using the same bot token as **Notify Bhatari**. It is deliberately invisible to the device user:
+When an identity is selected, `notifyBhatariSelected()` / `notifyBhandhariSelected()` sends a fire-and-forget Telegram message to the owner’s chat using the same bot token as **Notify Bhatari**. Messages are distinct per identity — Bhatari uses “✨ Bhatari Identity is chosen · <IST timestamp>” and Bhandhari uses “🐧 She just chose Bhandhari · <IST timestamp>”. It is deliberately invisible to the device user:
 
 - No DOM change, no toast, no button disable/relabel, and no loading or cooldown state.
 - Errors are swallowed; nothing is logged or surfaced.
 - Uses `keepalive: true` so the request lands even if the tab is closed right after the tap.
-- A 60-second client cooldown (`IDENTITY_PING_COOLDOWN_MS`) collapses rapid re-selections (relock + re-pick, toggle bounce).
-- Only fires for the Bhandhari identity; Bhatari selection sends nothing.
+- A 60-second per-identity client cooldown (`IDENTITY_PING_COOLDOWN_MS`, `identityPingLastSentAt` / `identityPingLastSentAtBhatari`) collapses rapid re-selections (relock + re-pick, toggle bounce) independently for each identity.
+- Both identities fire identically via `applyIdentityUI()`; no ping is shared or cross-suppressed.
 
 ### Real-time messages
 
@@ -431,7 +431,7 @@ The implementation avoids Cloudinary and avoids persisting/copying media binarie
 
 ### Telegram
 
-The Notify Bhatari action calls the Telegram Bot API directly from the browser. The same bot token is also used by the silent Bhandhari identity ping fired on identity selection. The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
+The Notify Bhatari action calls the Telegram Bot API directly from the browser. The same bot token is also used by the silent Bhatari/Bhandhari identity pings fired on identity selection (`notifyBhatariSelected()` / `notifyBhandhariSelected()` with distinct per-identity messages). The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
 
 ---
 
@@ -443,7 +443,7 @@ The Chat PIN lockout metadata may use local/session storage for a short-lived at
 
 The identity selector is also a UI choice, not an authorization boundary. A visitor who passes the client-side gates can choose either identity unless Firestore Rules enforce stronger controls.
 
-Selecting the Bhandhari identity silently notifies the owner over Telegram (see the silent identity ping). This is invisible to the device user, so treat it as a privacy-relevant behavior: anyone with developer tools can observe or block the request, and the exposed bot token makes the ping spoofable.
+Selecting either the Bhatari or Bhandhari identity silently notifies the owner over Telegram (see the silent identity ping) with a per-identity distinct message (`✨ Bhatari Identity is chosen` vs `🐧 She just chose Bhandhari`). This is invisible to the device user, so treat it as a privacy-relevant behavior: anyone with developer tools can observe or block the request, and the exposed bot token makes the ping spoofable.
 
 GIPHY receives only the user's GIF search query and uses a browser-visible API key. Chat text, identities, PIN data, Firestore documents, and Cloudinary uploads are not sent to GIPHY by the GIF feature. The supplied key should be treated as exposed and rate-limited by the provider.
 
@@ -570,13 +570,13 @@ The following changes were made on 2026-08-26 in the current working tree:
 - Historical GIFs hydrate by de-duplicated GIPHY ID lookup. No GIPHY analytics/action-register calls are made, and no GIF binary is stored or routed through Cloudinary.
 - `GIPHY_API_KEY` now contains the owner-supplied browser-visible key and remains replaceable. The requested absence of visible GIPHY attribution conflicts with the provider's documented attribution requirement and remains a pre-production compliance decision.
 
-### Silent Bhandhari identity ping — 2026-08-28
+### Silent Bhatari / Bhandhari identity pings — 2026-08-30
 
-- Added `notifyBhandhariSelected()`, called from `selectChatIdentity()` so it fires on every path that makes Bhandhari the active identity (post-PIN overlay and header toggle).
-- Sends a fire-and-forget Telegram message to the owner’s chat with an IST timestamp, reusing the existing `TG_BOT_TOKEN`/`TG_CHAT_ID` and the Notify Bhatari transport.
+- Added `notifyBhatariSelected()` mirroring `notifyBhandhariSelected()`, both called from `applyIdentityUI()` so they fire on every path that makes Bhatari or Bhandhari the active identity (post-PIN overlay and header toggle).
+- Each sends a fire-and-forget Telegram message to the owner’s chat with an IST timestamp, reusing the existing `TG_BOT_TOKEN`/`TG_CHAT_ID` and the Notify Bhatari transport, with distinct per-identity text (`✨ Bhatari Identity is chosen · <IST timestamp>` vs `🐧 She just chose Bhandhari · <IST timestamp>`).
 - Fully silent to the device user: no DOM, toast, button, loading, or cooldown UI; all errors swallowed and nothing logged.
-- `keepalive: true` delivers the ping even if the tab is closed immediately; a 60-second client cooldown de-duplicates rapid re-selections.
-- Fires only for Bhandhari; no ping on Bhatari selection.
+- `keepalive: true` delivers the ping even if the tab is closed immediately; a 60-second per-identity client cooldown (`identityPingLastSentAt` / `identityPingLastSentAtBhatari`) de-duplicates rapid re-selections independently.
+- Identical behavior for both identities; no cross-suppression between Bhatari and Bhandhari selections.
 
 ### Date divider and unread navigation upgrade — 2026-08-28
 
@@ -613,6 +613,7 @@ Before changing the Chat Scene:
 - `initChatScene()`
 - `initChatLockOverlay()`
 - `selectChatIdentity()`
+- `notifyBhatariSelected()`
 - `notifyBhandhariSelected()`
 - `startMessageListener()`
 - `reconcileMessages()`

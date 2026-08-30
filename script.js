@@ -922,14 +922,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ─── Silent identity ping (Bhandhari) ───────────────────────────────
-    // Background Telegram notice fired the moment Bhandhari becomes the active
-    // chat identity. This is deliberately invisible to whoever is using the
-    // device: it never touches the DOM, never calls showToast(), never disables
-    // or relabels a button, logs nothing, and swallows every error. The
-    // cooldown collapses rapid re-selections (relock + re-pick, toggle bounce).
+    // ─── Silent identity ping (Bhatari / Bhandhari) ─────────────────────
+    // Background Telegram notice fired the moment Bhatari or Bhandhari becomes
+    // the active chat identity. This is deliberately invisible to whoever is
+    // using the device: it never touches the DOM, never calls showToast(),
+    // never disables or relabels a button, logs nothing, and swallows every
+    // error. The cooldown collapses rapid re-selections (relock + re-pick,
+    // toggle bounce). Identical behavior for both identities.
     const IDENTITY_PING_COOLDOWN_MS = 60_000;
     let identityPingLastSentAt = 0;
+    let identityPingLastSentAtBhatari = 0;
 
     function identityPingStamp() {
         try {
@@ -966,6 +968,30 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({
                         chat_id: TG_CHAT_ID,
                         text: `🐧 She just chose Bhandhari · ${identityPingStamp()}`
+                    })
+                }
+            ).catch(() => { /* silent by design — never surface a failure to her */ });
+        } catch (e) { /* silent by design */ }
+    }
+
+    function notifyBhatariSelected() {
+        if (chatState.currentIdentity !== 'Bhatari') return; // Bhatari only
+        const now = Date.now();
+        if (now - identityPingLastSentAtBhatari < IDENTITY_PING_COOLDOWN_MS) return; // dedupe
+        identityPingLastSentAtBhatari = now;
+
+        try {
+            // Fire-and-forget: no await, no loading state, no UI callback.
+            fetch(
+                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'omit',
+                    keepalive: true, // lands even if she closes the tab right after the tap
+                    body: JSON.stringify({
+                        chat_id: TG_CHAT_ID,
+                        text: `✨ Bhatari Identity is chosen · ${identityPingStamp()}`
                     })
                 }
             ).catch(() => { /* silent by design — never surface a failure to her */ });
@@ -1894,10 +1920,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         refreshAllTicks();
 
-        // Silent Telegram ping whenever she becomes Bhandhari. Covers both entry
-        // points (post-PIN "Who are you?" overlay and the header identity toggle).
-        // Fire-and-forget — nothing here waits on it or reacts to it.
+        // Silent Telegram ping whenever she becomes Bhandhari or Bhatari. Covers
+        // both entry points (post-PIN "Who are you?" overlay and the header
+        // identity toggle). Fire-and-forget — nothing here waits on it or reacts
+        // to it. Identical behavior for both identities.
         notifyBhandhariSelected();
+        notifyBhatariSelected();
     }
 
     // ─── Read Receipts (WhatsApp-style, visibility-based) ──
