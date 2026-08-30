@@ -1044,25 +1044,21 @@ document.addEventListener('DOMContentLoaded', () => {
     function notifyBhandhariAnalyticsExit() {
         if (!bhandhariAnalyticsStartAt) return; // no active Bhandhari session
         const startAt = bhandhariAnalyticsStartAt;
-        bhandhariAnalyticsStartAt = 0; // clear first to dedupe concurrent exits
+        bhandhariAnalyticsStartAt = 0; // clear first to dedupe concurrent exits (prevents 2nd leave)
         const durationMs = Date.now() - startAt;
         const durationStr = formatBhandhariAnalyticsDuration(durationMs);
         try {
             const text = `🔴 Bhandhari left chat · ${identityPingStamp()} · stayed ${durationStr}`;
             // Use GET to avoid CORS preflight during unload (POST JSON triggers preflight which
-            // fails on pagehide/beforeunload). GET is simple, no preflight, keepalive persists.
+            // fails on pagehide/beforeunload). Single beacon only — previous version sent
+            // fetch + sendBeacon together and caused 2 Telegram messages per leave.
             const url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${encodeURIComponent(TG_CHAT_ID)}&text=${encodeURIComponent(text)}`;
-            try {
-                // keepalive GET — most reliable for unload; no-cors avoids preflight, still delivers
+            let sent = false;
+            if (navigator.sendBeacon) {
+                try { sent = navigator.sendBeacon(url); } catch (e) { sent = false; }
+            }
+            if (!sent) {
                 fetch(url, { method: 'GET', keepalive: true, credentials: 'omit', mode: 'no-cors' }).catch(() => {});
-                // Extra beacons for browsers that cancel keepalive on unload
-                if (navigator.sendBeacon) {
-                    try { navigator.sendBeacon(url); } catch (e) {}
-                } else {
-                    try { new Image().src = url; } catch (e) {}
-                }
-            } catch (e) {
-                try { new Image().src = url; } catch (e2) {}
             }
         } catch (e) { /* silent by design */ }
     }
@@ -2007,11 +2003,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         refreshAllTicks();
 
-        // Silent Telegram ping whenever she becomes Bhandhari or Bhatari. Covers
-        // both entry points (post-PIN "Who are you?" overlay and the header
-        // identity toggle). Fire-and-forget — nothing here waits on it or reacts
-        // to it. Identical behavior for both identities.
-        notifyBhandhariSelected();
+        // Silent Telegram ping for Bhatari only (Bhandhari 🐧 ping removed).
+        // Covers both entry points (post-PIN overlay and header toggle).
+        // Fire-and-forget — nothing waits on it. Bhandhari now uses analytics
+        // 🟢/🔴 only (2 msgs/session).
+        // notifyBhandhariSelected(); // removed per request — was: 🐧 She just chose Bhandhari
         notifyBhatariSelected();
         // Bhandhari analytics: entering Bhandhari -> send enter ping (2 msgs/session: enter + leave)
         // selectChatIdentity pre-sets currentIdentity before calling applyIdentityUI, so prev check

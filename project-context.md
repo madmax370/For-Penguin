@@ -1,8 +1,8 @@
 # Project Context
 
-> **Last reviewed:** 2026-08-31
+> **Last reviewed:** 2026-09-01
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, GIPHY GIF integration, silent Bhatari/Bhandhari identity Telegram pings, Bhandhari Telegram analytics (enter/leave with duration), presence-dot multi-session fix, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, GIPHY GIF integration, silent Bhatari identity Telegram ping (Bhandhari ping removed), Bhandhari Telegram analytics (enter/leave with duration, single leave), presence-dot multi-session fix, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -232,17 +232,17 @@ The selected identity controls:
 - Presence document key
 - Whether Notify Bhatari is visible
 
-Whenever **Bhatari** or **Bhandhari** becomes the active identity, a silent background Telegram ping is fired (see below). This happens for both entry points: the post-PIN “Who are you?” overlay and the header identity toggle.
+Whenever **Bhatari** becomes the active identity, a silent background Telegram ping is fired (see below). Bhandhari no longer uses the `🐧 She just chose Bhandhari` ping — it now uses only the analytics enter/leave pair (see below). Both happen for the post-PIN “Who are you?” overlay and the header identity toggle.
 
-### Silent identity ping (Bhatari / Bhandhari)
+### Silent identity ping (Bhatari only)
 
-When an identity is selected, `notifyBhatariSelected()` / `notifyBhandhariSelected()` sends a fire-and-forget Telegram message to the owner’s chat using the same bot token as **Notify Bhatari**. Messages are distinct per identity — Bhatari uses “✨ Bhatari Identity is chosen · <IST timestamp>” and Bhandhari uses “🐧 She just chose Bhandhari · <IST timestamp>”. It is deliberately invisible to the device user:
+When Bhatari is selected, `notifyBhatariSelected()` sends a fire-and-forget Telegram message (`✨ Bhatari Identity is chosen · <IST timestamp>`) to the owner’s chat using the same bot token as **Notify Bhatari**. `notifyBhandhariSelected()` (`🐧 She just chose Bhandhari`) is retained in code but no longer called from `applyIdentityUI()` — Bhandhari is tracked via `🟢`/`🔴` analytics only. The ping is deliberately invisible to the device user:
 
 - No DOM change, no toast, no button disable/relabel, and no loading or cooldown state.
 - Errors are swallowed; nothing is logged or surfaced.
 - Uses `keepalive: true` so the request lands even if the tab is closed right after the tap.
-- A 60-second per-identity client cooldown (`IDENTITY_PING_COOLDOWN_MS`, `identityPingLastSentAt` / `identityPingLastSentAtBhatari`) collapses rapid re-selections (relock + re-pick, toggle bounce) independently for each identity.
-- Both identities fire identically via `applyIdentityUI()`; no ping is shared or cross-suppressed.
+- A 60-second client cooldown (`IDENTITY_PING_COOLDOWN_MS`, `identityPingLastSentAtBhatari`) collapses rapid re-selections (relock + re-pick, toggle bounce).
+- Fires only for Bhatari via `applyIdentityUI()`.
 
 ### Real-time messages
 
@@ -431,7 +431,7 @@ The implementation avoids Cloudinary and avoids persisting/copying media binarie
 
 ### Telegram
 
-The Notify Bhatari action calls the Telegram Bot API directly from the browser. The same bot token is also used by the silent Bhatari/Bhandhari identity pings fired on identity selection (`notifyBhatariSelected()` / `notifyBhandhariSelected()` with distinct per-identity messages) and by the Bhandhari analytics pings (enter `🟢 Bhandhari entered chat` + leave `🔴 Bhandhari left chat · stayed <duration>` via `notifyBhandhariAnalyticsEnter()` / `notifyBhandhariAnalyticsExit()` — 2 fire-and-forget messages per Bhandhari session, `keepalive` + `sendBeacon`/`Image` fallback, GET to avoid CORS preflight on unload). The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
+The Notify Bhatari action calls the Telegram Bot API directly from the browser. The same bot token is also used by the silent Bhatari identity ping fired on Bhatari selection (`notifyBhatariSelected()` `✨`) and by the Bhandhari analytics pings (enter `🟢 Bhandhari entered chat` + single leave `🔴 Bhandhari left chat · stayed <duration>` via `notifyBhandhariAnalyticsEnter()` / `notifyBhandhariAnalyticsExit()` — 2 fire-and-forget messages per Bhandhari session, `GET` `keepalive` + single `sendBeacon` fallback to avoid CORS preflight and duplicate leaves on unload). The Bhandhari `🐧 She just chose Bhandhari` ping (`notifyBhandhariSelected()`) is no longer sent. The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
 
 ---
 
@@ -443,7 +443,7 @@ The Chat PIN lockout metadata may use local/session storage for a short-lived at
 
 The identity selector is also a UI choice, not an authorization boundary. A visitor who passes the client-side gates can choose either identity unless Firestore Rules enforce stronger controls.
 
-Selecting either the Bhatari or Bhandhari identity silently notifies the owner over Telegram (see the silent identity ping) with a per-identity distinct message (`✨ Bhatari Identity is chosen` vs `🐧 She just chose Bhandhari`). Bhandhari additionally sends lightweight analytics pings on entry (`🟢`) and on exit with stayed duration (`🔴` via `GET` + `keepalive`/`sendBeacon` to survive tab close). This is invisible to the device user, so treat it as a privacy-relevant behavior: anyone with developer tools can observe or block the requests, and the exposed bot token makes the pings spoofable.
+Selecting Bhatari silently notifies the owner over Telegram (`✨ Bhatari Identity is chosen` via `notifyBhatariSelected()`). Selecting Bhandhari now sends only the analytics pair (`🟢 Bhandhari entered chat` on entry and single `🔴 Bhandhari left chat · stayed <duration>` on exit via `GET` + single `sendBeacon` fallback) — the previous `🐧 She just chose Bhandhari` ping is removed. This is invisible to the device user, so treat it as a privacy-relevant behavior: anyone with developer tools can observe or block the requests, and the exposed bot token makes the pings spoofable.
 
 GIPHY receives only the user's GIF search query and uses a browser-visible API key. Chat text, identities, PIN data, Firestore documents, and Cloudinary uploads are not sent to GIPHY by the GIF feature. The supplied key should be treated as exposed and rate-limited by the provider.
 
@@ -582,13 +582,19 @@ The following changes were made on 2026-08-26 in the current working tree:
 
 - Added `notifyBhandhariAnalyticsEnter()` / `notifyBhandhariAnalyticsExit()` + `formatBhandhariAnalyticsDuration()` and `bhandhariAnalyticsStartAt`, wired into `applyIdentityUI()` (enter on any Bhandhari activation, no cooldown, deduped by `startAt`) and `relockChatForLifecycle()` + `visibilitychange`/`pagehide`/`beforeunload` (leave with `stayed <duration>`). 2 fire-and-forget Telegram messages per Bhandhari session: `🟢 Bhandhari entered chat · <IST>` and `🔴 Bhandhari left chat · <IST> · stayed <duration>` (e.g. `5s`, `2m 13s`, `1h 5m`). No DOM, no extra SDK, no render cost.
 - Fixed overlay double-set bug (`selectChatIdentity` pre-sets `currentIdentity` before `applyIdentityUI`) by triggering analytics enter on `identity === 'Bhandhari'` + `startAt` guard instead of `prev !== 'Bhandhari'`.
-- Fixed unload reliability: leave now uses `GET https://api.telegram.org/botTOKEN/sendMessage?chat_id=...&text=...` with `keepalive:true` + `mode:'no-cors'` and `navigator.sendBeacon`/`Image` fallback to avoid CORS preflight failure on `pagehide`/`beforeunload` (previous `POST JSON` was cancelled).
-- Keeps existing `notifyBhandhariSelected()` `🐧` ping (60s cooldown) untouched; analytics is Bhandhari-only, Bhatari sends no analytics.
+- Fixed unload reliability: leave now uses `GET https://api.telegram.org/botTOKEN/sendMessage?chat_id=...&text=...` with `keepalive:true` + `mode:'no-cors'` and single `sendBeacon` fallback to avoid CORS preflight failure on `pagehide`/`beforeunload` (previous `POST JSON` was cancelled).
+- Analytics is Bhandhari-only, Bhatari still uses `✨` ping; Bhandhari `🐧` ping was kept at this stage but is removed in the 2026-09-01 update below.
 
 ### Presence dot multi-session fix — 2026-08-31
 
 - Fixed `writePresenceState()` `script.js:5291` — previously `sessions: { [sessionId]: ... }` with `{merge:true}` overwrote the entire `sessions` map on each heartbeat, so concurrent heartbeats from Bhatari and Bhandhari (or two tabs) deleted each other and the dot stayed offline while both were chatting. Now uses `sessions.<sessionId>` dot-notation with `merge:true` to preserve other sessions, so `refreshPresenceDot()` `script.js:5474` correctly aggregates `data[other]` + `data.sessions[*].identity===other` and `isFreshPresenceEntry()` `age<75000` shows `online` (`#4ade80` + `presencePulse 2.4s` `style.css:5211`) when any fresh heartbeat exists.
 - No change to `PRESENCE_HEARTBEAT_MS 25000` / `PRESENCE_STALE_MS 75000`, `presenceRunId` invalidation, or `presenceData` handling; offline sessions remain `online:false` and are ignored by freshness check.
+
+### Bhandhari ping removal + analytics single-leave fix — 2026-09-01
+
+- Removed `🐧 She just chose Bhandhari` ping — `notifyBhandhariSelected()` `script.js:953` retained but no longer called from `applyIdentityUI()` `script.js:2010` (commented `// notifyBhandhariSelected();`). Bhatari `✨` ping `notifyBhatariSelected()` remains. Bhandhari now sends only `🟢`/`🔴` analytics (2 msgs/session).
+- Fixed duplicate `🔴` leave — `notifyBhandhariAnalyticsExit()` `script.js:1044` previously did `fetch(GET keepalive)` **plus** `navigator.sendBeacon(url)` → 2 Telegram messages per 1 leave. Now single beacon only: `sendBeacon(url)` if available else one `fetch(GET keepalive, no-cors)`, still deduped by `bhandhariAnalyticsStartAt=0` at entry of exit.
+- Verified `node --check`, single `🟢` on Bhandhari enter, single `🔴` with `stayed <duration>` on switch/relock/tab close, no `🐧` on Bhandhari.
 
 ### Date divider and unread navigation upgrade — 2026-08-28
 
@@ -625,9 +631,8 @@ Before changing the Chat Scene:
 - `initChatScene()`
 - `initChatLockOverlay()`
 - `selectChatIdentity()`
-- `notifyBhatariSelected()`
-- `notifyBhandhariSelected()`
-- `notifyBhandhariAnalyticsEnter()` / `notifyBhandhariAnalyticsExit()` / `formatBhandhariAnalyticsDuration()`
+- `notifyBhatariSelected()` (Bhatari only — Bhandhari `🐧` ping `notifyBhandhariSelected()` retained but no longer called)
+- `notifyBhandhariAnalyticsEnter()` / `notifyBhandhariAnalyticsExit()` / `formatBhandhariAnalyticsDuration()` (Bhandhari 2 msgs/session, single `🔴` leave)
 - `writePresenceState()` (dot-notation `sessions.<id>` fix)
 - `startMessageListener()`
 - `reconcileMessages()`
