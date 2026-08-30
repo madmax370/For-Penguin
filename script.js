@@ -998,6 +998,84 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { /* silent by design */ }
     }
 
+    // ─── Bhandhari analytics (Telegram, 2 msgs/session, Bhandhari only) ────
+    // Lightweight, accurate, non-blocking: 2 fire-and-forget Telegram pings
+    // per Bhandhari session (enter + leave with duration). Reuses
+    // TG_BOT_TOKEN/TG_CHAT_ID, no DOM, no extra SDK, no render cost.
+    // Enter fires on every Bhandhari activation (no cooldown); leave fires
+    // with stayed duration on identity switch, relock, or tab close via
+    // keepalive/sendBeacon. Existing notify* pings remain untouched.
+    let bhandhariAnalyticsStartAt = 0;
+
+    function formatBhandhariAnalyticsDuration(ms) {
+        if (!Number.isFinite(ms) || ms <= 0) return '0s';
+        const s = Math.round(ms / 1000);
+        if (s < 60) return `${s}s`;
+        const m = Math.floor(s / 60);
+        const rs = s % 60;
+        if (m < 60) return rs ? `${m}m ${rs}s` : `${m}m`;
+        const h = Math.floor(m / 60);
+        const rm = m % 60;
+        if (rm || rs) return `${h}h ${rm}m`;
+        return `${h}h`;
+    }
+
+    function notifyBhandhariAnalyticsEnter() {
+        if (chatState.currentIdentity !== 'Bhandhari') return; // Bhandhari only
+        if (bhandhariAnalyticsStartAt) return; // already in a Bhandhari session
+        bhandhariAnalyticsStartAt = Date.now();
+        try {
+            fetch(
+                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'omit',
+                    keepalive: true,
+                    body: JSON.stringify({
+                        chat_id: TG_CHAT_ID,
+                        text: `🟢 Bhandhari entered chat · ${identityPingStamp()}`
+                    })
+                }
+            ).catch(() => { /* silent by design */ });
+        } catch (e) { /* silent by design */ }
+    }
+
+    function notifyBhandhariAnalyticsExit() {
+        if (!bhandhariAnalyticsStartAt) return; // no active Bhandhari session
+        const startAt = bhandhariAnalyticsStartAt;
+        bhandhariAnalyticsStartAt = 0; // clear first to dedupe concurrent exits
+        const durationMs = Date.now() - startAt;
+        const durationStr = formatBhandhariAnalyticsDuration(durationMs);
+        try {
+            const text = `🔴 Bhandhari left chat · ${identityPingStamp()} · stayed ${durationStr}`;
+            // Use GET to avoid CORS preflight during unload (POST JSON triggers preflight which
+            // fails on pagehide/beforeunload). GET is simple, no preflight, keepalive persists.
+            const url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${encodeURIComponent(TG_CHAT_ID)}&text=${encodeURIComponent(text)}`;
+            try {
+                // keepalive GET — most reliable for unload; no-cors avoids preflight, still delivers
+                fetch(url, { method: 'GET', keepalive: true, credentials: 'omit', mode: 'no-cors' }).catch(() => {});
+                // Extra beacons for browsers that cancel keepalive on unload
+                if (navigator.sendBeacon) {
+                    try { navigator.sendBeacon(url); } catch (e) {}
+                } else {
+                    try { new Image().src = url; } catch (e) {}
+                }
+            } catch (e) {
+                try { new Image().src = url; } catch (e2) {}
+            }
+        } catch (e) { /* silent by design */ }
+    }
+
+    // Fallback for tab close without prior visibility/pagehide relock — keeps 2 msgs/session accurate
+    try {
+        window.addEventListener('beforeunload', () => {
+            if (chatState.currentIdentity === 'Bhandhari' && bhandhariAnalyticsStartAt) {
+                try { notifyBhandhariAnalyticsExit(); } catch (e) { /* silent */ }
+            }
+        });
+    } catch (e) { /* silent */ }
+
     // ─── Toast (styling lives in style.css #chat-toast; JS drives classes + timers) ──
     function showToast(message, isError = false, type = 'default') {
         let toast = document.getElementById('chat-toast');
@@ -1308,6 +1386,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function relockChatForLifecycle() {
+        // Bhandhari analytics: privacy relock / visibility hidden / pagehide implies leaving
+        if (chatState.currentIdentity === 'Bhandhari' && typeof bhandhariAnalyticsStartAt !== 'undefined' && bhandhariAnalyticsStartAt) {
+            try { notifyBhandhariAnalyticsExit(); } catch (e) { /* silent */ }
+        }
         chatState.currentIdentity = null;
         chatState.chatUnlocked = false;
         chatState.pinVerificationRunId++;
@@ -1899,6 +1981,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Shared UI updates for both the initial selection and the manual toggle
     function applyIdentityUI(identity) {
+        const prevIdentity = chatState.currentIdentity;
+        // Bhandhari analytics: leaving Bhandhari via toggle/selection -> send leave with duration
+        if (prevIdentity === 'Bhandhari' && identity !== 'Bhandhari') {
+            try { notifyBhandhariAnalyticsExit(); } catch (e) { /* silent */ }
+        }
         chatState.currentIdentity = identity;
         const toggleBtns = document.querySelectorAll('#chat-identity-toggle .toggle-btn');
         toggleBtns.forEach(btn => {
@@ -1926,6 +2013,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // to it. Identical behavior for both identities.
         notifyBhandhariSelected();
         notifyBhatariSelected();
+        // Bhandhari analytics: entering Bhandhari -> send enter ping (2 msgs/session: enter + leave)
+        // selectChatIdentity pre-sets currentIdentity before calling applyIdentityUI, so prev check
+        // would miss overlay entry — trigger on identity + dedupe guard inside enter instead.
+        if (identity === 'Bhandhari') {
+            try { notifyBhandhariAnalyticsEnter(); } catch (e) { /* silent */ }
+        }
     }
 
     // ─── Read Receipts (WhatsApp-style, visibility-based) ──
@@ -5199,21 +5292,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!identity || !sessionId || !PRESENCE_DOC || typeof firebase === 'undefined' || !firebase.firestore) {
             return Promise.resolve(false);
         }
+        const at = firebase.firestore.FieldValue.serverTimestamp();
+        // Use dot-notation for sessions so other tabs/sessions are preserved.
+        // The previous `sessions: { [sessionId]: ... }` with merge:true overwrote
+        // the entire map on each write, causing the other side to appear offline
+        // when two users (or two tabs) wrote within the same 25s window.
         return PRESENCE_DOC.set({
             // Keep the old shape working for already-open/older clients.
-            [identity]: {
-                online,
-                at: firebase.firestore.FieldValue.serverTimestamp()
-            },
-            // New clients aggregate this map, which is safe across multiple tabs.
-            sessions: {
-                [sessionId]: {
-                    identity,
-                    online,
-                    at: firebase.firestore.FieldValue.serverTimestamp()
-                }
-            }
-        }, { merge: true }).then(() => true);
+            [identity]: { online, at },
+            [`sessions.${sessionId}`]: { identity, online, at }
+        }, { merge: true }).then(() => true).catch(() => false);
     }
 
     function presenceTimestampMs(value) {
