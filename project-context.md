@@ -424,6 +424,8 @@ The application uses:
 
 The three ladder photos live in a Workers KV namespace bound as `env.BUCKET` under keys `image1`, `image1-640`, `image2`, `image2-640`, `image3`, `image3-640` (plus `.webp`/`.jpg`). They are served by `GET /api/image/<name>?token=...` and require a valid session token; without one the Worker returns `401`. The frontend rewrites the ladder `<source>`/`<img>` to these worker URLs at unlock time, so photos only ever load after a valid session.
 
+Only the KV-backed variants that actually exist are referenced in `index.html`: each `<picture>` webp `<source>` uses `imageN-640.webp` and the fallback `<img>` uses `imageN.jpg`. The high-resolution `imageN.webp` files are **not** present in KV, so they were removed from the `srcset` to avoid requesting missing images.
+
 ### Cloudinary
 
 The client contains the Cloudinary cloud name and unsigned upload preset. The Cloudinary API secret must never be placed in client code.
@@ -634,6 +636,10 @@ The following changes were made on 2026-08-26 in the current working tree:
 ### Private ladder photos via Worker KV — 2026-09-01
 
 - The three ladder photos now live in a Cloudflare Workers KV namespace (`env.BUCKET`) and are served only with a valid `?token=`. The local `images/` directory has been **removed** from the workspace; `index.html`/`script.js` rewrite the ladder `<source>`/`<img>` to `/api/image/<name>?token=` at unlock time.
+
+### Ladder photo variants point only at existing KV files — 2026-09-01
+
+- The high-resolution WebP entries (`image1.webp`, `image2.webp`, `image3.webp`) do not exist in KV, so they were removed from the ladder `<picture>` `srcset` in `index.html`. Each `<picture>` now keeps only the KV-backed `imageN-640.webp` (webp `<source>`) and `imageN.jpg` (fallback `<img>`). No new image files were added and the Worker/KV/Firebase were not touched.
 
 ### Bhandhari leave-ping reliability fix — 2026-09-01
 
