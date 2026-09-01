@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-09-01
 >
-> This document describes the current implementation of the project, including the recent Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock implementation, GIPHY GIF integration, silent Bhatari identity Telegram ping (Bhandhari ping removed), Bhandhari Telegram analytics (enter/leave with duration, single leave), presence-dot multi-session fix, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project, including the Cloudflare Worker secure backend (password/PIN/Telegram/Firebase-token/private images), Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock, GIPHY GIF integration, silent Bhatari identity Telegram ping (Bhandhari ping removed), Bhandhari Telegram analytics (enter/leave with duration), presence-dot multi-session fix, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
 
 ---
 
@@ -22,11 +22,12 @@ The Chat Scene can also be opened directly from the Image Ladder using **Go to C
 ### Technology
 
 - Static HTML, CSS, and vanilla JavaScript
+- **Cloudflare Worker** secure backend (`penguin-api`) — server-side password/PIN verification, Telegram delivery, Firebase custom-token minting, and private image serving. All secrets live in the Worker's environment variables, never in the browser.
 - Firebase Firestore loaded dynamically when the Chat Scene opens
 - Cloudinary unsigned uploads for chat photos and videos
-- Telegram Bot API for the **Notify Bhatari** action
+- Telegram Bot API for the **Notify Bhatari** action and identity/analytics pings
 - Google Fonts for the display typefaces
-- No framework, package manager, build step, backend server, or automated test suite
+- No framework, package manager, build step, or automated test suite (the Worker is a single dependency-free file pasted into the Cloudflare dashboard and deployed repo-free)
 
 ---
 
@@ -36,14 +37,14 @@ The Chat Scene can also be opened directly from the Image Ladder using **Go to C
 |---|---|
 | `index.html` | Complete page structure, overlays, scenes, and chat markup |
 | `style.css` | All layout, colors, typography, responsive rules, animations, and chat styling |
-| `script.js` | Password/PIN logic, scene controller, Firebase chat, media, presence, receipts, reactions, and UI interactions |
-| `images/` | Ladder photos in JPG and WebP formats, including 640px variants |
+| `script.js` | Backend calls, scene controller, Firebase chat, media, presence, receipts, reactions, and UI interactions |
 | `songs/song1.mp3` | Currently unused audio asset |
 | `instructions.md` | Repository workflow and Git requirements |
 | `task.md` | Historical planning document for the Chat Scene revamp |
 | `project-context.md` | This current technical and product reference |
+| `../penguin-api/worker.js` | Dependent Cloudflare Worker (password/PIN, Telegram, Firebase token, private images) |
 
-The project is served as static files. A local server such as `python3 -m http.server` is sufficient for development.
+The frontend is served as static files (a `python3 -m http.server` or the no-cache `serve.py` in the workspace is sufficient for development). **The `images/` directory no longer exists** — the three ladder photos are stored in a Cloudflare Workers KV namespace (`env.BUCKET`) and served only through the Worker after a valid session token (`/api/image/<name>?token=...`).
 
 ---
 
@@ -52,9 +53,9 @@ The project is served as static files. A local server such as `python3 -m http.s
 ### Initial load
 
 - `DOMContentLoaded` initializes the main password overlay.
-- The password is checked by hashing the entered value with SHA-256 and comparing it with a client-side hash.
-- Three failed attempts cause a short session-based lockout.
-- After success, the main content fades in and the `SceneController` starts the Image Ladder.
+- The password is submitted to the Worker's `POST /api/auth`. The Worker compares it against `env.AUTH_CODE` (server-side) and returns a short-lived HMAC-signed session token on success. The browser never holds or compares the secret itself.
+- On failure the Worker enforces a per-IP limiter: 3 wrong attempts → 429 + 5-minute block. The client reflects this countdown.
+- After success (`sessionToken` held in memory only), the main content fades in and the `SceneController` starts the Image Ladder.
 
 ### Scene controller
 
@@ -214,8 +215,8 @@ Message bubbles are keyboard-focusable so hidden actions remain discoverable wit
 - Clear, delete-last-digit, and hardware-keyboard controls are supported. Digit keys include the main keyboard and numpad; Backspace and Delete remove one digit; Escape clears the current entry; Enter verifies a complete four-digit entry. Tab is trapped within the accessible lock dialog.
 - The lock overlay is a modal dialog with managed focus, keypad labels, a digit-count announcement, busy state, and separate polite/assertive status messaging. It cannot be dismissed with Escape or bypassed through focus changes.
 - Input is bounded to ASCII digits and exactly four positions. Rapid taps, duplicate clicks, duplicate verification, malformed input, paste, autofill, and IME composition do not add unvalidated data or start duplicate checks.
-- SHA-256 verification runs asynchronously with a run ID so stale results cannot unlock a hidden, reset, or torn-down scene. Verification failures clear the buffer and do not expose exception details.
-- Three failed attempts trigger a 15-second lockout. Only attempt count, timestamp, and lockout expiry may be recorded in local/session storage for short-lived throttling; the PIN is never persisted. Expired or malformed lockout records are discarded.
+- Verification is performed **server-side** by the Worker (`POST /api/pin`) against the same `AUTH_CODE` used for the app password — no SHA-256/hash or secret ever runs client-side. It runs asynchronously with a run ID so stale results cannot unlock a hidden, reset, or torn-down scene. Verification failures clear the buffer and do not expose exception details.
+- The Worker's PIN limiter allows 3 wrong attempts and then blocks the IP for **300 seconds (5 minutes)**; the client mirrors the server's `retryAfter` countdown so the UI never drifts and never claims a shorter block than the server enforced. The PIN (and entered digits) are never persisted to storage; only the client-side mirror metadata (attempt count / lockout expiry) is kept short-lived. Expired or malformed records are discarded.
 - Reloads, page visibility changes, scene teardown, and browser Back/Forward navigation invalidate pending checks and clear the runtime PIN. A history guard prevents locked Chat Scene navigation from bypassing the PIN; successful unlock removes that guard.
 - PIN success hides the PIN overlay but always requires identity selection afterward.
 
@@ -411,13 +412,17 @@ Older documents may contain `readBy` as an array. The current code normalizes le
 
 ### Firebase
 
-Firebase is loaded dynamically from the Google CDN when Chat opens. The web configuration is present in `script.js`. Actual access control depends on Firebase Security Rules, which are not stored in this repository.
+Firebase is loaded dynamically from the Google CDN when Chat opens. The web configuration is present in `script.js`. The browser authenticates to Firestore with a **short-lived Firebase Auth custom token minted by the Worker** (`POST /api/firebase-token`), so `request.auth != null` is true for the security rules without any Gmail/account/login. Actual access control depends on Firebase Security Rules, which are **not stored in this repository** (they are published separately in the Firebase console). If `sessionToken` is missing (e.g. re-locked), the app stays unsigned-in and the chat listeners surface the existing non-breaking permission-error state.
 
 The application uses:
 
 - Firestore collection `web_chat_v2`
 - Firestore document `typing/status`
 - Firestore document `presence/status`
+
+### Private images (Cloudflare Workers KV)
+
+The three ladder photos live in a Workers KV namespace bound as `env.BUCKET` under keys `image1`, `image1-640`, `image2`, `image2-640`, `image3`, `image3-640` (plus `.webp`/`.jpg`). They are served by `GET /api/image/<name>?token=...` and require a valid session token; without one the Worker returns `401`. The frontend rewrites the ladder `<source>`/`<img>` to these worker URLs at unlock time, so photos only ever load after a valid session.
 
 ### Cloudinary
 
@@ -431,27 +436,41 @@ The implementation avoids Cloudinary and avoids persisting/copying media binarie
 
 ### Telegram
 
-The Notify Bhatari action calls the Telegram Bot API directly from the browser. The same bot token is also used by the silent Bhatari identity ping fired on Bhatari selection (`notifyBhatariSelected()` `✨`) and by the Bhandhari analytics pings (enter `🟢 Bhandhari entered chat` + single leave `🔴 Bhandhari left chat · stayed <duration>` via `notifyBhandhariAnalyticsEnter()` / `notifyBhandhariAnalyticsExit()` — 2 fire-and-forget messages per Bhandhari session, `GET` `keepalive` + single `sendBeacon` fallback to avoid CORS preflight and duplicate leaves on unload). The Bhandhari `🐧 She just chose Bhandhari` ping (`notifyBhandhariSelected()`) is no longer sent. The bot token is currently hardcoded in client-side JavaScript and should be treated as exposed. It should be rotated and moved behind a server-side endpoint before any public or production use.
+All Telegram delivery is **server-side** through the Worker's `POST`/`GET /api/tg`, which validates the session token from the JSON body or query string and then calls `api.telegram.org/bot${env.TG_BOT_TOKEN}/sendMessage` with `env.TG_CHAT_ID`. The bot token and chat ID live **only** in the Worker's environment variables — never in the browser.
+
+Callers:
+
+- **Notify Bhatari** action (fire-and-forget) — `tgSend(...)`.
+- **Bhatari silent identity ping** fired on Bhatari selection — `notifyBhatariSelected()` sends `✨ Bhatari Identity is chosen · <IST>`.
+- **Bhandhari analytics** (2 messages per Bhandhari session): `notifyBhandhariAnalyticsEnter()` `🟢 Bhandhari entered chat · <IST>` and `notifyBhandhariAnalyticsExit()` `🔴 Bhandhari left chat · <IST> · stayed <duration>`. The leave uses a `GET` query-string request with `keepalive:true` as the primary path (guaranteed to survive page unload) and falls back to a single `sendBeacon`; exactly one request fires so no duplicate leave can occur.
+
+The Bhandhari `🐧 She just chose Bhandhari` ping (`notifyBhandhariSelected()`) is no longer sent. Any public/production rollout should still rotate the bot token (now exposed only to the Worker, but still sensitive) and confirm the Telegram group/chat permissions.
 
 ---
 
 ## 9. Security and Privacy Notes
 
-The password and Chat PIN are checked by comparing a SHA-256 hash in the browser. This is casual obscurity, not server-enforced authentication. Anyone with developer tools can inspect or bypass the client-side gate. The Chat PIN specifically uses a custom keypad and memory-only digit buffer to avoid presenting a credential-like field to password managers; this cannot control every third-party extension's heuristics.
+The app password and Chat PIN are verified **server-side** by the Worker (`POST /api/auth`, `POST /api/pin`) against `env.AUTH_CODE`. The browser receives a short-lived, HMAC-signed **session token** (memory-only, never persisted) that authenticates `/api/tg`, `/api/firebase-token`, `/api/auth/refresh`, and `/api/image/*`. The PIN is the same value as `AUTH_CODE` and uses its own independent per-IP limiter so brute-forcing the PIN never interferes with the password limiter. Session tokens expire after 15 minutes and are refreshed every 10 minutes while the session is active; they are **nulled on privacy re-lock**, so a tab-switch or close always requires the password again.
 
-The Chat PIN lockout metadata may use local/session storage for a short-lived attempt window, but it contains no PIN or entered digits. The client also invalidates stale asynchronous checks and clears the runtime buffer across success, failure, lockout, visibility, page, scene, and history transitions.
+Secret material (`AUTH_CODE`, `SESSION_SECRET`, `TG_BOT_TOKEN`, `TG_CHAT_ID`, Firebase service account private key + client email, and the `BUCKET` KV binding) lives **only** in the Worker's environment variables and is never written to the browser bundle.
 
-The identity selector is also a UI choice, not an authorization boundary. A visitor who passes the client-side gates can choose either identity unless Firestore Rules enforce stronger controls.
+Privacy-relevant behaviors:
 
-Selecting Bhatari silently notifies the owner over Telegram (`✨ Bhatari Identity is chosen` via `notifyBhatariSelected()`). Selecting Bhandhari now sends only the analytics pair (`🟢 Bhandhari entered chat` on entry and single `🔴 Bhandhari left chat · stayed <duration>` on exit via `GET` + single `sendBeacon` fallback) — the previous `🐧 She just chose Bhandhari` ping is removed. This is invisible to the device user, so treat it as a privacy-relevant behavior: anyone with developer tools can observe or block the requests, and the exposed bot token makes the pings spoofable.
+- Selecting **Bhatari** silently notifies the owner on Telegram (`✨ Bhatari Identity is chosen` via `notifyBhatariSelected()`).
+- Selecting **Bhandhari** sends the analytics pair only (`🟢 Bhandhari entered chat` on entry and single `🔴 Bhandhari left chat · stayed <duration>` on exit) — the `🐧 She just chose Bhandhari` ping is no longer sent. These are invisible to the device user, so any visitor with developer tools can observe or block the pings.
+- Privacy re-lock tears down the chat (identity cleared, PIN required again, session token nulled). This is intentional.
 
-GIPHY receives only the user's GIF search query and uses a browser-visible API key. Chat text, identities, PIN data, Firestore documents, and Cloudinary uploads are not sent to GIPHY by the GIF feature. The supplied key should be treated as exposed and rate-limited by the provider.
+Remaining caveats:
+
+- The client-side password/PIN gate is a gate, not an authorization boundary for the Worker's core routes, but the Worker is authoritative — without a valid session token the private endpoints return `401`.
+- The Firebase web config and the value of `GIPHY_API_KEY` were historically exposed. `GIPHY_API_KEY` is a browser-visible web key (not a secret); it should be treated as exposed and rate-limited by the provider.
+- Firestore Security Rules for `web_chat_v2`, `typing/status`, and `presence/status` are **not** stored in this repository and must be verified/published in the Firebase console before production.
 
 Important security items:
 
-1. Rotate the exposed Telegram bot token.
-2. Verify Firestore Rules for `web_chat_v2`, `typing/status`, and `presence/status`.
-3. Do not assume the client-side password, PIN, or identity choice provides real authorization.
+1. Confirm Firestore Rules for `web_chat_v2`, `typing/status`, and `presence/status` (published separately).
+2. Keep the Worker's `AUTH_CODE`, `SESSION_SECRET`, `TG_BOT_TOKEN`, Telegram chat ID, and Firebase service-account credentials as environment variables only.
+3. Rotate the Telegram bot token and Firebase web config before any public rollout.
 4. Keep all stored message and media rendering defensive.
 5. Do not add new secrets to HTML, CSS, or client-side JavaScript.
 
@@ -606,7 +625,24 @@ The following changes were made on 2026-08-26 in the current working tree:
 - Date dividers gained `role="separator"` and an `aria-label` for screen readers.
 - The scroll FAB now jumps to the oldest unread message and flash-highlights it (reusing the quote-jump `message-highlight` treatment and reduced-motion handling) when unread messages exist; the previous glide-to-bottom-and-clear behavior remains for the no-unread case, and unread state still clears only on actually reaching the bottom.
 
-The date-divider/unread changes are currently uncommitted in the working tree. The silent identity ping is committed on `test-branch` (`6d07361`). The Chat PIN and GIPHY changes are part of the synchronized baseline (`92f3bd4`). The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
+### Cloudflare Worker secure backend — 2026-09-01
+
+- Moved all secret handling out of the browser into a single-file Cloudflare Worker (`penguin-api/worker.js`): `POST /api/auth` (password → HMAC session token + per-IP 5-min lockout), `POST /api/pin` (Chat PIN, independent limiter), `POST /api/tg` (Telegram, token/token+text from JSON or query), `POST /api/firebase-token` (short-lived Firebase custom token), `POST /api/auth/refresh` (renew a still-valid token), and `GET /api/image/<name>` (private KV photos).
+- Added CORS (`Access-Control-Allow-Origin: *`, GET/POST/OPTIONS, preflight `204`) so the tunneled/local static frontend can call the Worker cross-origin. Auth is a token in the body/query (no cookies), so `*` is safe; the real gate is `AUTH_CODE` + the limiter.
+- `sessionToken` is memory-only; it is nulled on privacy re-lock and refreshed every 10 minutes.
+
+### Private ladder photos via Worker KV — 2026-09-01
+
+- The three ladder photos now live in a Cloudflare Workers KV namespace (`env.BUCKET`) and are served only with a valid `?token=`. The local `images/` directory has been **removed** from the workspace; `index.html`/`script.js` rewrite the ladder `<source>`/`<img>` to `/api/image/<name>?token=` at unlock time.
+
+### Bhandhari leave-ping reliability fix — 2026-09-01
+
+- **Root cause:** `sessionToken = null` ran before `relockChatForLifecycle()` in the `visibilitychange` (document.hidden) branch, so the leave beacon authenticated with a null token and silently dropped.
+- **Fix:** `sessionToken = null` moved to run **after** `relockChatForLifecycle()` (privacy re-lock preserved — the branch is synchronous).
+- **Delivery hardening:** the `🔴` leave ping now fires a `GET` query-string request with `keepalive:true` as the primary path (guaranteed to survive page unload) with a single `sendBeacon` fallback; exactly one request fires so no duplicate leave. This fixes the previous `sendBeacon`-only path that could return `true` while dropping the request.
+- Build version bumped to `1.0.10`; `serve.py` serves with no-store cache headers so the browser always loads the fresh bundle.
+
+The date-divider/unread and secure-backend changes are currently uncommitted in the working tree. The silent identity ping is committed on `test-branch` (`6d07361`). The Chat PIN and GIPHY changes are part of the synchronized baseline (`92f3bd4`). The previously removed `CHAT_SCREEN_UI_UX_REPORT.md` file remains deleted as part of the earlier committed repository state.
 
 ---
 
@@ -672,4 +708,4 @@ There is no automated test suite. The following checks are currently appropriate
 - Keyboard focus and reduced-motion behavior
 - Offline and reconnect states
 
-The most recent validation (after the date-divider/unread-nav changes) completed successfully for JavaScript syntax (`node --check script.js`), CSS lint (`stylelint style.css`), and Git whitespace checks (`git diff --check`). Earlier passes also covered GIF/PIN structure assertions and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so the sticky push-out, midnight relabel, unread jump, GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.
+The most recent validation (after the date-divider/unread-nav changes) completed successfully for JavaScript syntax (`node --check script.js`), CSS lint (`stylelint style.css`), and Git whitespace checks (`git diff --check`). The secure-backend work added validation of `node --check worker.js` and live HTTP checks against the deployed Worker: `/api/auth` success + 401/429 paths, `/api/tg` (POST JSON and GET query) returning 200 and calling Telegram, an expired token returning 401, and CORS preflight answering 204. Earlier passes also covered GIF/PIN structure assertions and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so the sticky push-out, midnight relabel, unread jump, GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.

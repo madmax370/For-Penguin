@@ -5,6 +5,10 @@
 
 document.addEventListener('DOMContentLoaded', () => {
 
+    // Build fingerprint — confirm you're on the fresh bundle (hard-reload / clear cache).
+    // If you don't see this in the console, the browser is serving a stale cached script.
+    console.info('[For Penguin] build 1.0.10');
+
     // ===== PASSWORD LOGIC (FIXED LOCKOUT PERSISTENCE) =====
     const passwordOverlay = document.getElementById('password-overlay');
     const passwordInput = document.getElementById('password-input');
@@ -12,9 +16,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const passwordError = document.getElementById('password-error');
     const mainContent = document.getElementById('main-content');
 
-    // SHA-256 hash of the correct password (REDACTED)
-    // Generated using: echo -n "REDACTED" | sha256sum
-    const CORRECT_PASSWORD_HASH = '277375b99e186c72ac38ac47b03199038342fe0389be8765476fa2be0c5b5649';
+    // ============================================================
+    //  SECURE BACKEND (Cloudflare Worker) — secrets live here, never
+    //  in the browser. sessionToken is memory-only (never persisted),
+    //  so a refresh/tab-close always requires the password again.
+    // ============================================================
+    const WORKER_URL = 'https://penguin-api.madmax801065.workers.dev';
+    let sessionToken = null;
+    let sessionKeepAliveTimer = null;
+
+    // Build a private image URL served by the worker (requires a valid token).
+    function imageUrl(filename) {
+        return WORKER_URL + '/api/image/' + filename + '?token=' + encodeURIComponent(sessionToken || '');
+    }
+    // Strip the local 'images/' dir so 'images/image1.jpg' -> 'image1.jpg'.
+    function localNameFromPath(p) {
+        return String(p || '').replace(/^images\//, '');
+    }
+    // Rewrite a srcset attribute (urls + descriptors) to private worker URLs.
+    function srcsetToWorker(srcset) {
+        if (!srcset) return srcset;
+        return srcset.split(',').map(part => {
+            part = part.trim();
+            if (!part) return '';
+            const spaceIdx = part.indexOf(' ');
+            const url = spaceIdx === -1 ? part : part.slice(0, spaceIdx);
+            const desc = spaceIdx === -1 ? '' : part.slice(spaceIdx + 1);
+            return imageUrl(localNameFromPath(url)) + (desc ? ' ' + desc : '');
+        }).join(', ');
+    }
+
+    // Refresh the still-valid session token so a long session never hits the
+    // 15-min expiry on image/telegram calls. Requires an initially-valid token.
+    async function refreshSessionToken() {
+        if (!sessionToken) return;
+        try {
+            const res = await fetch(WORKER_URL + '/api/auth/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: sessionToken })
+            });
+            if (res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (data.ok && data.token) sessionToken = data.token;
+            }
+        } catch (e) { /* silent — keep the existing token */ }
+    }
+
+    function startSessionKeepAlive() {
+        if (sessionKeepAliveTimer) return;
+        sessionKeepAliveTimer = setInterval(refreshSessionToken, 10 * 60 * 1000); // every 10 min
+    }
 
     // Initialize from session storage safely
     let failedAttempts = parseInt(sessionStorage.getItem('pwd_attempts') || '0');
@@ -64,24 +116,50 @@ document.addEventListener('DOMContentLoaded', () => {
     lockoutMsg.style.display = 'none';
     passwordError.parentNode.insertBefore(lockoutMsg, passwordError.nextSibling);
 
-    // Hash the input password and compare
+    // Server-driven 5-minute lockout UI (the worker enforces the block per IP).
+    const startServerLockout = (seconds) => {
+        isLockedOut = true;
+        passwordInput.disabled = true;
+        unlockBtn.disabled = true;
+        passwordError.style.display = 'none';
+        lockoutMsg.textContent = `Too many attempts. Locked out for ${seconds} seconds.`;
+        lockoutMsg.style.display = 'block';
+        let remaining = seconds;
+        const lockTimer = setInterval(() => {
+            remaining--;
+            if (remaining <= 0) {
+                clearInterval(lockTimer);
+                isLockedOut = false;
+                passwordInput.disabled = false;
+                unlockBtn.disabled = false;
+                lockoutMsg.style.display = 'none';
+                passwordInput.focus();
+            } else {
+                lockoutMsg.textContent = `Too many attempts. Locked out for ${remaining} seconds.`;
+            }
+        }, 1000);
+    };
+
+    // Validate the code against the secure backend; on success we keep the
+    // returned session token in memory and hand it to the worker for chat,
+    // Telegram and private images. No secret is compared in the browser.
     const checkPassword = async () => {
         if (isLockedOut) return;
 
         try {
-            // Convert input to ArrayBuffer
-            const encoder = new TextEncoder();
-            const data = encoder.encode(passwordInput.value);
-            
-            // Generate SHA-256 hash
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            
-            // Convert hash to hex string
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const inputHash = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
-            
-            // Compare hashes
-            if (inputHash === CORRECT_PASSWORD_HASH) {
+            const code = String(passwordInput.value || '').trim();
+            if (!code) return;
+            const res = await fetch(WORKER_URL + '/api/auth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code })
+            });
+
+            if (res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (!data.ok || !data.token) throw new Error('Bad payload');
+                sessionToken = data.token;
+                startSessionKeepAlive();
                 failedAttempts = 0;
                 passwordOverlay.style.opacity = '0';
                 setTimeout(() => {
@@ -100,52 +178,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Start the birthday experience
                     initMainApp();
                 }, 500);
-            } else {
-                failedAttempts++;
-                passwordInput.value = '';
-
-                if (failedAttempts >= 3) {
-                    isLockedOut = true;
-                    const lockoutDuration = 15000; // 15 seconds
-                    const lockoutEndTime = Date.now() + lockoutDuration;
-                    
-                    // Save to session storage
-                    sessionStorage.setItem('pwd_attempts', '3');
-                    sessionStorage.setItem('pwd_lockout_end', lockoutEndTime.toString());
-                    
-                    passwordInput.disabled = true;
-                    unlockBtn.disabled = true;
-                    passwordError.style.display = 'none';
-                    lockoutMsg.textContent = 'Too many attempts. Locked out for 15 seconds.';
-                    lockoutMsg.style.display = 'block';
-
-                    let countdown = 15;
-                    const lockTimer = setInterval(() => {
-                        countdown--;
-                        lockoutMsg.textContent = `Too many attempts. Locked out for ${countdown} seconds.`;
-                        if (countdown <= 0) {
-                            clearInterval(lockTimer);
-                            isLockedOut = false;
-                            failedAttempts = 0;
-                            passwordInput.disabled = false;
-                            unlockBtn.disabled = false;
-                            lockoutMsg.style.display = 'none';
-                            sessionStorage.removeItem('pwd_attempts');
-                            sessionStorage.removeItem('pwd_lockout_end');
-                            passwordInput.focus();
-                        }
-                    }, 1000);
-                } else {
-                    // Save current attempt count to session storage
-                    sessionStorage.setItem('pwd_attempts', failedAttempts.toString());
-                    passwordError.textContent = `Incorrect code. ${3 - failedAttempts} attempts remaining. 🐧`;
-                    passwordError.style.display = 'block';
-                    setTimeout(() => { passwordError.style.display = 'none'; }, 2000);
-                }
+                return;
             }
+
+            if (res.status === 429) {
+                // Blocked (3 wrong attempts) — server-enforced 5 minute lockout.
+                const data = await res.json().catch(() => ({}));
+                const retryAfter = Math.max(1, Number(data.retryAfter) || 300);
+                passwordInput.value = '';
+                startServerLockout(retryAfter);
+                return;
+            }
+
+            if (res.status === 401) {
+                // Wrong code — show remaining attempts as reported by the worker.
+                const data = await res.json().catch(() => ({}));
+                const attemptsLeft = Number(data.attemptsLeft) >= 0 ? Number(data.attemptsLeft) : 2;
+                passwordInput.value = '';
+                passwordError.textContent = `Incorrect code. ${attemptsLeft} attempts remaining. 🐧`;
+                passwordError.style.display = 'block';
+                setTimeout(() => { passwordError.style.display = 'none'; }, 2000);
+                return;
+            }
+
+            // Any other server response — graceful, non-breaking.
+            passwordInput.value = '';
+            passwordError.textContent = 'Something went wrong. Please try again.';
+            passwordError.style.display = 'block';
+            setTimeout(() => { passwordError.style.display = 'none'; }, 2000);
         } catch (error) {
-            console.error('Password hashing error:', error);
-            passwordError.textContent = 'An error occurred. Please try again.';
+            console.error('Password check error:', error);
+            passwordError.textContent = 'Could not connect. Check your connection and try again.';
             passwordError.style.display = 'block';
         }
     };
@@ -186,7 +249,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             blackout.style.display = 'block';
             passwordInput.value = '';
-            // Privacy: drop any staged media upload + close the photo viewer on re-lock
+            // Privacy: drop any staged media upload + close the photo viewer on re-lock.
+            // NOTE: sessionToken is nulled BELOW, AFTER relockChatForLifecycle() — because
+            // relock triggers the Bhandhari "left chat" Telegram beacon, which needs a still
+            // valid session token to authenticate to /api/tg. Nulling it first silently
+            // dropped that leave ping. Privacy is preserved: the whole branch is synchronous,
+            // so the token is still nulled before the user can interact again / before the
+            // else branch re-showing the password overlay runs.
             cancelPendingAttachment(false);
             closeLightbox();
             closeMessageInfoSheet();
@@ -199,6 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Next unlock = PIN again, then "Who are you?" again.
             cleanupReadReceiptObserver();
             relockChatForLifecycle();
+            sessionToken = null; // privacy re-lock: never keep the session token across a hide
             const notifyBtn = document.getElementById('notify-bhatari-btn');
             if (notifyBtn) notifyBtn.style.display = 'none';
             document.querySelectorAll('#chat-identity-toggle .toggle-btn').forEach(b => {
@@ -403,13 +473,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function initMainApp() {
         // Start all three ladder photos now (scene is still display:none
         // for 600ms). Otherwise photo 3, below the fold, waited to download.
-        ['images/image1-640.webp', 'images/image2-640.webp', 'images/image3-640.webp'].forEach(href => {
+        // They are now served PRIVATELY by the worker (token in the URL), so no
+        // photo is ever fetched before the password/session was issued.
+        ['image1-640.webp', 'image2-640.webp', 'image3-640.webp'].forEach(name => {
             const link = document.createElement('link');
             link.rel = 'preload';
             link.as = 'image';
-            link.href = href;
+            link.href = imageUrl(name);
             document.head.appendChild(link);
         });
+
+        // Move the static HTML image sources into worker-backed private URLs.
+        // stash stores the original local path; restore rewrites it to the worker.
+        stashLadderImages();
+        restoreLadderImages();
 
         // Setup bokeh particles
         setupBokeh();
@@ -568,8 +645,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('#scene-ladder picture').forEach(pic => {
             const source = pic.querySelector('source');
             const img = pic.querySelector('img');
-            if (source && source.dataset.origSrcset) source.setAttribute('srcset', source.dataset.origSrcset);
-            if (img && img.dataset.origSrc) img.setAttribute('src', img.dataset.origSrc);
+            // Restore as PRIVATE worker URLs (with the session token) so the
+            // ladder photos only ever load after a valid password/session.
+            if (source && source.dataset.origSrcset) source.setAttribute('srcset', srcsetToWorker(source.dataset.origSrcset));
+            if (img && img.dataset.origSrc) img.setAttribute('src', imageUrl(localNameFromPath(img.dataset.origSrc)));
         });
     }
 
@@ -721,9 +800,26 @@ document.addEventListener('DOMContentLoaded', () => {
     //  REPLY DELIVERY
     // ===================================================
 
-    // Telegram Bot credentials
-    const TG_BOT_TOKEN = '8695269828:AAEa1pffPXcEfXZJIWiSMvE3BIxJtqINV94';
-    const TG_CHAT_ID = '6219378525';
+    // Send a Telegram message through the secure worker. The bot token and chat
+    // ID live ONLY in the worker's environment variables — never in the browser.
+    // Returns true on success, false on any failure (never throws).
+    async function tgSend(text, parseMode) {
+        if (!sessionToken) return false;
+        try {
+            const res = await fetch(WORKER_URL + '/api/tg', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token: sessionToken,
+                    text: String(text || ''),
+                    parse_mode: parseMode === 'HTML' ? 'HTML' : undefined
+                })
+            });
+            return res.ok;
+        } catch (e) {
+            return false;
+        }
+    }
 
     // ── Helper: show inline feedback (error or success) ──
     function setReplyFeedback(msg, type) {
@@ -761,8 +857,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Firebase is loaded only when Chat opens — keeps the password/ladder/letter screens light
-    const FB_APP_SRC = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
-    const FB_FS_SRC  = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
+    const FB_APP_SRC  = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
+    const FB_FS_SRC   = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
+    const FB_AUTH_SRC = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js';
     let db = null;
     let TYPING_DOC = null;
     let PRESENCE_DOC = null;
@@ -793,6 +890,7 @@ document.addEventListener('DOMContentLoaded', () => {
         firebaseReady = (async () => {
             await loadExternalScript(FB_APP_SRC);
             await loadExternalScript(FB_FS_SRC);
+            await loadExternalScript(FB_AUTH_SRC);
             let _fbApp;
             try { _fbApp = firebase.app(); } catch { _fbApp = firebase.initializeApp(FIREBASE_CONFIG); }
             db = firebase.firestore(_fbApp);
@@ -808,6 +906,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             } catch (e) {
                 console.warn('Persistence enable failed:', e);
+            }
+            // Sign in with a short-lived custom token minted by the worker. This
+            // makes `request.auth != null` true for Firestore rules — no Gmail,
+            // no account, no login screen. If the session token is missing (e.g.
+            // the user re-locked and hasn't re-entered the password), we leave
+            // the app unsigned-in; the chat listeners then get a permission
+            // error that the existing error handler surfaces non-breakingly.
+            if (sessionToken) {
+                try {
+                    const res = await fetch(WORKER_URL + '/api/firebase-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: sessionToken })
+                    });
+                    if (res.ok) {
+                        const data = await res.json().catch(() => ({}));
+                        if (data.ok && data.token) {
+                            await firebase.auth(_fbApp).signInWithCustomToken(data.token);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Firebase sign-in failed:', e);
+                }
             }
             TYPING_DOC = db.doc('typing/status');
             PRESENCE_DOC = db.doc('presence/status');
@@ -852,7 +973,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const PRESENCE_STALE_MS         = 75000; // heartbeat older than this → treat as offline
     const PRESENCE_HEARTBEAT_MS     = 25000;
 
-    // ─── Telegram Notify (uses TG_BOT_TOKEN / TG_CHAT_ID from REPLY DELIVERY above) ──
+    // ─── Telegram Notify (delivered securely via the worker) ──
     const NOTIFY_COOLDOWN_MS = 10_000; // 10 seconds
     let notifyLastSentAt = 0;
     let notifyCooldownTimer = null;
@@ -871,19 +992,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch(
-                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: TG_CHAT_ID,
-                        text: '🔔 Bhandhari is waiting for you in the chat! Come say hi 💜',
-                        parse_mode: 'HTML'
-                    })
-                }
-            );
-            if (!res.ok) throw new Error('Telegram error');
+            const ok = await tgSend('🔔 Bhandhari is waiting for you in the chat! Come say hi 💜', 'HTML');
+            if (!ok) throw new Error('Telegram error');
             notifyLastSentAt = Date.now();
             showToast('Bhatari has been notified! 💜');
         } catch (err) {
@@ -958,19 +1068,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Fire-and-forget: no await, no loading state, no UI callback.
-            fetch(
-                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'omit',
-                    keepalive: true, // lands even if she closes the tab right after the tap
-                    body: JSON.stringify({
-                        chat_id: TG_CHAT_ID,
-                        text: `🐧 She just chose Bhandhari · ${identityPingStamp()}`
-                    })
-                }
-            ).catch(() => { /* silent by design — never surface a failure to her */ });
+            tgSend(`🐧 She just chose Bhandhari · ${identityPingStamp()}`).catch(() => { /* silent */ });
         } catch (e) { /* silent by design */ }
     }
 
@@ -982,26 +1080,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Fire-and-forget: no await, no loading state, no UI callback.
-            fetch(
-                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'omit',
-                    keepalive: true, // lands even if she closes the tab right after the tap
-                    body: JSON.stringify({
-                        chat_id: TG_CHAT_ID,
-                        text: `✨ Bhatari Identity is chosen · ${identityPingStamp()}`
-                    })
-                }
-            ).catch(() => { /* silent by design — never surface a failure to her */ });
+            tgSend(`✨ Bhatari Identity is chosen · ${identityPingStamp()}`).catch(() => { /* silent */ });
         } catch (e) { /* silent by design */ }
     }
 
     // ─── Bhandhari analytics (Telegram, 2 msgs/session, Bhandhari only) ────
     // Lightweight, accurate, non-blocking: 2 fire-and-forget Telegram pings
     // per Bhandhari session (enter + leave with duration). Reuses
-    // TG_BOT_TOKEN/TG_CHAT_ID, no DOM, no extra SDK, no render cost.
+    // Uses the worker's /api/tg, no DOM, no extra SDK, no render cost.
     // Enter fires on every Bhandhari activation (no cooldown); leave fires
     // with stayed duration on identity switch, relock, or tab close via
     // keepalive/sendBeacon. Existing notify* pings remain untouched.
@@ -1025,19 +1111,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (bhandhariAnalyticsStartAt) return; // already in a Bhandhari session
         bhandhariAnalyticsStartAt = Date.now();
         try {
-            fetch(
-                `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'omit',
-                    keepalive: true,
-                    body: JSON.stringify({
-                        chat_id: TG_CHAT_ID,
-                        text: `🟢 Bhandhari entered chat · ${identityPingStamp()}`
-                    })
-                }
-            ).catch(() => { /* silent by design */ });
+            tgSend(`🟢 Bhandhari entered chat · ${identityPingStamp()}`).catch(() => { /* silent */ });
         } catch (e) { /* silent by design */ }
     }
 
@@ -1049,16 +1123,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const durationStr = formatBhandhariAnalyticsDuration(durationMs);
         try {
             const text = `🔴 Bhandhari left chat · ${identityPingStamp()} · stayed ${durationStr}`;
-            // Use GET to avoid CORS preflight during unload (POST JSON triggers preflight which
-            // fails on pagehide/beforeunload). Single beacon only — previous version sent
-            // fetch + sendBeacon together and caused 2 Telegram messages per leave.
-            const url = `https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage?chat_id=${encodeURIComponent(TG_CHAT_ID)}&text=${encodeURIComponent(text)}`;
-            let sent = false;
-            if (navigator.sendBeacon) {
-                try { sent = navigator.sendBeacon(url); } catch (e) { sent = false; }
-            }
-            if (!sent) {
-                fetch(url, { method: 'GET', keepalive: true, credentials: 'omit', mode: 'no-cors' }).catch(() => {});
+            // The worker accepts token + text via query string so this can fire
+            // as a "simple request" during unload — a JSON POST would trigger a
+            // CORS preflight that fails on pagehide.
+            // PRIMARY DELIVERY: a keepalive GET fetch — the browser guarantees it
+            // is dispatched even while the page is unloading, and it is more
+            // reliable across browsers than sendBeacon (which can silently report
+            // "sent" yet drop the request). Exactly ONE request is fired so no
+            // double message can occur. sendBeacon is only a last-resort fallback
+            // if the Fetch API itself is unavailable.
+            if (!sessionToken) return;
+            const url = WORKER_URL + '/api/tg?token=' + encodeURIComponent(sessionToken) +
+                '&text=' + encodeURIComponent(text);
+            console.info('[For Penguin] leave ping firing →', text);
+            try {
+                fetch(url, { method: 'GET', keepalive: true, credentials: 'omit', mode: 'cors' })
+                    .then(r => console.info('[For Penguin] keepalive GET →', r.status))
+                    .catch(e => console.warn('[For Penguin] keepalive GET failed:', e));
+            } catch (e) {
+                // Fetch unavailable/throws (very old env) — fall back to beacon.
+                if (navigator.sendBeacon) {
+                    try { navigator.sendBeacon(url); } catch (e2) { /* noop */ }
+                }
             }
         } catch (e) { /* silent by design */ }
     }
@@ -1295,7 +1381,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // The PIN is entered through the custom keypad and keyboard handlers only.
     // No input/form field exists, so password managers have no credential field
     // to detect or save. The lockout record never contains the PIN itself.
-    const CHAT_PIN_HASH = '277375b99e186c72ac38ac47b03199038342fe0389be8765476fa2be0c5b5649';
+    // The PIN is NOT held in the browser. Verification happens on the Worker
+    // (/api/pin) using the same AUTH_CODE as the app password — no hash, no
+    // secret, no crypto.subtle.digest is ever performed client-side.
     const CHAT_PIN_LENGTH = 4;
     const CHAT_PIN_MAX_ATTEMPTS = 3;
     const CHAT_PIN_LOCKOUT_MS = 15000;
@@ -1663,7 +1751,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 600);
         };
 
-        function verifyPin() {
+        async function verifyPin() {
             if (isPinLockedOut() || chatState.pinVerificationInFlight) return;
             const candidate = chatState.pinInput;
             if (!/^[0-9]{4}$/.test(candidate)) return;
@@ -1676,27 +1764,54 @@ document.addEventListener('DOMContentLoaded', () => {
             setPinPadDisabled(true);
             updatePinStatus('Checking PIN…');
 
-            if (!window.crypto || !window.crypto.subtle || typeof TextEncoder === 'undefined') {
-                finishVerificationError('Unable to verify PIN securely. Please reload and try again.');
+            // A stale result (relock/reset/back-nav) or a hidden scene must never
+            // touch the UI — same guard the old digest used only after resolving.
+            const stale = () =>
+                verificationRunId !== chatState.pinVerificationRunId ||
+                document.hidden ||
+                lockOverlay.classList.contains('hidden');
+
+            let res;
+            try {
+                res = await fetch(WORKER_URL + '/api/pin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: candidate })
+                });
+            } catch (e) {
+                if (!stale()) {
+                    finishVerificationError('Unable to verify PIN securely. Please reload and try again.');
+                }
                 return;
             }
 
-            window.crypto.subtle.digest('SHA-256', new TextEncoder().encode(candidate))
-                .then(hashBuffer => {
-                    if (verificationRunId !== chatState.pinVerificationRunId || document.hidden || lockOverlay.classList.contains('hidden')) return;
-                    const hashArray = Array.from(new Uint8Array(hashBuffer));
-                    const inputHash = hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
-                    if (inputHash === CHAT_PIN_HASH) {
-                        handleSuccessfulVerification();
-                    } else {
-                        handleFailedVerification();
-                    }
-                })
-                .catch(() => {
-                    if (verificationRunId === chatState.pinVerificationRunId && !document.hidden) {
-                        finishVerificationError('Unable to verify PIN securely. Please reload and try again.');
-                    }
-                });
+            let data = {};
+            try { data = await res.json(); } catch (e) { data = {}; }
+
+            if (res.ok && data.ok) {
+                if (!stale()) handleSuccessfulVerification();
+            } else if (res.status === 429 || data.blocked) {
+                // The Worker rate-limited this IP (3 wrong -> 5 min). Reflect the
+                // server's block so the countdown stays honest and never drifts.
+                const retryAfterS = Math.max(1, Number(data.retryAfter) || 300);
+                if (!stale()) {
+                    chatState.pinVerificationInFlight = false;
+                    chatState.pinInput = '';
+                    chatState.failedAttempts = CHAT_PIN_MAX_ATTEMPTS;
+                    chatState.lockoutEndTime = Date.now() + (retryAfterS * 1000);
+                    writeStoredChatPinLockout(chatState.failedAttempts, chatState.lockoutEndTime);
+                    updatePinDots();
+                    scheduleLockout();
+                }
+            } else if (res.status === 401 || data.ok === false) {
+                // Wrong PIN (still under the server's block threshold) — the
+                // existing client-side counter/attempts/lockout UX handles it.
+                if (!stale()) handleFailedVerification();
+            } else {
+                if (!stale()) {
+                    finishVerificationError('Unable to verify PIN securely. Please reload and try again.');
+                }
+            }
         }
 
         const handlePinKeydown = (e) => {
