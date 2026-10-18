@@ -140,6 +140,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 1000);
     };
 
+    // Subtle shake on wrong-code entry. Removing the class first, forcing a
+    // reflow, then re-adding it restarts the CSS animation on rapid retries.
+    const passwordBoxEl = document.querySelector('.password-box');
+    const triggerPasswordShake = () => {
+        if (!passwordBoxEl) return;
+        passwordBoxEl.classList.remove('shake');
+        void passwordBoxEl.offsetWidth;
+        passwordBoxEl.classList.add('shake');
+        setTimeout(() => passwordBoxEl.classList.remove('shake'), 480);
+    };
+
     // Validate the code against the secure backend; on success we keep the
     // returned session token in memory and hand it to the worker for chat,
     // Telegram and private images. No secret is compared in the browser.
@@ -161,6 +172,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 sessionToken = data.token;
                 startSessionKeepAlive();
                 failedAttempts = 0;
+                // Brief confirmation beat before the fade-out — a soft green
+                // ring pulses from the card edge the moment the code lands.
+                if (passwordBoxEl) {
+                    passwordBoxEl.classList.add('success');
+                    setTimeout(() => passwordBoxEl.classList.remove('success'), 700);
+                }
                 passwordOverlay.style.opacity = '0';
                 setTimeout(() => {
                     passwordOverlay.style.display = 'none';
@@ -197,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 passwordInput.value = '';
                 passwordError.textContent = `Incorrect code. ${attemptsLeft} attempts remaining. 🐧`;
                 passwordError.style.display = 'block';
+                triggerPasswordShake();
                 setTimeout(() => { passwordError.style.display = 'none'; }, 2000);
                 return;
             }
@@ -214,8 +232,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     unlockBtn.addEventListener('click', checkPassword);
-    passwordInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') checkPassword();
+    // keydown (not deprecated keypress). Guard IME composition so mobile
+    // keyboards mid-compose don't submit on the Return that closes the
+    // composition popup.
+    passwordInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        checkPassword();
     });
 
     // ===== SECURITY & NETWORK HANDLING (PRESERVED) =====
@@ -324,6 +347,9 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             this.currentIndex = -1;
             this.isTransitioning = false;
+            // Tracks the "hide the progress bar" timer so a rapid scene change
+            // can cancel the previous one instead of letting it fire mid-flight.
+            this._progressTimer = null;
         }
 
         reset() {
@@ -350,7 +376,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Reset ladder
             document.body.classList.remove('scene-chat-active');
             stashLadderImages();
-            document.querySelectorAll('.ladder-card').forEach(card => card.classList.remove('visible'));
+            document.querySelectorAll('.ladder-card').forEach(card => {
+                card.classList.remove('visible');
+                card.classList.remove('reveal-done');
+            });
             const ladderBtn = document.getElementById('ladder-continue-btn');
             if (ladderBtn) ladderBtn.classList.remove('show');
             const ladderContainer = document.getElementById('ladder-container');
@@ -395,6 +424,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (index < 0 || index >= this.scenes.length || this.isTransitioning) return;
             this.isTransitioning = true;
 
+            // Show transition progress indicator. Cancel any pending hide from
+            // a previous transition so its timer can't reset the bar mid-animation.
+            const progressEl = document.getElementById('scene-transition-progress');
+            const progressBar = document.getElementById('scene-transition-progress-bar');
+            if (progressEl && progressBar) {
+                if (this._progressTimer) {
+                    clearTimeout(this._progressTimer);
+                    this._progressTimer = null;
+                }
+                progressBar.style.transform = 'scaleX(0)';
+                progressEl.classList.add('active');
+                requestAnimationFrame(() => {
+                    progressBar.style.transform = 'scaleX(0.6)';
+                });
+            }
+
             // Exit current scene
             if (this.currentIndex >= 0) {
                 const currentEl = document.getElementById(this.scenes[this.currentIndex]);
@@ -436,6 +481,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     this.currentIndex = index;
                     this.isTransitioning = false;
                     document.body.classList.toggle('scene-chat-active', this.scenes[index] === 'scene-chat');
+
+                    // Complete and hide transition progress indicator
+                    if (progressEl && progressBar) {
+                        progressBar.style.transform = 'scaleX(1)';
+                        if (this._progressTimer) clearTimeout(this._progressTimer);
+                        this._progressTimer = setTimeout(() => {
+                            progressEl.classList.remove('active');
+                            progressBar.style.transform = 'scaleX(0)';
+                            this._progressTimer = null;
+                        }, 500);
+                    }
 
                     // Trigger scene-specific entrance
                     this.onSceneEnter(index);
@@ -611,12 +667,27 @@ document.addEventListener('DOMContentLoaded', () => {
         stringEl.style.bottom = 'auto'; // override CSS bottom
     }
 
-    // Adjust the string position/size on window resize
-    window.addEventListener('resize', adjustLadderString);
+    // Adjust the string position/size on window resize. Mobile browsers fire
+    // `resize` on every URL-bar hide/show during scroll, and adjustLadderString
+    // reads layout — so rAF-coalesce to at most one pass per frame.
+    let ladderStringTick = false;
+    const scheduleLadderStringAdjust = () => {
+        if (ladderStringTick) return;
+        ladderStringTick = true;
+        requestAnimationFrame(() => {
+            ladderStringTick = false;
+            adjustLadderString();
+        });
+    };
+    window.addEventListener('resize', scheduleLadderStringAdjust, { passive: true });
 
     function loadDisplayFonts() {
         if (loadDisplayFonts._done) return;
         loadDisplayFonts._done = true;
+        // index.html preloads this stylesheet in <head>, so by the time the
+        // first scene is entered the rules are usually already applied.
+        // Avoid injecting a duplicate link in that case.
+        if (document.querySelector('link[href*="family=Lora"]')) return;
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = 'https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Caveat:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap';
@@ -637,6 +708,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (src && !img.dataset.origSrc) img.dataset.origSrc = src;
                 img.removeAttribute('src');
                 img.removeAttribute('srcset');
+                // Drop the fade-in class so a re-entry replays the transition
+                // instead of showing the cached photo at full opacity.
+                img.classList.remove('loaded');
             }
         });
     }
@@ -648,9 +722,27 @@ document.addEventListener('DOMContentLoaded', () => {
             // Restore as PRIVATE worker URLs (with the session token) so the
             // ladder photos only ever load after a valid password/session.
             if (source && source.dataset.origSrcset) source.setAttribute('srcset', srcsetToWorker(source.dataset.origSrcset));
-            if (img && img.dataset.origSrc) img.setAttribute('src', imageUrl(localNameFromPath(img.dataset.origSrc)));
+            if (img && img.dataset.origSrc) {
+                // Fade the photo in once decoded. Bound without `once` so the
+                // listener survives re-entry (stash removes .loaded, the next
+                // load replays the transition). Errors also mark loaded so a
+                // broken request doesn't leave the photo invisible.
+                if (img.dataset.loadBound !== '1') {
+                    img.dataset.loadBound = '1';
+                    img.addEventListener('load', () => img.classList.add('loaded'));
+                    img.addEventListener('error', () => img.classList.add('loaded'));
+                }
+                img.setAttribute('src', imageUrl(localNameFromPath(img.dataset.origSrc)));
+                // Cached photo: browsers can complete synchronously after src
+                // is set, in which case no load event will fire.
+                if (img.complete && img.naturalWidth > 0) img.classList.add('loaded');
+            }
         });
     }
+
+    // Incremented on every ladder entry so stale reveal timers from a prior
+    // visit cannot mutate a newly re-entered scene.
+    let ladderRevealRunId = 0;
 
     function enterLadderScene() {
         loadDisplayFonts();
@@ -658,6 +750,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Adjust the hanging string dynamically to fit the cards perfectly
         adjustLadderString();
 
+        const runId = ++ladderRevealRunId;
         const cards = document.querySelectorAll('.ladder-card');
         const continueBtn = document.getElementById('ladder-continue-btn');
 
@@ -666,12 +759,21 @@ document.addEventListener('DOMContentLoaded', () => {
         // could sit invisible for ~3.5s. Images are eager now; the card
         // fades in and the photo paints when it arrives.
         const STAGGER_MS = 220;
+        // The card's visible-state transform is the same channel parallax
+        // writes to, so keep the entrance easing for this long and then
+        // switch to the short, scroll-tracking transition (.reveal-done).
+        const REVEAL_MS = 820;
         cards.forEach((card, index) => {
             setTimeout(() => {
+                if (runId !== ladderRevealRunId) return;
                 card.classList.add('visible');
                 requestAnimationFrame(adjustLadderString);
+                setTimeout(() => {
+                    if (runId === ladderRevealRunId) card.classList.add('reveal-done');
+                }, REVEAL_MS);
                 if (index === cards.length - 1) {
                     setTimeout(() => {
+                        if (runId !== ladderRevealRunId) return;
                         adjustLadderString();
                         if (continueBtn) continueBtn.classList.add('show');
                     }, 280);
@@ -699,16 +801,145 @@ document.addEventListener('DOMContentLoaded', () => {
     const ladderContainer = document.getElementById('ladder-container');
     const scrollHintEl = document.getElementById('ladder-scroll-hint');
     if (ladderContainer && scrollHintEl) {
+        // rAF-throttled: the scroll event fires 60+ times/sec on mobile and
+        // this handler writes two styles on each one. Coalesce to one write
+        // per frame instead.
+        let hintTick = false;
         ladderContainer.addEventListener('scroll', () => {
-            if (ladderContainer.scrollTop > 40) {
-                scrollHintEl.style.opacity = '0';
-                scrollHintEl.style.transform = 'translate3d(-50%, 10px, 0)';
-            } else {
-                scrollHintEl.style.opacity = '0.8';
-                scrollHintEl.style.transform = 'translate3d(-50%, 0, 0)';
-            }
+            if (hintTick) return;
+            hintTick = true;
+            requestAnimationFrame(() => {
+                hintTick = false;
+                if (ladderContainer.scrollTop > 40) {
+                    scrollHintEl.style.opacity = '0';
+                    scrollHintEl.style.transform = 'translate3d(-50%, 10px, 0)';
+                } else {
+                    scrollHintEl.style.opacity = '0.8';
+                    scrollHintEl.style.transform = 'translate3d(-50%, 0, 0)';
+                }
+            });
         }, { passive: true });
     }
+
+    // ─── Parallax depth on ladder cards ──────────────────────
+    // Cards shift slightly opposite to scroll direction, deepening the
+    // "hanging from a string" illusion. Geometry is measured once per scene
+    // entry (and on resize), never per frame, so scrolling performs zero
+    // layout reads — only one transform write per card. Disabled for
+    // prefers-reduced-motion.
+    (function initLadderParallax() {
+        const scene = document.getElementById('scene-ladder');
+        const container = document.getElementById('ladder-container');
+        if (!scene || !container) return;
+
+        const PARALLAX_STRENGTH = 0.08; // px offset per px of scroll distance
+        const MAX_PARALLAX_PX = 30;     // clamp to prevent excessive drift
+
+        // Cache the media query once — building a new MediaQueryList inside
+        // the rAF callback was a small per-frame allocation.
+        const reduceMotionQuery = window.matchMedia
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        const prefersReducedMotion = () => !!(reduceMotionQuery && reduceMotionQuery.matches);
+
+        // Cached geometry. `center` is the card's center offset inside the
+        // scroll container, computed once per scene entry. Re-measured only
+        // when geometryDirty is set (scene entry, resize).
+        let cards = [];
+        let geometryDirty = true;
+        let ticking = false;
+
+        const measure = () => {
+            const nodes = container.querySelectorAll('.ladder-card');
+            const next = new Array(nodes.length);
+            for (let i = 0; i < nodes.length; i++) {
+                const card = nodes[i];
+                next[i] = {
+                    el: card,
+                    center: card.offsetTop + card.offsetHeight / 2
+                };
+            }
+            cards = next;
+            geometryDirty = false;
+        };
+
+        const applyParallax = () => {
+            // One scroll read, then one style write per card — no interleaved
+            // reads, so the browser can coalesce the mutations into a single
+            // style recalculation pass.
+            const viewCenter = container.scrollTop + container.clientHeight / 2;
+            for (let i = 0; i < cards.length; i++) {
+                const card = cards[i];
+                const delta = card.center - viewCenter;
+                // Positive delta = card below center → shift up (negative Y)
+                // Negative delta = card above center → shift down (positive Y)
+                const raw = -delta * PARALLAX_STRENGTH;
+                const clamped = Math.max(-MAX_PARALLAX_PX, Math.min(MAX_PARALLAX_PX, raw));
+                card.el.style.setProperty('--parallax-y', clamped + 'px');
+            }
+        };
+
+        const updateParallax = () => {
+            ticking = false;
+            // Skip background work when the scene is hidden
+            if (!scene.classList.contains('scene-active')) return;
+            // Respect reduced motion preference
+            if (prefersReducedMotion()) return;
+            if (geometryDirty) measure();
+            applyParallax();
+        };
+
+        const scheduleUpdate = () => {
+            if (ticking) return;
+            ticking = true;
+            requestAnimationFrame(updateParallax);
+        };
+
+        const resetParallax = () => {
+            for (let i = 0; i < cards.length; i++) {
+                cards[i].el.style.setProperty('--parallax-y', '0px');
+            }
+        };
+
+        container.addEventListener('scroll', scheduleUpdate, { passive: true });
+
+        // A single observer handles both enter (measure + update) and exit
+        // (reset), instead of two MutationObservers on the same node.
+        const sceneObserver = new MutationObserver(() => {
+            if (scene.classList.contains('scene-active')) {
+                geometryDirty = true;
+                scheduleUpdate();
+            } else {
+                resetParallax();
+            }
+        });
+        sceneObserver.observe(scene, { attributes: true, attributeFilter: ['class'] });
+
+        // A resize invalidates the cached offsets; re-measure on next frame.
+        window.addEventListener('resize', () => {
+            geometryDirty = true;
+            scheduleUpdate();
+        }, { passive: true });
+
+        // The user can flip reduced-motion mid-session. React to the change
+        // instead of waiting for the next scene re-entry to notice.
+        if (reduceMotionQuery) {
+            const onMotionChange = () => {
+                if (prefersReducedMotion()) {
+                    resetParallax();
+                } else {
+                    geometryDirty = true;
+                    scheduleUpdate();
+                }
+            };
+            if (reduceMotionQuery.addEventListener) {
+                reduceMotionQuery.addEventListener('change', onMotionChange);
+            } else if (reduceMotionQuery.addListener) {
+                // Safari < 14 fallback
+                reduceMotionQuery.addListener(onMotionChange);
+            }
+        }
+    })();
 
 
     // ===================================================
@@ -718,6 +949,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let envelopeOpened = false;
 
     function enterEnvelopeScene() {
+        // Defensive teardown: if the previous visit did not exit through the
+        // Close button (e.g. user advanced via Continue), drop the stale
+        // scroll listener before re-arming on the next open.
+        if (letterProgressCleanup) letterProgressCleanup();
         loadDisplayFonts();
         envelopeOpened = false;
         const envelope = document.getElementById('envelope-element');
@@ -759,16 +994,75 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fullscreen appears after the flap + lift have finished animating.
         setTimeout(() => {
             if (letterFs) letterFs.classList.add('active');
+            // Initialize letter reading progress bar
+            initLetterProgress();
         }, 2050);
     }
 
     if (openEnvelopeBtn) {
         openEnvelopeBtn.addEventListener('click', openEnvelope);
     }
+    // ─── Letter Reading Progress Bar ──────────────────────
+    let letterProgressCleanup = null;
+    function initLetterProgress() {
+        // Defensive teardown: never let a previous instance leave a stacked
+        // scroll listener behind (e.g. user advanced without tapping Close).
+        if (letterProgressCleanup) letterProgressCleanup();
+
+        const content = document.getElementById('letter-full-content');
+        const fill = document.getElementById('letter-progress-fill');
+        if (!content || !fill) return;
+
+        // Progress is a GPU-composited scaleX so scrolling never triggers
+        // layout. The element stays at width:100% and is scaled 0→1.
+        fill.style.transform = 'scaleX(0)';
+
+        // The bottom-fade mask is gone (it read as a black vignette against
+        // the paper). The .has-more class is still toggled — it costs nothing
+        // and leaves a hook for any future non-visual use — but no CSS rule
+        // currently attaches to it.
+        const updateProgress = () => {
+            const maxScroll = content.scrollHeight - content.clientHeight;
+            const atBottom = maxScroll <= 0 ||
+                (content.scrollTop + content.clientHeight) >= (content.scrollHeight - 6);
+            content.classList.toggle('has-more', maxScroll > 0 && !atBottom);
+            if (maxScroll <= 0) {
+                fill.style.transform = 'scaleX(1)';
+                return;
+            }
+            const pct = Math.min(1, Math.max(0, content.scrollTop / maxScroll));
+            fill.style.transform = 'scaleX(' + pct + ')';
+        };
+
+        // Throttled scroll handler via rAF
+        let ticking = false;
+        const onScroll = () => {
+            if (ticking) return;
+            ticking = true;
+            requestAnimationFrame(() => {
+                ticking = false;
+                updateProgress();
+            });
+        };
+
+        content.addEventListener('scroll', onScroll, { passive: true });
+        updateProgress(); // initial state
+
+        // Store cleanup so we can tear down when the letter closes
+        letterProgressCleanup = () => {
+            content.removeEventListener('scroll', onScroll);
+            fill.style.transform = 'scaleX(0)';
+            content.classList.remove('has-more');
+            letterProgressCleanup = null;
+        };
+    }
+
     // Close letter
     const letterCloseBtn = document.getElementById('letter-close-btn');
     if (letterCloseBtn) {
         letterCloseBtn.addEventListener('click', () => {
+            // Tear down letter progress listener
+            if (letterProgressCleanup) letterProgressCleanup();
             const letterFs = document.getElementById('letter-fullscreen');
             if (letterFs) letterFs.classList.remove('active');
 
@@ -1474,6 +1768,28 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chatState.currentIdentity === 'Bhandhari' && typeof bhandhariAnalyticsStartAt !== 'undefined' && bhandhariAnalyticsStartAt) {
             try { notifyBhandhariAnalyticsExit(); } catch (e) { /* silent */ }
         }
+
+        // SECURITY: stop Firestore listeners and wipe the chat state + DOM
+        // BEFORE flipping lock state. Otherwise the message listener keeps
+        // updating the list in the background, and when PIN verification
+        // later succeeds there is a 600 ms window (before the identity
+        // overlay appears) during which previously loaded messages are
+        // visible on screen — the exact "chat screen showing behind the
+        // password screen" symptom. Stopping the listener and clearing the
+        // DOM guarantees nothing is on screen to leak through any overlay.
+        if (chatState.unsubMessages) { try { chatState.unsubMessages(); } catch (e) { /* noop */ } chatState.unsubMessages = null; }
+        if (chatState.unsubTyping)   { try { chatState.unsubTyping();   } catch (e) { /* noop */ } chatState.unsubTyping = null; }
+
+        chatState.messages = [];
+        chatState.renderedIds.clear();
+        chatState.editBoxes.clear();
+        chatState.readPending.clear();
+        clearAllReadTimers();
+        clearReadQueue();
+        const _chatMessagesEl = document.getElementById('chat-messages');
+        if (_chatMessagesEl) _chatMessagesEl.innerHTML = '';
+        chatInitialStaggerDone = false;
+
         chatState.currentIdentity = null;
         chatState.chatUnlocked = false;
         chatState.pinVerificationRunId++;
@@ -1698,7 +2014,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const dots = pinDisplay.querySelectorAll('.pin-dot');
             dots.forEach(dot => {
                 dot.classList.add('error');
-                setTimeout(() => dot.classList.remove('error'), 400);
+                // 500ms > the 0.4s CSS animation, so the last keyframe isn't
+                // clipped when the class is removed.
+                setTimeout(() => dot.classList.remove('error'), 500);
             });
 
             if (chatState.failedAttempts >= CHAT_PIN_MAX_ATTEMPTS) {
@@ -1730,18 +2048,13 @@ document.addEventListener('DOMContentLoaded', () => {
             lockOverlay.setAttribute('aria-hidden', 'true');
             updatePinStatus('PIN accepted. Choose your identity.');
 
+            // Success flash via class (not inline styles) so the green state
+            // can animate — a small scale pop lands the moment of unlock.
             const dots = pinDisplay.querySelectorAll('.pin-dot');
-            dots.forEach(dot => {
-                dot.classList.remove('filled', 'error');
-                dot.style.background = '#4ade80';
-                dot.style.borderColor = '#4ade80';
-            });
+            dots.forEach(dot => dot.classList.add('success'));
             setTimeout(() => {
-                dots.forEach(dot => {
-                    dot.style.background = '';
-                    dot.style.borderColor = '';
-                });
-            }, 500);
+                dots.forEach(dot => dot.classList.remove('success'));
+            }, 700);
 
             // Identity selection comes AFTER the PIN — the user must choose every time.
             clearTimeout(chatState.pinSuccessTimer);
@@ -2028,7 +2341,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectChatIdentity(identity);
             });
         });
-        // Esc must NOT dismiss this overlay — identity is required, not optional
+        // Esc must NOT dismiss this overlay — identity is required, not optional.
+        // Trap Tab so focus cannot escape to the chat controls that sit
+        // behind the overlay (chat input, send, header buttons). Required for
+        // keyboard/AT users to actually be able to make this choice.
+        const overlay = document.getElementById('chat-identity-overlay');
+        if (overlay) {
+            overlay.addEventListener('keydown', e => {
+                if (e.key !== 'Tab') return;
+                const focusable = [btnBhatari, btnBhandhari].filter(b => b && !b.disabled);
+                if (!focusable.length) return;
+                e.preventDefault();
+                const currentIndex = focusable.indexOf(document.activeElement);
+                const nextIndex = currentIndex === -1
+                    ? (e.shiftKey ? focusable.length - 1 : 0)
+                    : (currentIndex + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length;
+                focusable[nextIndex].focus({ preventScroll: true });
+            });
+        }
     }
 
     function showIdentitySelector() {
@@ -3606,7 +3936,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     haptic(12);
                 });
             });
-            window.addEventListener('resize', positionGlider, { passive: true });
+            // rAF-coalesce: positionGlider reads offsetWidth/offsetHeight —
+            // wrapping in rAF keeps rapid resize events from thrashing layout.
+            window.addEventListener('resize', () => requestAnimationFrame(positionGlider), { passive: true });
             if ('ResizeObserver' in window) {
                 const toggleResizeObserver = new ResizeObserver(() => {
                     requestAnimationFrame(positionGlider);
@@ -5613,7 +5945,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createHeart(x, y) {
         const heart = document.createElement('div');
-        heart.innerHTML = '💜';
+        // textContent (not innerHTML) — no HTML parsing, no XSS surface even
+        // though the string is a constant. Slightly faster on the hot tap path.
+        heart.textContent = '💜';
         heart.style.position = 'absolute';
         heart.style.left = x + 'px';
         heart.style.top = y + 'px';

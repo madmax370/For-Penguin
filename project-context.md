@@ -1,8 +1,10 @@
 # Project Context
 
-> **Last reviewed:** 2026-09-01
+> **Last reviewed:** 2026-10-18
 >
-> This document describes the current implementation of the project, including the Cloudflare Worker secure backend (password/PIN/Telegram/Firebase-token/private images), Chat Scene UI work, mobile composer keyboard behavior, smart compact chat header, presence behavior hardening, password-manager-resistant Chat PIN lock, GIPHY GIF integration, silent Bhatari identity Telegram ping (Bhandhari ping removed), Bhandhari Telegram analytics (enter/leave with duration), presence-dot multi-session fix, and the date-divider/unread-navigation upgrade. It is documentation only; changing this file does not change application behavior.
+> This document describes the current implementation of the project. It is documentation only; changing this file does not change application behavior.
+>
+> **2026-10-18 session highlights:** unified design-token system (`:root` custom properties for spacing/type/radius/z-index/shadows/focus), ~460 lines of dead CSS removed, mobile performance rewrite (invisible `backdrop-filter` passes removed, all scroll/resize listeners rAF-throttled, cached parallax geometry), security hardening (opaque privacy overlays, Firestore listener + DOM teardown on relock, `<meta name="referrer">`), accessibility pass (WCAG touch targets, missing `:focus-visible` rules, identity-overlay focus trap, master reduced-motion safety net), typography cleanup (`--text-meta` token, contrast bumps), and real bug fixes (PIN dot animation clip, heading sheen cascade, FAB safe-area double-count, letter progress listener leak, deprecated `keypress`, untracked progress-bar timer, stale ladder reveal timers). Full changelog in §11.
 
 ---
 
@@ -42,7 +44,7 @@ The Chat Scene can also be opened directly from the Image Ladder using **Go to C
 | `instructions.md` | Repository workflow and Git requirements |
 | `task.md` | Historical planning document for the Chat Scene revamp |
 | `project-context.md` | This current technical and product reference |
-| `../penguin-api/worker.js` | Dependent Cloudflare Worker (password/PIN, Telegram, Firebase token, private images) |
+| `worker.js` | Cloudflare Worker secure backend (password/PIN, Telegram relay, Firebase custom-token minting, private images via Workers KV). Deployed from the Cloudflare dashboard; source lives at the repository root. |
 
 The frontend is served as static files (a `python3 -m http.server` or the no-cache `serve.py` in the workspace is sufficient for development). **The `images/` directory no longer exists** — the three ladder photos are stored in a Cloudflare Workers KV namespace (`env.BUCKET`) and served only through the Worker after a valid session token (`/api/image/<name>?token=...`).
 
@@ -491,11 +493,11 @@ Important security items:
 
 ### Repository debt
 
-- `songs/song1.mp3` is not referenced anywhere.
-- Legacy reply/question JavaScript and CSS remain from the earlier Chat Scene plan.
+- `songs/song1.mp3` is not referenced anywhere (kept for possible future use).
 - `task.md` is a historical planning document and should not be treated as the exact current architecture.
 - There is no JavaScript linter, test runner, build process, or automated browser test suite.
-- CSS contains a large historical stylesheet with repeated sections and legacy styles; changes should be made carefully and locally.
+- **2026-10-18:** ~460 lines of dead CSS removed — unused scene blocks (`.dua-particles`, `.question-*`/`.nav-*`, `.letter-modal*`, `.letter-paper*`, `.letter-header`, `.letter-tag`, `.letter-title`), the entire `.reply-scene` / `.send-reply-btn` / `.spinner` block, `.pulse-anim`, `@keyframes spin`, `@keyframes ringPulse`, `@keyframes pulse`. All selectors were grep-confirmed to have no matching element in `index.html` and no reference from `script.js`. The stylesheet has been reorganised around a `:root` token system (see §12) — new rules should use the tokens rather than one-off rem/px values.
+- `worker.js` is untracked in git by design (deployed from Cloudflare dashboard), but its source lives in the repo root for reference.
 
 ### UI caveat
 
@@ -504,6 +506,89 @@ The current Chat Scene has been reviewed through source inspection and manual pr
 ---
 
 ## 11. Recent UI Updates
+
+### Session: CSS refactor + visual polish — 2026-10-18
+
+This session focused on the CSS architecture, mobile performance, accessibility, and security/privacy hardening. No functional behaviour was changed — backend integrations, Firestore document names, and chat feature behaviour are untouched. All changes are uncommitted locally on `main` at the end of the session; latest commit before this session was `ad3861f` (Remove missing high-res WebP srcset entries).
+
+**Security hardening**
+
+- **Privacy overlay opacity.** `.password-screen`, `.chat-lock-overlay`, and `.chat-identity-overlay` now sit on an opaque `background-color` (`#05020a`) with the decorative radial gradient layered as `background-image`. Previously the decorative gradient was the *only* background layer, leaving the surfaces 48% / 45% / 10% transparent at the centre — enough for chat content to bleed through the PIN and identity gates.
+- **Listener + DOM teardown on relock.** `relockChatForLifecycle()` now unsubscribes the Firestore message and typing listeners and clears `chatState.messages` and `#chat-messages` DOM *before* flipping the lock state. Closes the ~600 ms window between PIN success and identity-overlay appearance during which previously loaded messages had been visible on screen.
+- **`<meta name="referrer" content="no-referrer">`** added to `<head>`. The URL (which may carry `?token=` on image URLs) is no longer sent via `Referer` on any external navigation.
+
+**Performance — compositor-first motion**
+
+- Removed invisible `backdrop-filter` passes from `.chat-header`, `.chat-input-bar`, `.chat-bubble.left`, `.ladder-card`, `.chat-date-divider`, `.chat-lock-overlay`. In every case the surface was already 92–98% opaque and no content ever scrolls behind it — the blur was re-rasterising the static background every frame. Removing them is the single largest improvement to mobile scroll smoothness.
+- Ladder parallax rewritten. Geometry is measured once per scene entry (and on resize), never per-frame, so scrolling performs zero layout reads. One `MutationObserver` replaces two. `matchMedia()` cached. Reduced-motion preference changes handled live instead of only on scene re-entry.
+- All scroll and resize listeners are rAF-throttled (scroll hint fade, ladder string reposition, identity glider reposition).
+- Scene transition progress bar and letter reading progress bar animate `transform: scaleX()` — GPU-composited, zero layout per frame.
+- `<link rel="preconnect">` for the Worker and `gstatic.com`; `<link rel="dns-prefetch">` for Cloudinary and GIPHY. TLS handshake for `/api/auth` is warm by the time the password form submits.
+- Display fonts (Lora, Caveat, Playfair) moved from runtime `loadDisplayFonts()` injection to `<link rel="preload">` in `<head>` — no FOUT on ladder reveal.
+- Base font (Outfit) uses `display=optional` instead of `display=swap`. Fallback font on first visit, Outfit on cached visits — since the password card is flex-centred, the text-height change during a swap was shifting the entire card vertically (visible jitter). No swap means no shift.
+- `will-change` only where it pays for itself. Removed permanent `will-change: opacity, transform` from the five password-card children and `will-change: transform` from off-screen ladder cards.
+
+**Accessibility**
+
+- Touch targets raised to WCAG guidance: `.msg-info-close` 34 → 44 px, `.chat-media-retry` 36 → 44 px (AAA), `.chat-video-ctrl-btn` 32 → 40 px, `.notify-btn` 36 → 40 px.
+- `:focus-visible` added where missing: `.primary-btn` (unlock), `.continue-btn`, `.ladder-jump-btn`. The chat-control focus-ring block now uses `var(--ring-focus)`.
+- `:active` press feedback added: `.continue-btn`, `.ladder-jump-btn`, `.toggle-btn`, `.chat-plus-btn`, `.notify-btn`, `.chat-gif-close`.
+- Eight `:hover` rules wrapped in `@media (hover: hover)` — no sticky hover on touch devices.
+- Identity overlay (`#chat-identity-overlay`) now traps `Tab` between the two identity buttons, so keyboard focus cannot escape to chat controls sitting behind the overlay.
+- Master `@media (prefers-reduced-motion: reduce)` block added at the end of `style.css`. It clamps `animation-duration` and `transition-duration` globally on `*` / `*::before` / `*::after` (reset-library pattern) and explicitly disables continuous motion on `.bg-orb`, `.bokeh-particle`, `.confetti-piece`, `.chat-lock-icon`. Future animations cannot accidentally ship without reduced-motion handling.
+- Presence dot (`#presence-dot`) gained `aria-live="polite" aria-atomic="true"` — screen readers announce state changes.
+
+**Typography + contrast**
+
+- New `--text-meta` token (0.74rem / ~11.8 px) unifies chat metadata: sender label, timestamp, `(edited)` tag, attachment status, GIF preview status. Previously five different sizes for one visual role.
+- Contrast raised on borderline text: `.chat-timestamp` 0.55 → 0.66 alpha, `.chat-edited-tag` 0.55 → 0.62, `.chat-attachment-status` 0.55 → 0.62, `.password-input::placeholder` 0.42 → 0.55.
+- Themed `::selection` (purple, not default blue). Global `text-rendering: optimizeLegibility` and `font-feature-settings` for kerning/ligatures.
+- `.chat-timestamp` and `.pin-key` use `font-variant-numeric: tabular-nums` so numbers don't jitter between renders.
+- `.letter-body` returned to justified text with `hyphens: auto` — matches a real letter, and hyphens close the word-gap rivers that plain justification would produce. `text-wrap: pretty` prevents orphan words.
+
+**Design tokens (`:root` in `style.css`)**
+
+- ~45 custom properties added: `--space-1` (4px) … `--space-16` (64px), `--text-display` … `--text-micro`, `--leading-tight` … `--leading-relaxed`, `--tracking-tight` … `--tracking-widest`, `--radius-sm` … `--radius-circle`, `--z-base` … `--z-blackout`, `--shadow-ambient`, `--shadow-key`, `--shadow-glow`, `--highlight-top`, `--ring-focus`.
+- ~160 rules migrated from one-off values to tokens. Every migration is value-identical, so no visible change.
+
+**Dead code removed (~460 lines)**
+
+- `.dua-particles` + `@keyframes duaParticleFloat`
+- `.question-*`, `.nav-btn*`, `.nav-buttons-row*` (removed question scenes)
+- `.letter-modal*`, `.letter-paper*`, `.letter-header`, `.letter-tag`, `.letter-title` (live letter uses `.letter-fullscreen`)
+- Entire `.reply-scene` / `.reply-box-container` / `.reply-header` / `.reply-icon-ring` / `.reply-heading` / `.textarea-wrapper` / `.char-counter` / `.reply-feedback` / `.send-reply-btn` / `.spinner` block, plus `@keyframes spin` and `@keyframes ringPulse`
+- `.pulse-anim` + `@keyframes pulse`
+- Empty `.open-envelope-btn` class rules (the live seal uses the `.envelope-seal` class + `#open-envelope-btn` id, not the class)
+
+**New micro-animations** (all compositor-friendly, all reduced-motion-guarded)
+
+- Scene transition progress bar — 3 px purple-gradient bar at the top of the screen fills 0 → 60% → 100% during scene changes.
+- Letter reading progress bar — warm gradient bar at the top of the fullscreen letter tracks scroll position (transform-only).
+- Ladder card parallax — cards drift opposite to scroll direction, clamped ±30 px.
+- Ladder card desktop hover glow — `@media (hover: hover) and (pointer: fine)` only.
+- Ladder photo fade-in — photos cross-fade from the frame gradient instead of popping in when the network delivers them.
+- Letter content stagger — date → greeting → body → signature fade up in sequence on open.
+- Envelope seal expanding ring — soft ring breathes outward from the seal every 4 s.
+- Password screen — ambient drifting orbs behind the card, breathing lock-ring with bobbing icon, heading sheen, entrance cascade, wrong-code shake, green success-ring pulse on correct code.
+- Chat lock screen — pink-tinted breathing lock-ring, cascade entrance, PIN dot pop per digit, more emphatic error shake.
+- Reaction badge wobble — heart badge lands with overshoot + rotation.
+- Send button armed breathe — soft ambient halo while the button is ready to send.
+- Chat empty-state pulse — 🐧 icon scale-breathes.
+
+**Real bugs fixed during polish**
+
+- `handleFailedVerification` removed the `.error` class from PIN dots after **400 ms** while the CSS animation was **0.4 s** long — the last keyframe was being clipped on some devices. Now 500 ms.
+- Password heading declared entrance and sheen as two separate `animation` shorthands (last-wins in the cascade), so the entrance was silently dropped. Combined into one comma-separated `animation` list.
+- `passwordInput` listened for `keypress`, a deprecated event that also fires on IME composition Return. Now `keydown` with `e.isComposing` guard.
+- `.chat-scroll-fab` was positioned with `calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom))`. `--input-bar-height` is measured from the composer's `offsetHeight`, which already includes safe-area padding — so the FAB was floating ~34 px too high on notched iPhones. Extra `env()` term removed.
+- `initLetterProgress()` leaked a scroll listener if the user advanced without tapping Close. Now self-tears-down; `enterEnvelopeScene()` also calls cleanup defensively.
+- Scene `showScene()` had an untracked 500 ms progress-bar timer that a rapid second transition could clobber. Now tracked on the controller and cleared before each new transition.
+- `enterLadderScene()` reveal timers could fire after scene re-entry. A `ladderRevealRunId` guard now invalidates stale timers.
+- PIN success feedback used inline `style.background = '#4ade80'` with a 500 ms setTimeout. Now `.success` class + `@keyframes pinDotSuccess`.
+
+---
+
+### Older changelog (historical — retained for context)
 
 The following changes were made on 2026-08-26 in the current working tree:
 
@@ -654,6 +739,10 @@ The date-divider/unread and secure-backend changes are currently uncommitted in 
 
 ## 12. Safe Change Guidelines
 
+### Design token system
+
+`:root` in `style.css` defines the canonical tokens: spacing `--space-1` (4px) through `--space-16` (64px), type `--text-display` … `--text-meta` … `--text-micro`, radius `--radius-sm` … `--radius-circle`, z-index `--z-base` … `--z-blackout`, shadows (`--shadow-ambient`, `--shadow-key`, `--shadow-glow`, `--highlight-top`), and focus ring `--ring-focus`. New CSS should use these tokens rather than one-off rem/px values — the existing stylesheet has been migrated to them (2026-10-18) and future component work should follow the same pattern.
+
 Before changing the Chat Scene:
 
 1. Read `instructions.md`.
@@ -715,3 +804,5 @@ There is no automated test suite. The following checks are currently appropriate
 - Offline and reconnect states
 
 The most recent validation (after the date-divider/unread-nav changes) completed successfully for JavaScript syntax (`node --check script.js`), CSS lint (`stylelint style.css`), and Git whitespace checks (`git diff --check`). The secure-backend work added validation of `node --check worker.js` and live HTTP checks against the deployed Worker: `/api/auth` success + 401/429 paths, `/api/tg` (POST JSON and GET query) returning 200 and calling Telegram, an expired token returning 401, and CORS preflight answering 204. Earlier passes also covered GIF/PIN structure assertions and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so the sticky push-out, midnight relabel, unread jump, GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.
+
+**2026-10-18:** `node --check script.js` passed after every edit batch in the CSS-refactor and visual-polish session (§11). No automated browser test runner is installed — the polish work was validated by structural diff review and targeted DevTools checks on the reported issues (password card jitter during font swap, letter bottom fade, chat scroll smoothness, iPhone FAB positioning). **Manual mobile-device verification is still recommended** for the new animations, touch targets, and reduced-motion states listed in §11 before any release.

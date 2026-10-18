@@ -37,6 +37,89 @@
     --dur-glide: 450ms;
     /* P2: dynamic input bar height — updated by JS via ResizeObserver */
     --input-bar-height: 72px;
+    /* Material elevation — every raised surface uses the same two-shadow
+       stack (ambient + key) so cards, sheets and popovers read as one system.
+       Ambient is the wide soft shade; key is the tight directional edge. */
+    --shadow-ambient: 0 24px 48px rgba(0, 0, 0, 0.45);
+    --shadow-key: 0 2px 6px rgba(0, 0, 0, 0.25);
+    --shadow-glow: 0 0 40px rgba(123, 44, 191, 0.14);
+    /* Inset top-light: the 1px hairline highlight that sells "raised glass". */
+    --highlight-top: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+    /* Unified focus ring — one token so every interactive element matches. */
+    --ring-focus: 0 0 0 3px rgba(199, 125, 255, 0.5);
+
+    /* ═══════════════════════════════════════════════════════════════
+       SPACING SCALE (4px base, 8px rhythm)
+       Rule of thumb: internal gap < external gap, so groups read as
+       groups. Use these instead of one-off rem values.
+       ═══════════════════════════════════════════════════════════════ */
+    --space-0: 0;
+    --space-1: 0.25rem;   /*  4px */
+    --space-2: 0.5rem;    /*  8px */
+    --space-3: 0.75rem;   /* 12px */
+    --space-4: 1rem;      /* 16px */
+    --space-5: 1.25rem;   /* 20px */
+    --space-6: 1.5rem;    /* 24px */
+    --space-8: 2rem;      /* 32px */
+    --space-10: 2.5rem;   /* 40px */
+    --space-12: 3rem;     /* 48px */
+    --space-16: 4rem;     /* 64px */
+
+    /* ═══════════════════════════════════════════════════════════════
+       TYPE SCALE
+       Six sizes, each with a clear job. Anything outside this scale is
+       an exception that needs a reason.
+       ═══════════════════════════════════════════════════════════════ */
+    --text-display: clamp(1.75rem, 5vw, 2.4rem);  /* scene titles */
+    --text-h1: clamp(1.4rem, 4vw, 1.75rem);       /* section headings */
+    --text-h2: clamp(1.1rem, 3vw, 1.3rem);        /* card titles */
+    --text-body: 0.95rem;                          /* body copy */
+    --text-small: 0.82rem;                         /* secondary */
+    --text-meta: 0.74rem;                          /* chat metadata: timestamps, edited tags, status */
+    --text-micro: 0.68rem;                         /* labels, kickers */
+
+    /* Line heights matched to size */
+    --leading-tight: 1.15;
+    --leading-snug: 1.35;
+    --leading-normal: 1.6;
+    --leading-relaxed: 1.85;
+
+    /* Letter spacing — tighter on large text, looser on small caps */
+    --tracking-tight: -0.02em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.06em;
+    --tracking-widest: 0.22em;
+
+    /* ═══════════════════════════════════════════════════════════════
+       RADIUS SCALE
+       ═══════════════════════════════════════════════════════════════ */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+    --radius-2xl: 24px;
+    --radius-pill: 999px;
+    --radius-circle: 50%;
+
+    /* ═══════════════════════════════════════════════════════════════
+       Z-INDEX SCALE
+       Replaces the current ad-hoc magic numbers. Values leave room
+       between layers so new elements can slot in without renumbering.
+       ═══════════════════════════════════════════════════════════════ */
+    --z-base: 0;
+    --z-sticky: 5;          /* in-flow sticky markers (chat date dividers) */
+    --z-raised: 10;         /* headers, sticky FABs */
+    --z-scene-exit: 15;     /* leaving scene */
+    --z-scene: 20;          /* active scene */
+    --z-popover: 30;        /* menus, dropdowns */
+    --z-sheet: 90;          /* identity overlay */
+    --z-lock: 100;          /* PIN lock */
+    --z-modal: 200;         /* lightbox, fullscreen letter */
+    --z-toast: 500;         /* toasts */
+    --z-scrim: 5000;        /* body-level scrims */
+    --z-progress: 9998;     /* top progress bar */
+    --z-password: 9999;     /* password overlay */
+    --z-blackout: 999999;   /* privacy blackout */
 }
 
 /* ===== RESET & BASE ===== */
@@ -66,6 +149,23 @@ html, body {
     scroll-behavior: auto;
     -ms-overflow-style: none;
     scrollbar-width: none;
+    /* Professional typography defaults: ligatures/kerning on, legibility
+       rendering engine active. Cheap — happens once, affects every glyph. */
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'kern' 1, 'liga' 1, 'calt' 1;
+    font-kerning: normal;
+}
+
+/* Themed text selection — the default blue breaks the purple palette. */
+::selection {
+    background: rgba(199, 125, 255, 0.35);
+    color: #fff;
+    text-shadow: none;
+}
+::-moz-selection {
+    background: rgba(199, 125, 255, 0.35);
+    color: #fff;
+    text-shadow: none;
 }
 
 body::-webkit-scrollbar {
@@ -161,25 +261,122 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
-    background: rgba(5, 2, 10, 0.97);
+    z-index: var(--z-password);
+    /* SECURITY: this is the first privacy boundary of the app. The base
+       MUST be fully opaque so no scene, chat message, or modal can ever
+       bleed through — regardless of what any other part of the app is
+       doing. The radial glow is layered as background-image on top of a
+       solid background-color, so the gradient's alpha composites against
+       the opaque base and never against app content. The previous version
+       used `background: radial-gradient(...rgba(60,22,100,0.52)...)` as
+       the only layer, which was 48% transparent at the centre — anything
+       behind the password screen was visible through it. */
+    background-color: #05020a;
+    background-image: radial-gradient(ellipse at 50% 42%,
+        rgba(60, 22, 100, 0.55) 0%,
+        rgba(20, 10, 38, 0.75) 42%,
+        rgba(5, 2, 10, 0.9) 100%);
+    /* Keep the lock card and its inputs inside the visible safe area on
+       notch / Dynamic Island devices — 100vh alone would put the icon under
+       the hardware cutout on iOS. */
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* Clip the ambient orbs to the screen bounds in case their offsets
+       push them past the edge. */
+    overflow: hidden;
     transition: opacity 0.5s ease;
 }
 
+/* Ambient drifting glow behind the password card. Two radial-gradient
+   blobs, transform-only (translate3d + scale), each on its own compositor
+   layer. Rasterised once, then never re-painted. Very cheap even on
+   low-end Android. */
+.password-ambient {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: var(--z-base);
+}
+
+.password-orb {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform;
+}
+
+.password-orb-1 {
+    width: 340px;
+    height: 340px;
+    top: 6%;
+    left: -8%;
+    background: radial-gradient(circle,
+        rgba(123, 44, 191, 0.28) 0%,
+        rgba(123, 44, 191, 0.1) 42%,
+        transparent 74%);
+    animation: passwordOrbDrift1 44s ease-in-out infinite alternate;
+}
+
+.password-orb-2 {
+    width: 400px;
+    height: 400px;
+    bottom: 2%;
+    right: -10%;
+    background: radial-gradient(circle,
+        rgba(199, 125, 255, 0.24) 0%,
+        rgba(157, 78, 221, 0.1) 44%,
+        transparent 76%);
+    animation: passwordOrbDrift2 52s ease-in-out infinite alternate;
+}
+
+@keyframes passwordOrbDrift1 {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to   { transform: translate3d(18px, -12px, 0) scale(1.04); }
+}
+
+@keyframes passwordOrbDrift2 {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to   { transform: translate3d(-16px, 11px, 0) scale(1.03); }
+}
+
 .password-box {
+    /* isolate: creates a stacking context so the noise ::before can sit at
+       z-index -1 (above this box's own background, below its children). */
+    position: relative;
+    isolation: isolate;
+    z-index: 1; /* sits above the ambient orbs */
     text-align: center;
-    padding: 2.5rem 2rem;
+    padding: var(--space-10) var(--space-8);
     max-width: 340px;
     width: 90%;
 }
 
+/* Subtle SVG grain on the glass card — soft, opaque-neutral, blends with the
+   purple gradient. Cheap to render (one static texture, no animation). */
+.password-box::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 24px; /* matches .glass-card */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.18 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 140px 140px;
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: -1;
+}
+
 .glass-card {
-    background: rgba(26, 15, 46, 0.5);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
+    background: linear-gradient(180deg, rgba(36, 20, 62, 0.62) 0%, rgba(22, 12, 40, 0.55) 100%);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    border: 1px solid rgba(199, 125, 255, 0.22);
     border-radius: 24px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px rgba(123, 44, 191, 0.1);
+    box-shadow:
+        var(--shadow-ambient),
+        var(--shadow-glow),
+        var(--highlight-top);
 }
 
 .lock-icon {
@@ -193,6 +390,161 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     50% { transform: scale(1.1); }
 }
 
+/* Password-screen lock treatment: a soft glowing ring behind a gently
+   bobbing padlock. Scoped to .password-box so the offline overlay keeps
+   its original plain .lock-icon behaviour. */
+.lock-icon-wrap {
+    position: relative;
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lock-icon-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(199, 125, 255, 0.35);
+    background: radial-gradient(circle,
+        rgba(157, 78, 221, 0.28) 0%,
+        rgba(123, 44, 191, 0.12) 45%,
+        transparent 72%);
+    box-shadow:
+        0 0 26px rgba(123, 44, 191, 0.4),
+        inset 0 0 20px rgba(199, 125, 255, 0.15);
+    animation: lockRingBreathe 3.6s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes lockRingBreathe {
+    0%, 100% { transform: scale(1);     opacity: 0.82; }
+    50%      { transform: scale(1.045); opacity: 1; }
+}
+
+.password-box .lock-icon {
+    font-size: 1.7rem;
+    margin: 0;
+    position: relative;
+    z-index: 1;
+    animation: lockIconBob 3.6s ease-in-out infinite;
+    filter: drop-shadow(0 4px 12px rgba(123, 44, 191, 0.45));
+}
+
+@keyframes lockIconBob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-1px); }
+}
+
+/* Heading sheen — a slow light sweep across the gradient text.
+   IMPORTANT: this rule and the entrance-cascade rule below both target the
+   same <h2>. They are combined into a comma-separated `animation` list so
+   neither overwrites the other (the previous version declared them on
+   separate rules, and the cascade rule's `animation` shorthand clobbered
+   the entrance, so the heading only shimmered). */
+.password-box .glow-text {
+    background: linear-gradient(115deg,
+        #c77dff 0%,
+        #e0aaff 32%,
+        #f4e8ff 48%,
+        #e0aaff 64%,
+        #c77dff 100%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation:
+        passwordItemIn 0.62s var(--ease-out-quint) 0.22s both,
+        headingSheen 7s linear infinite 0.84s;
+}
+
+@keyframes headingSheen {
+    0%   { background-position: 100% 50%; }
+    100% { background-position: -100% 50%; }
+}
+
+/* Slower, softer sheen — an 11s sweep with a much gentler light peak, so
+   it reads as a calm shimmer rather than a spotlight. */
+.password-box .glow-text {
+    animation:
+        passwordItemIn 0.5s var(--ease-out-quint) 0.22s both,
+        headingSheen 11s linear infinite 1.4s;
+}
+
+/* Card entrance choreography — children cascade up as the card arrives.
+   The heading is excluded here because it declares its own combined
+   animation list above. */
+.password-box > *:not(.glow-text) {
+    animation: passwordItemIn 0.42s var(--ease-out-quint) both;
+    /* will-change removed: promoting 5 children to their own compositor
+       layers on the same first paint frame is layer-thrash on mid-range
+       mobile. The browser promotes one-shot animations automatically;
+       keeping the hint permanently was a VRAM cost with no benefit once
+       the 0.42s entrance finished. */
+}
+/* Tightened stagger: the entire card settles in under 0.2s now (was ~0.66s),
+   so there's no visible "empty card being filled in" moment. Children start
+   almost simultaneously with a hint of offset for the cascade feel. */
+.password-box > .lock-icon-wrap { animation-delay: 0.02s; }
+/* .glow-text is intentionally absent — its own rule below declares the
+   per-animation delays inside the shorthand. Adding an animation-delay here
+   would flatten both delays into one value. */
+.password-box > .body-text { animation-delay: 0.06s; }
+.password-box > .input-group { animation-delay: 0.10s; }
+.password-box > .primary-btn { animation-delay: 0.14s; }
+/* Error and lockout messages appear on their own timeline — no entrance. */
+.password-box > #password-error,
+.password-box > .lockout-msg { animation: none; }
+
+/* Reduced from 6px to 2px: the old entrance shifted each child by 6px on
+   first paint, which read as a visible jitter/settle before the card was
+   stable. 2px is barely perceptible as movement but preserves the entrance
+   feel, and faster stagger (below) removes the "empty card" moment. */
+@keyframes passwordItemIn {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Wrong-code shake — re-triggered by adding/removing .shake in JS. */
+.password-box.shake {
+    animation: passwordShake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+@keyframes passwordShake {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-6px); }
+    40%, 60% { transform: translateX(6px); }
+}
+
+/* Success flash — a soft green ring expands from the card edge the moment
+   the correct code lands. Gives the fade-out a beat of positive
+   confirmation instead of the card simply vanishing. */
+.password-box.success::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 27px;
+    border: 2px solid rgba(74, 222, 128, 0.75);
+    box-shadow: 0 0 24px rgba(74, 222, 128, 0.4);
+    pointer-events: none;
+    animation: passwordSuccessRing 0.6s ease-out forwards;
+}
+
+@keyframes passwordSuccessRing {
+    0%   { opacity: 1; transform: scale(0.99); }
+    55%  { opacity: 0.85; transform: scale(1.01); }
+    100% { opacity: 0; transform: scale(1.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .password-box.success::after {
+        animation: none !important;
+        opacity: 0;
+    }
+}
+
 .glow-text {
     background: linear-gradient(135deg, #c77dff, #e0aaff);
     -webkit-background-clip: text;
@@ -202,10 +554,10 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 .input-group input {
     width: 100%;
-    padding: 12px 16px;
+    padding: var(--space-3) var(--space-4);
     border: 1px solid var(--glass-border);
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     color: var(--text-main);
     font-family: 'Outfit', sans-serif;
     font-size: 1.4rem;
@@ -216,31 +568,83 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .input-group input:focus {
-    border-color: var(--accent-light);
-    box-shadow: 0 0 20px rgba(199, 125, 255, 0.3);
+    border-color: rgba(199, 125, 255, 0.75);
+    box-shadow:
+        0 0 0 4px rgba(199, 125, 255, 0.14),
+        0 0 28px rgba(199, 125, 255, 0.38),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Placeholder breathe — matches the empty input state */
+.input-group input::placeholder {
+    /* 0.42 was under AA contrast against the input's rgba fill. 0.55 keeps
+       the "empty state" feel while making the dots legible without
+       squinting. */
+    color: rgba(199, 125, 255, 0.55);
+    animation: placeholderPulse 3s ease-in-out infinite;
+}
+
+@keyframes placeholderPulse {
+    0%, 100% { opacity: 0.55; }
+    50%      { opacity: 1; }
 }
 
 .primary-btn {
+    position: relative;
+    isolation: isolate;
     background: linear-gradient(135deg, var(--accent-primary), #9d4edd);
     border: none;
     color: white;
-    padding: 12px 32px;
+    padding: var(--space-3) var(--space-8);
     border-radius: 16px;
     font-family: 'Outfit', sans-serif;
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: transform 0.28s ease, box-shadow 0.28s ease, background 0.3s ease, opacity 0.3s ease;
     letter-spacing: 0.5px;
 }
 
-.primary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(123, 44, 191, 0.4);
+/* Unlock button — pulsing outward ring on its own layer so it never
+   competes with the button's hover/active transitions. */
+.primary-btn::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    animation: unlockRing 3s ease-out infinite;
+    pointer-events: none;
+    z-index: -1;
 }
 
-.primary-btn:active {
-    transform: translateY(0);
+@keyframes unlockRing {
+    0% {
+        box-shadow: 0 0 0 0 rgba(199, 125, 255, 0.2);
+    }
+    70%, 100% {
+        box-shadow: 0 0 0 7px rgba(199, 125, 255, 0);
+    }
+}
+
+/* Hover-only: touch devices can leave a sticky hover state after tap on
+   a button that stays visible. The :focus-visible and :active rules below
+   still fire everywhere. */
+@media (hover: hover) {
+    .primary-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(123, 44, 191, 0.4);
+    }
+}
+
+/* The unlock button is the first interactive element the user sees.
+   Without this rule, keyboard users had no visible focus indicator. */
+.primary-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--ring-focus), 0 8px 25px rgba(123, 44, 191, 0.4);
+}
+
+.primary-btn:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
 }
 
 .primary-btn:disabled {
@@ -258,6 +662,41 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     color: #ff6b6b;
     font-size: 0.85rem;
     margin-top: 0.75rem;
+}
+
+/* Reduced motion: strip every new password-screen animation */
+@media (prefers-reduced-motion: reduce) {
+    .password-orb,
+    .password-box > *,
+    .password-box .glow-text,
+    .password-box .lock-icon,
+    .lock-icon-ring,
+    .primary-btn::before,
+    .input-group input::placeholder,
+    #scene-chat.scene-active .chat-lock-box > *,
+    .chat-lock-icon-ring,
+    .chat-lock-icon-wrap .chat-lock-icon,
+    .pin-dot.filled,
+    .pin-dot.error,
+    .pin-dot.success,
+    .letter-fullscreen.active .letter-full-content > *,
+    .envelope-seal::after,
+    .chat-reaction.pop,
+    .chat-send-btn.armed {
+        animation: none !important;
+    }
+    .password-box.shake {
+        animation: none !important;
+    }
+    /* Keep end states visible when the animation is stripped. */
+    .letter-fullscreen.active .letter-full-content > *,
+    .chat-reaction.pop {
+        opacity: 1;
+        transform: none;
+    }
+    #scene-ladder .ladder-card img {
+        transition: none;
+    }
 }
 
 /* Utility spacing */
@@ -320,6 +759,17 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     z-index: 15;
 }
 
+/* Respect prefers-reduced-motion for scene transitions. The 1.2s scale+fade
+   is a lot of motion; users who've opted out get a plain cross-fade. */
+@media (prefers-reduced-motion: reduce) {
+    .scene,
+    .scene.scene-active,
+    .scene.scene-exit {
+        transform: none !important;
+        transition: opacity 0.2s linear, visibility 0s !important;
+    }
+}
+
 /* Stop leftover cinematic motion the moment a scene is not the active one */
 .scene:not(.scene-active) .ladder-card-sway,
 .scene:not(.scene-active) .ladder-string::before,
@@ -363,6 +813,67 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     }
 }
 
+/* ===================================================
+SCENE TRANSITION PROGRESS INDICATOR
+=================================================== */
+.scene-transition-progress {
+position: fixed;
+top: 0;
+left: 0;
+width: 100%;
+height: 3px;
+z-index: 9998;
+pointer-events: none;
+opacity: 0;
+transition: opacity 0.3s ease;
+}
+.scene-transition-progress.active {
+opacity: 1;
+}
+.scene-transition-progress-bar {
+height: 100%;
+width: 100%;
+background: linear-gradient(90deg, var(--accent-primary), var(--accent-light), var(--soft-pink));
+border-radius: 0 2px 2px 0;
+box-shadow: 0 0 12px rgba(199, 125, 255, 0.6);
+transform: scaleX(0);
+transform-origin: left center;
+transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+will-change: transform;
+}
+/* ===================================================
+LETTER READING PROGRESS BAR
+=================================================== */
+.letter-progress-track {
+position: absolute;
+top: 0;
+left: 0;
+right: 0;
+height: 3px;
+background: rgba(92, 64, 51, 0.12);
+z-index: 210;
+pointer-events: none;
+}
+.letter-progress-fill {
+height: 100%;
+width: 100%;
+background: linear-gradient(90deg, #bd8053, #d49863, #e7c392);
+border-radius: 0 2px 2px 0;
+box-shadow: 0 0 8px rgba(189, 128, 83, 0.4);
+transform: scaleX(0);
+transform-origin: left center;
+/* Tight easing so the bar tracks scroll 1:1. 0.15s made it visually lag
+   behind the finger; 0.08s linear smooths rAF jitter without a perceptible
+   delay. */
+transition: transform 0.08s linear;
+will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+.scene-transition-progress-bar,
+.letter-progress-fill {
+transition: none;
+}
+}
 /* Continue button */
 .continue-btn {
     opacity: 0;
@@ -374,7 +885,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     font-family: 'Outfit', sans-serif;
     font-size: 0.9rem;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: transform 0.3s ease, background 0.3s ease, border-color 0.3s ease;
     letter-spacing: 0.5px;
 }
 
@@ -382,9 +893,22 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     animation: fadeInUp 0.6s ease-out forwards;
 }
 
-.continue-btn:hover {
-    background: rgba(199, 125, 255, 0.1);
-    transform: translateY(-2px);
+@media (hover: hover) {
+    .continue-btn:hover {
+        background: rgba(199, 125, 255, 0.1);
+        transform: translateY(-2px);
+    }
+}
+
+.continue-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* Keyboard focus ring for scene navigation controls */
+.continue-btn:focus-visible,
+.ladder-jump-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--ring-focus);
 }
 
 /* ===================================================
@@ -454,9 +978,13 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     animation: lightsGlow 1.5s infinite alternate ease-in-out;
 }
 
+/* Opacity-only pulse. The previous filter: drop-shadow + brightness version
+   was rasterized on every frame while the ladder scene was open (1.5s loop,
+   running the entire time the scene is visible). Fading the dots is
+   visually similar and fully compositor-friendly. */
 @keyframes lightsGlow {
-    0% { filter: drop-shadow(0 0 2px #ffe066) brightness(0.9); }
-    100% { filter: drop-shadow(0 0 8px #ffe066) brightness(1.4); }
+    0%   { opacity: 0.55; }
+    100% { opacity: 1; }
 }
 
 /* Photo card styling - Polaroid Style */
@@ -465,8 +993,10 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     width: 85%;
     max-width: 280px;
     background: rgba(20, 12, 38, 0.7); /* Optimized rich glass background */
-    backdrop-filter: blur(8px); /* Reduced from 20px to prevent rendering lag on scroll */
-    -webkit-backdrop-filter: blur(8px);
+    /* backdrop-filter removed: the later .ladder-card refinement rule
+       overrides the background with an opaque gradient, so this blur was
+       invisible while still costing a per-card GPU pass on every scroll
+       frame. Removing it is pixel-identical and much cheaper. */
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 12px;
     padding: 12px;
@@ -512,9 +1042,10 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     animation: swayLeft 6s ease-in-out infinite alternate;
 }
 
-.ladder-card:nth-child(3) { transition-delay: 0.2s; }
-.ladder-card:nth-child(4) { transition-delay: 0.5s; }
-.ladder-card:nth-child(5) { transition-delay: 0.8s; }
+/* Reveal stagger is driven entirely by JS (enterLadderScene). The
+   :nth-child transition-delays used to compound on top of that stagger —
+   stretching the entrance to ~1.6s on the last card and, worse, making the
+   parallax transform trail the finger by the same amount. Removed. */
 
 /* Sway keyframes */
 @keyframes swayLeft {
@@ -595,11 +1126,11 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .ladder-continue-btn {
-    margin-top: 1.5rem;
-    margin-bottom: 2rem; /* Ensure button is visible after scroll */
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-8); /* Ensure button is visible after scroll */
     opacity: 0;
     transition: opacity 0.6s ease 0.3s;
-    z-index: 10; /* Above all other elements */
+    z-index: var(--z-raised); /* Above all other elements */
     position: relative; /* Ensure proper stacking context */
 }
 
@@ -625,10 +1156,11 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .scroll-hint-icon {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
+    line-height: 1;
     color: var(--accent-light);
-    text-shadow: 0 0 8px rgba(199, 125, 255, 0.4);
-    animation: pulseIcon 1.5s infinite alternate;
+    text-shadow: 0 0 10px rgba(199, 125, 255, 0.6);
+    animation: pulseIcon 1.6s infinite alternate;
 }
 
 @keyframes bounceScroll {
@@ -671,11 +1203,30 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     text-align: center;
 }
 
+/* The header lands before the cards do — kicker, then title, then subtitle,
+   each a step behind the last. Cards start their own stagger 160ms after the
+   scene becomes active, so the header gets the first beat and the cards
+   inherit the energy. */
+#scene-ladder.scene-active .ladder-header > * {
+    animation: fadeInUp 0.7s var(--ease-out-quint) both;
+}
+#scene-ladder.scene-active .ladder-header > *:nth-child(1) { animation-delay: 0.05s; }
+#scene-ladder.scene-active .ladder-header > *:nth-child(2) { animation-delay: 0.16s; }
+#scene-ladder.scene-active .ladder-header > *:nth-child(3) { animation-delay: 0.28s; }
+
+@media (prefers-reduced-motion: reduce) {
+    #scene-ladder.scene-active .ladder-header > * {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+}
+
 .ladder-kicker {
     color: var(--warm-gold);
-    font-size: 0.68rem;
+    font-size: var(--text-micro);
     font-weight: 600;
-    letter-spacing: 0.22em;
+    letter-spacing: var(--tracking-widest);
     text-transform: uppercase;
 }
 
@@ -719,6 +1270,35 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     background: linear-gradient(135deg, #fffdfb 0%, #eee8f6 48%, #d9cfea 100%);
     box-shadow: 0 24px 48px rgba(0, 0, 0, 0.42), 0 2px 0 rgba(255, 255, 255, 0.7) inset;
     /* scroll-snap-align removed along with scroll-snap-type on the parent */
+    /* Hint the compositor: parallax writes --parallax-y (a transform channel)
+       on every scroll frame. Promoting each card once lets the browser
+       translate the existing texture instead of re-rasterizing the blur. */
+    will-change: transform;
+}
+
+/* After the entrance easing finishes, switch the card to a short transition
+   so the parallax transform tracks scroll 1:1 instead of dragging behind the
+   0.8s reveal timing. Only transform is affected — opacity is already 1 by
+   the time this class lands. */
+.ladder-card.reveal-done {
+    transition: opacity 0.2s ease-out, transform 0.12s linear;
+}
+
+/* Desktop hover: a faint warm lift. Touch devices skip this entirely. */
+@media (hover: hover) and (pointer: fine) {
+    #scene-ladder .ladder-card:hover {
+        border-color: rgba(224, 170, 255, 0.72);
+        box-shadow:
+            0 24px 48px rgba(0, 0, 0, 0.42),
+            0 2px 0 rgba(255, 255, 255, 0.7) inset,
+            0 0 28px rgba(199, 125, 255, 0.22);
+    }
+}
+
+/* Release the compositor layer hint when the ladder is off-screen so its
+   three textures don't sit pinned in VRAM for the whole session. */
+#scene-ladder:not(.scene-active) .ladder-card {
+    will-change: auto;
 }
 
 .ladder-card::before {
@@ -760,7 +1340,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
         radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.58), transparent 58%),
         linear-gradient(135deg, #24133d, #432161);
     border: 1px solid rgba(70, 35, 103, 0.28);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     box-shadow: 0 2px 8px rgba(38, 16, 64, 0.28) inset;
 }
 
@@ -778,9 +1358,16 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
-    transition: transform 0.5s ease;
+    transition: transform 0.5s ease, opacity 0.5s ease;
+    /* Photo cross-fades over the frame gradient instead of popping in when
+       the network finally delivers it. JS adds .loaded on load/error. */
+    opacity: 0;
+}
+
+#scene-ladder .ladder-card img.loaded {
+    opacity: 1;
 }
 
 #scene-ladder .ladder-card:hover img {
@@ -792,16 +1379,16 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     align-items: center;
     justify-content: center;
     min-height: 2.35rem;
-    max-width: calc(100% - 0.5rem);
-    margin-top: 1rem;
+    max-width: calc(100% - var(--space-2));
+    margin-top: var(--space-4);
     padding: 0.45rem 0.85rem;
     overflow-wrap: anywhere;
     color: #41215d;
     background: rgba(255, 255, 255, 0.66);
     border: 1px solid rgba(83, 45, 118, 0.16);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: clamp(0.92rem, 4vw, 1.08rem);
-    line-height: 1.35;
+    line-height: var(--leading-snug);
     text-align: center;
     text-shadow: none;
     -webkit-text-fill-color: #41215d;
@@ -809,7 +1396,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .ladder-card[data-index].visible {
-    transform: translateY(0) scale(1) rotate(0deg);
+    transform: translateY(var(--parallax-y, 0px)) scale(1) rotate(0deg);
 }
 
 .ladder-card[data-index].visible .ladder-card-sway {
@@ -833,12 +1420,12 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 .ladder-ending {
     max-width: 18rem;
-    margin: -1rem 0 1.5rem;
+    margin: calc(-1 * var(--space-4)) 0 var(--space-6);
     color: rgba(241, 241, 241, 0.86);
     font-family: 'Lora', serif;
     font-size: clamp(1rem, 4vw, 1.15rem);
     font-style: italic;
-    line-height: 1.6;
+    line-height: var(--leading-normal);
     text-align: center;
     text-shadow: 0 2px 18px rgba(199, 125, 255, 0.28);
 }
@@ -853,13 +1440,23 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .scroll-hint {
-    bottom: 1.25rem;
-    gap: 0.15rem;
-    color: rgba(241, 241, 241, 0.65);
-    font-size: 0.68rem;
-    font-weight: 500;
-    letter-spacing: 0.12em;
+    bottom: var(--space-5);
+    /* Chunky glass pill: intentional, tappable-looking, sits proud of the
+       card. Row layout so text + arrow read as one element. */
+    flex-direction: row;
+    gap: 0.55rem;
+    padding: 0.55rem 0.95rem 0.55rem 1.05rem;
+    color: rgba(241, 241, 241, 0.86);
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
+    border-radius: var(--radius-pill);
+    background: linear-gradient(180deg, rgba(38, 22, 64, 0.72) 0%, rgba(20, 12, 38, 0.82) 100%);
+    border: 1px solid rgba(199, 125, 255, 0.28);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42),
+                0 0 22px rgba(123, 44, 191, 0.18),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 @media (max-width: 480px) {
@@ -885,6 +1482,15 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     .envelope-seal {
         animation: none !important;
     }
+    /* Skip the entrance slide entirely — just cross-fade each card in. */
+    .ladder-card,
+    .ladder-card[data-index].visible {
+        transform: none !important;
+        transition: opacity 0.15s linear !important;
+    }
+    .ladder-card[data-index].visible {
+        --parallax-y: 0px !important;
+    }
 }
 
 /* ===================================================
@@ -895,7 +1501,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
+    gap: var(--space-6);
     perspective: 1000px;
 }
 
@@ -1028,6 +1634,28 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     50% { box-shadow: 0 0 0 11px rgba(199, 125, 255, 0.04), 0 7px 16px rgba(70, 20, 100, 0.5); }
 }
 
+/* Expanding ring around the seal — a soft, breathing "tap me" cue. Pure
+   box-shadow, no extra paint. Hides itself once the envelope is opened. */
+.envelope-seal::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(224, 170, 255, 0.5);
+    animation: sealOuterPulse 4s ease-out infinite;
+    pointer-events: none;
+}
+
+.envelope.opened .envelope-seal::after {
+    animation: none;
+    opacity: 0;
+}
+
+@keyframes sealOuterPulse {
+    0%        { transform: scale(0.85); opacity: 0.75; }
+    70%, 100% { transform: scale(1.38); opacity: 0; }
+}
+
 .envelope-cue {
     min-height: 1.3rem;
     margin-top: -0.65rem;
@@ -1072,96 +1700,11 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 /* Letter modal styles */
-.letter-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 300;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.4s ease, visibility 0.4s ease;
-}
-
-.letter-modal.active {
-    opacity: 1;
-    visibility: visible;
-}
-
-.letter-modal-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(5, 2, 10, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-}
-
-.letter-paper {
-    position: relative;
-    background-color: #fff8e9;
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(235, 210, 165, 0.3)), repeating-linear-gradient(0deg, rgba(109, 76, 48, 0.025) 0, rgba(109, 76, 48, 0.025) 1px, transparent 1px, transparent 4px);
-    border: 1px solid rgba(129, 87, 46, 0.2);
-    border-radius: 16px;
-    padding: 2rem 1.8rem;
-    max-width: 450px;
-    width: 90%;
-    max-height: 75vh;
-    overflow-y: auto;
-    box-shadow: 0 25px 70px rgba(0, 0, 0, 0.5), inset 0 0 50px rgba(170, 117, 62, 0.1);
-    transform: scale(0.92) translateY(20px);
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    z-index: 301;
-    -ms-overflow-style: none;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(92, 64, 51, 0.3) transparent;
-}
-
-.letter-modal.active .letter-paper {
-    transform: scale(1) translateY(0);
-}
-
-.letter-paper::-webkit-scrollbar {
-    width: 5px;
-}
-
-.letter-paper::-webkit-scrollbar-thumb {
-    background: rgba(92, 64, 51, 0.3);
-    border-radius: 5px;
-}
-
-.letter-header {
-    margin-bottom: 1.2rem;
-    text-align: center;
-}
-
-.letter-tag {
-    display: inline-block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--accent-primary);
-    background: linear-gradient(135deg, rgba(123, 44, 191, 0.15), rgba(199, 125, 255, 0.2));
-    padding: 6px 14px;
-    border-radius: 50px;
-    border: 1px solid rgba(123, 44, 191, 0.25);
-    margin-bottom: 0.8rem;
-}
-
-.letter-title {
-    font-family: 'Caveat', cursive;
-    font-size: 2rem;
-    font-weight: 700;
-    color: #2b1d11;
-    margin: 0;
-}
+/* Removed: dead .letter-modal* / .letter-paper* / .letter-header / .letter-tag
+   / .letter-title rules — the live letter UI uses .letter-fullscreen with
+   .letter-full-content, not a modal. No element in index.html ever carried
+   these classes. The live .letter-full-content / .letter-inner / .letter-date
+   / .letter-greeting / .letter-body / .letter-signature rules below remain. */
 
 .letter-inner {
     background-color: #fff8e9;
@@ -1202,7 +1745,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     text-align: right;
     font-size: 0.85rem;
     opacity: 0.7;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
     font-family: 'Outfit', sans-serif;
     font-weight: 400;
     color: #5c4033;
@@ -1219,20 +1762,36 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 .letter-body {
     font-family: 'Lora', serif;
     font-size: 1rem;
-    line-height: 1.8;
+    line-height: 1.85;
     color: #3a2512;
+    /* Slightly tighter tracking on the serif face at reading size — Lora
+       opens up at this line-height without it. */
+    letter-spacing: 0.002em;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'kern' 1, 'liga' 1, 'onum' 0;
 }
 
 .letter-body p {
-    margin-bottom: 1rem;
+    margin-bottom: 1.05rem;
+    /* A real letter is justified — matching that here is the "professional"
+       read. hyphens:auto closes the word-gap rivers that justified text
+       otherwise produces. Browsers without hyphens support fall back to a
+       readable left-aligned column. */
     text-align: justify;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+    text-wrap: pretty;
+}
+
+.letter-body p:last-child {
+    margin-bottom: 0;
 }
 
 .letter-signature {
     font-family: 'Caveat', cursive;
     font-size: 1.7rem;
     text-align: right;
-    margin-top: 1.5rem;
+    margin-top: var(--space-6);
     font-weight: 700;
     color: #2b1d11;
 }
@@ -1247,12 +1806,12 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     background: rgba(5, 2, 10, 0.92);
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
-    z-index: 200;
+    z-index: var(--z-modal);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2rem 1.5rem;
+    padding: var(--space-8) var(--space-6);
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.5s cubic-bezier(0.25, 1, 0.5, 1), visibility 0s linear 0.5s;
@@ -1266,8 +1825,16 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 .letter-full-content {
     background-color: #fff8e9;
-    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(235, 210, 165, 0.28)), repeating-linear-gradient(0deg, rgba(109, 76, 48, 0.025) 0, rgba(109, 76, 48, 0.025) 1px, transparent 1px, transparent 4px);
-    border: 1px solid rgba(129, 87, 46, 0.18);
+    /* Three-layer surface: a soft top light source (warm light from above),
+       a very faint warm center glow, and the original ruled lines. All
+       three are static — no animation cost — and quiet enough that the
+       paper reads warmer and more dimensional without any single effect
+       becoming the focus. */
+    background-image:
+        radial-gradient(ellipse 100% 45% at 50% -8%, rgba(255, 254, 248, 0.6) 0%, transparent 55%),
+        radial-gradient(ellipse 75% 55% at 50% 50%, rgba(255, 250, 240, 0.16) 0%, transparent 70%),
+        repeating-linear-gradient(0deg, rgba(109, 76, 48, 0.025) 0, rgba(109, 76, 48, 0.025) 1px, transparent 1px, transparent 4px);
+    border: 1px solid rgba(129, 87, 46, 0.2);
     border-radius: 16px;
     padding: 2.2rem 1.8rem;
     color: #3d2b1f;
@@ -1275,7 +1842,19 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     width: 100%;
     max-height: 75vh;
     overflow-y: auto;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), inset 0 0 40px rgba(0, 0, 0, 0.02);
+    /* Layered shadow system — five layers that together read as a lit,
+       dimensional sheet of paper:
+         (1) deep soft drop for physical depth
+         (2) warm 1px rim to unify the edge with the paper tone
+         (3) top-edge highlight (paper catching light from above)
+         (4) very faint warm ambient inside the surface
+         (5) diffuse bottom lift (softer than the previous hard cutoff) */
+    box-shadow:
+        0 24px 60px -8px rgba(0, 0, 0, 0.42),
+        0 0 0 1px rgba(129, 87, 46, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65),
+        inset 0 0 60px rgba(170, 117, 62, 0.05),
+        inset 0 -60px 60px -40px rgba(92, 64, 51, 0.14);
     -ms-overflow-style: none;
     scrollbar-width: thin;
     scrollbar-color: rgba(92, 64, 51, 0.2) transparent;
@@ -1287,6 +1866,26 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     transform: scale(1);
 }
 
+/* Letter copy steps in: date → greeting → body → signature. Short, soft
+   fade-up, no bounce — the letter is a quiet moment, not a fireworks show. */
+.letter-fullscreen.active .letter-full-content > * {
+    animation: letterItemIn 0.55s var(--ease-out-quint) both;
+}
+.letter-fullscreen.active .letter-full-content > .letter-date      { animation-delay: 0.14s; }
+.letter-fullscreen.active .letter-full-content > .letter-greeting  { animation-delay: 0.22s; }
+.letter-fullscreen.active .letter-full-content > .letter-body      { animation-delay: 0.32s; }
+.letter-fullscreen.active .letter-full-content > .letter-signature { animation-delay: 0.46s; }
+
+@keyframes letterItemIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* Removed: the mask-image bottom fade. Fading the content to transparent
+   revealed the dark backdrop behind the letter, which read as a "black
+   fade" that clashed with the paper aesthetic. The reading progress bar at
+   the top already signals position; no content-hiding hint is needed. */
+
 .letter-full-content::-webkit-scrollbar {
     width: 4px;
 }
@@ -1297,7 +1896,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 }
 
 .letter-close-btn {
-    margin-top: 1.5rem;
+    margin-top: var(--space-6);
     background: linear-gradient(135deg, var(--accent-primary), #9d4edd);
     border: none;
     color: white;
@@ -1311,36 +1910,22 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     transition: all 0.3s ease;
 }
 
-.letter-close-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(123, 44, 191, 0.5);
+@media (hover: hover) {
+    .letter-close-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(123, 44, 191, 0.5);
+    }
 }
 
 .letter-close-btn:active {
     transform: translateY(0);
 }
 
-/* Open button */
-.open-envelope-btn {
-    background: linear-gradient(135deg, rgba(212, 165, 116, 0.2), rgba(196, 148, 100, 0.2));
-    border: 1px solid rgba(212, 165, 116, 0.4);
-    color: #e8c9a0;
-    padding: 12px 32px;
-    border-radius: 50px;
-    font-family: 'Outfit', sans-serif;
-    font-size: 1rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.4s ease;
-    letter-spacing: 0.5px;
-    backdrop-filter: blur(10px);
-    animation: btnGlow 2s ease-in-out infinite;
-}
-
-.open-envelope-btn:hover {
-    background: linear-gradient(135deg, rgba(212, 165, 116, 0.3), rgba(196, 148, 100, 0.3));
-    transform: translateY(-2px);
-}
+/* Removed: dead .open-envelope-btn CLASS rules. The seal button in
+   index.html carries class="envelope-seal" (which is what actually
+   styles it) and only an ID of open-envelope-btn — the class selectors
+   below never matched anything. The seal's live styling lives in the
+   .envelope-seal rules. */
 
 .envelope-scene .continue-btn {
     margin-top: 0.5rem;
@@ -1350,270 +1935,15 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
    SCENE 5 — REPLY BOX
    =================================================== */
 
-.reply-scene {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    padding: 2rem;
-    position: relative;
-    box-sizing: border-box;
-}
+/* Removed: dead reply-box scene block (.reply-scene through .spinner and
+   @keyframes spin/ringPulse). The reply-box scene no longer exists in
+   index.html; setReplyFeedback/setReplyLoading in script.js also safely
+   no-op because #reply-feedback / #send-reply-btn are not in the DOM.
+   The live "reply" feature (message quoting) uses .chat-reply-container
+   / .chat-reply-quote / .chat-reply-cancel — those rules are untouched. */
 
-/* Card container */
-.reply-box-container {
-    width: 90%;
-    max-width: 400px;
-    padding: 2.2rem 2rem 2rem;
-    border-radius: 28px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1.2rem;
-    position: relative;
-    z-index: 5;
-    background: rgba(26, 15, 46, 0.55);
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
-    border: 1px solid rgba(199, 125, 255, 0.18);
-    box-shadow:
-        0 30px 70px rgba(0, 0, 0, 0.45),
-        0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-        0 0 50px rgba(123, 44, 191, 0.12);
-}
-
-/* Header */
-.reply-header {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.reply-icon-ring {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, rgba(123, 44, 191, 0.3), rgba(199, 125, 255, 0.2));
-    border: 1.5px solid rgba(199, 125, 255, 0.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 0 22px rgba(199, 125, 255, 0.25);
-    animation: ringPulse 3s ease-in-out infinite alternate;
-}
-
-@keyframes ringPulse {
-    0%  { box-shadow: 0 0 14px rgba(199, 125, 255, 0.2); }
-    100%{ box-shadow: 0 0 30px rgba(199, 125, 255, 0.45); }
-}
-
-.reply-icon-emoji {
-    font-size: 1.75rem;
-    line-height: 1;
-    filter: drop-shadow(0 0 8px rgba(199, 125, 255, 0.6));
-}
-
-.reply-heading {
-    font-family: 'Playfair Display', serif;
-    font-size: 1.55rem;
-    font-weight: 600;
-    font-style: italic;
-    color: #fff;
-    letter-spacing: 0.3px;
-    background: linear-gradient(135deg, #fff 30%, #e0aaff 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin: 0;
-}
-
-/* Textarea wrapper */
-.textarea-wrapper {
-    position: relative;
-    width: 100%;
-}
-
-.textarea-wrapper textarea {
-    width: 100%;
-    height: 140px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1.5px solid rgba(255, 255, 255, 0.1);
-    border-radius: 14px;
-    padding: 14px 14px 28px;
-    color: rgba(255, 255, 255, 0.92);
-    font-family: 'Outfit', sans-serif;
-    font-size: 0.95rem;
-    line-height: 1.6;
-    resize: none;
-    outline: none;
-    box-sizing: border-box;
-    transition: border-color 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
-    caret-color: #c77dff;
-}
-
-.textarea-wrapper textarea:focus {
-    border-color: rgba(199, 125, 255, 0.55);
-    background: rgba(255, 255, 255, 0.07);
-    box-shadow: 0 0 0 3px rgba(199, 125, 255, 0.12), 0 8px 24px rgba(0, 0, 0, 0.25);
-}
-
-.textarea-wrapper textarea::placeholder {
-    color: rgba(255, 255, 255, 0.28);
-    font-style: italic;
-}
-
-.char-counter {
-    position: absolute;
-    bottom: 9px;
-    right: 12px;
-    font-size: 0.72rem;
-    font-family: 'Outfit', sans-serif;
-    color: rgba(255, 255, 255, 0.3);
-    user-select: none;
-    transition: color 0.3s ease;
-}
-
-.char-counter.warn { color: #ff85a1; }
-
-.char-sep { margin: 0 1px; }
-
-/* Inline feedback toast */
-.reply-feedback {
-    width: 100%;
-    min-height: 36px;
-    border-radius: 10px;
-    padding: 0;
-    font-family: 'Outfit', sans-serif;
-    font-size: 0.85rem;
-    text-align: center;
-    line-height: 1.4;
-    opacity: 0;
-    transform: translateY(-6px) scale(0.97);
-    transition: opacity 0.35s ease, transform 0.35s ease, padding 0.25s ease, background 0.25s ease;
-    pointer-events: none;
-    overflow: hidden;
-    max-height: 0;
-}
-
-.reply-feedback.show {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    pointer-events: auto;
-    padding: 9px 14px;
-    max-height: 60px;
-}
-
-.reply-feedback.error {
-    background: rgba(255, 82, 82, 0.12);
-    border: 1px solid rgba(255, 82, 82, 0.25);
-    color: #ff8fa3;
-}
-
-.reply-feedback.success {
-    background: rgba(100, 220, 140, 0.1);
-    border: 1px solid rgba(100, 220, 140, 0.25);
-    color: #7de8a0;
-}
-
-/* Send button */
-.send-reply-btn {
-    width: 100%;
-    padding: 13px 20px;
-    border: none;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #6b21c8 0%, #9d4edd 60%, #c77dff 100%);
-    color: #fff;
-    font-family: 'Outfit', sans-serif;
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    box-shadow:
-        0 5px 20px rgba(107, 33, 200, 0.35),
-        0 1px 0 rgba(255, 255, 255, 0.12) inset;
-    transition: transform 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
-    position: relative;
-    overflow: hidden;
-}
-
-.send-reply-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(to bottom, rgba(255,255,255,0.1), transparent);
-    pointer-events: none;
-}
-
-.send-reply-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow:
-        0 10px 28px rgba(107, 33, 200, 0.5),
-        0 1px 0 rgba(255, 255, 255, 0.15) inset;
-}
-
-.send-reply-btn:active:not(:disabled) {
-    transform: translateY(0);
-    box-shadow: 0 4px 12px rgba(107, 33, 200, 0.3);
-}
-
-.send-reply-btn:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
-}
-
-/* Spinner */
-.spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid rgba(255, 255, 255, 0.35);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-/* Soft floating particles for dua scene */
-.dua-particles {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-    overflow: hidden;
-}
-
-.dua-particle {
-    position: absolute;
-    width: 4px;
-    height: 4px;
-    background: rgba(199, 125, 255, 0.3);
-    border-radius: 50%;
-    animation: duaParticleFloat linear infinite;
-}
-
-@keyframes duaParticleFloat {
-    0% {
-        opacity: 0;
-        transform: translateY(100vh) scale(0.5);
-    }
-    10% { opacity: 0.6; }
-    90% { opacity: 0.3; }
-    100% {
-        opacity: 0;
-        transform: translateY(-20vh) scale(1.2);
-    }
-}
+/* Removed: dead .dua-particles / .dua-particle rules — the dua scene no
+   longer exists in index.html, so nothing ever matched these selectors. */
 
 /* ===================================================
    SHARED ANIMATIONS
@@ -1634,15 +1964,9 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
 }
 
-/* Pulse animation for buttons */
-.pulse-anim {
-    animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(199, 125, 255, 0.4); }
-    50% { box-shadow: 0 0 0 12px rgba(199, 125, 255, 0); }
-}
+/* Removed: .pulse-anim + @keyframes pulse. Grep confirmed neither the class
+   nor its animation name appear in index.html or script.js — .pulse-anim
+   was orphaned CSS with no consumer. */
 
 /* ===================================================
    MOBILE RESPONSIVE
@@ -1694,75 +2018,9 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
    QUESTION SCENE STYLES
    =================================================== */
 
-.question-card {
-    gap: 1.5rem;
-}
-
-.question-box {
-    width: 100%;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(199, 125, 255, 0.2);
-    border-radius: 16px;
-    padding: 1.2rem;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    margin-bottom: 0.5rem;
-}
-
-.question-box p {
-    font-size: 1rem;
-    line-height: 1.5;
-    color: rgba(255, 255, 255, 0.95);
-    font-weight: 300;
-}
-
-.nav-buttons-row {
-    width: 100%;
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-top: 0.5rem;
-}
-
-/* If there's only one child, align it to the center */
-.nav-buttons-row button:first-child:last-child {
-    margin: 0 auto;
-}
-
-.nav-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(199, 125, 255, 0.3);
-    color: var(--accent-light);
-    padding: 10px 20px;
-    border-radius: 12px;
-    font-family: 'Outfit', sans-serif;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    flex: 1;
-    max-width: 150px;
-    text-align: center;
-}
-
-.nav-btn:hover {
-    background: rgba(199, 125, 255, 0.15);
-    transform: translateY(-2px);
-}
-
-@media (max-width: 480px) {
-    .question-box {
-        padding: 1rem;
-    }
-    .question-box p {
-        font-size: 0.9rem;
-    }
-    .nav-buttons-row {
-        gap: 0.5rem;
-    }
-    .nav-btn {
-        padding: 8px 12px;
-        font-size: 0.85rem;
-    }
-}
+/* Removed: dead .question-* / .nav-btn* / .nav-buttons-row* rules — the
+   question scenes were removed from the app; no element in index.html
+   carries any of these classes. */
 
 /* ===================================================
    ENVELOPE & LETTER REFINEMENTS
@@ -1899,11 +2157,8 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     }
 }
 
-/* ===================================================
-   MUSIC PLAYER SCENE STYLES
-   =================================================== */
-
-
+/* Removed: empty "MUSIC PLAYER SCENE STYLES" section — no rules existed,
+   no elements in index.html reference a music player. */
 
 /* ===================================================
    CHAT SCENE STYLES
@@ -1943,18 +2198,20 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     flex-shrink: 0;
     padding: 0.85rem 1.25rem;
     padding-top: calc(0.85rem + env(safe-area-inset-top, 0px));
-    background: rgba(26, 15, 46, 0.85);
-    backdrop-filter: blur(20px) saturate(1.15);
-    -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    /* backdrop-filter removed: the header is a flex sibling above the
+       messages scroller, so no chat content ever passes behind it — the
+       blur was only re-hazing the static page background while costing a
+       permanent per-frame GPU pass. Gradient keeps the glassy read. */
+    background: linear-gradient(180deg, rgba(30, 18, 52, 0.97) 0%, rgba(24, 14, 42, 0.98) 100%);
     border-bottom: 1px solid rgba(199, 125, 255, 0.15);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 1px 0 rgba(255,255,255,0.06) inset;
     touch-action: none; /* gestures on the header must never reach the page scroller */
-    z-index: 10;
+    z-index: var(--z-raised);
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
 }
 
 .chat-title {
@@ -2018,8 +2275,14 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     touch-action: manipulation;
 }
 
-.toggle-btn:hover {
-    color: rgba(255, 255, 255, 0.9);
+@media (hover: hover) {
+    .toggle-btn:hover {
+        color: rgba(255, 255, 255, 0.9);
+    }
+}
+
+.toggle-btn:active {
+    transform: scale(0.97);
 }
 
 .toggle-btn.active {
@@ -2099,6 +2362,11 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
     position: relative;
     isolation: isolate;
     word-break: break-word;
+    /* Layout+style containment: bubble sizes are stable, so isolating them
+       stops one bubble's text growth from triggering layout work in its
+       siblings. No `paint` containment — the bubble tail and reaction badge
+       deliberately overflow the box and must not be clipped. */
+    contain: layout style;
     transition: transform var(--dur-micro) var(--transition-smooth), box-shadow 0.2s var(--transition-smooth);
     transform-origin: bottom center;
 }
@@ -2179,8 +2447,10 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 .chat-bubble.left {
     align-self: flex-start;
     background: linear-gradient(135deg, rgba(47, 29, 66, 0.96) 0%, rgba(34, 21, 53, 0.92) 100%);
-    backdrop-filter: blur(14px) saturate(1.1);
-    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    /* backdrop-filter removed: the background is already 92–96% opaque, so
+       the blur was effectively invisible while forcing a per-bubble GPU
+       pass on every scroll frame. This was the single largest remaining
+       chat stutter source on mid-range mobile — 20+ bubbles × 60fps. */
     border: 1px solid rgba(199, 125, 255, 0.28);
     border-bottom-left-radius: var(--chat-radius-sm);
     box-shadow: var(--chat-shadow-soft), inset 0 1px 1px rgba(255, 255, 255, 0.12), 0 0 0 1px rgba(199,125,255,0.09) inset;
@@ -2257,7 +2527,7 @@ body.scene-chat-active .bokeh-particle { display: none !important; animation: no
 
 /* Sender Label - Enhanced Typography */
 .chat-sender-label {
-    font-size: 0.7rem;
+    font-size: var(--text-meta);
     font-weight: 700;
     color: rgba(214, 174, 255, 0.95);
     margin-bottom: 0.3rem;
@@ -2324,11 +2594,17 @@ a.chat-link {
 }
 
 .chat-timestamp {
-    font-size: 0.7rem;
-    color: rgba(255, 255, 255, 0.55);
+    font-size: var(--text-meta);
+    /* 0.55 was borderline on the dark-glass bubbles at small sizes. 0.66
+       clears WCAG AA contrast for the "timestamp" role while staying
+       visually subordinate to the message text. */
+    color: rgba(255, 255, 255, 0.66);
     margin-top: 0.35rem;
     display: block;
     text-align: right;
+    /* Tabular numerals so HH:MM columns don't jitter between messages. */
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
 }
 
 /* Quote Box in Bubble (for replied messages) — styled in the flex block below
@@ -2341,7 +2617,7 @@ a.chat-link {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid rgba(199, 125, 255, 0.22);
-    padding: 0.65rem 1rem;
+    padding: 0.65rem var(--space-4);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -2377,7 +2653,7 @@ a.chat-link {
     flex-shrink: 0;
     width: 44px;
     height: 44px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: rgba(255, 255, 255, 0.7);
@@ -2390,19 +2666,22 @@ a.chat-link {
     transition: all 0.2s ease;
 }
 
-.chat-reply-cancel:hover {
-    background: rgba(255, 85, 85, 0.3);
-    border-color: rgba(255, 85, 85, 0.5);
-    color: #fff;
+@media (hover: hover) {
+    .chat-reply-cancel:hover {
+        background: rgba(255, 85, 85, 0.3);
+        border-color: rgba(255, 85, 85, 0.5);
+        color: #fff;
+    }
 }
 
 /* Input Bar - Premium Fixed Bottom */
 .chat-input-bar {
     flex-shrink: 0;
     padding: 0.6rem 0.85rem calc(0.6rem + env(safe-area-inset-bottom, 0px));
-    background: rgba(20, 12, 36, 0.96);
-    backdrop-filter: blur(24px) saturate(1.2);
-    -webkit-backdrop-filter: blur(24px) saturate(1.2);
+    /* backdrop-filter removed for the same reason as .chat-header — the
+       composer is a flex sibling below the scroller, nothing passes behind
+       it, and the blur ran on every frame the chat was open. */
+    background: linear-gradient(0deg, rgba(18, 10, 32, 0.98) 0%, rgba(26, 15, 46, 0.97) 100%);
     border-top: 1px solid rgba(199, 125, 255, 0.22);
     display: flex;
     align-items: flex-end;
@@ -2501,9 +2780,10 @@ a.chat-link {
 /* Send Button - Circular */
 .chat-send-btn {
     flex-shrink: 0;
+    position: relative;
     width: 44px;
     height: 44px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: linear-gradient(135deg, var(--accent-primary) 0%, #5a189a 100%);
     border: none;
     color: #fff;
@@ -2512,8 +2792,33 @@ a.chat-link {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.25s ease;
+    /* `transition: all` forces the engine to diff every animatable property
+       on each style invalidation. Narrowing to the four that actually change
+       keeps the send choreography identical and cheaper. */
+    transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease, opacity 0.25s ease;
     box-shadow: 0 4px 15px rgba(123, 44, 191, 0.35);
+}
+
+/* Success ripple: a soft purple ring expands outward on send. Lives on the
+   ::after so the button's own sendSquash animation is untouched. */
+.chat-send-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-circle);
+    border: 2px solid rgba(199, 125, 255, 0.85);
+    opacity: 0;
+    pointer-events: none;
+}
+.chat-send-btn.send-launch::after {
+    animation: sendRipple 0.5s var(--ease-out-quint) forwards;
+}
+@keyframes sendRipple {
+    0%   { transform: scale(1);   opacity: 0.85; }
+    100% { transform: scale(2.1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .chat-send-btn.send-launch::after { animation: none; }
 }
 
 @media (hover: hover) {
@@ -2535,6 +2840,9 @@ a.chat-link {
     box-shadow: none;
     cursor: not-allowed;
     transform: none;
+    /* Kill the armed breathe if the button lands in the disabled state
+       between an .armed paint and the next style tick. */
+    animation: none;
 }
 
 .send-icon {
@@ -2550,11 +2858,11 @@ a.chat-link {
     left: 50%;
     transform: translateX(-50%) translateY(6px);
     padding: 0.3rem 0.8rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: #1a0f2e;
     border: 1px solid rgba(199, 125, 255, 0.25);
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
-    font-size: 0.68rem;
+    font-size: var(--text-micro);
     font-weight: 600;
     letter-spacing: 0.3px;
     white-space: nowrap;
@@ -2781,6 +3089,10 @@ a.chat-link {
     box-shadow: 0 6px 20px rgba(199, 125, 255, 0.4) !important;
 }
 
+.ladder-jump-btn:active {
+    transform: translateY(0) scale(0.98) !important;
+}
+
 /* Chat Header Title Wrap & Notify Button */
 .chat-header-title-wrap {
     display: flex;
@@ -2796,7 +3108,10 @@ a.chat-link {
     justify-content: center;
     gap: 0.35rem;
     min-width: 8.5rem;
-    min-height: 36px;
+    /* 40px is a compromise between the 44px AAA target and the horizontal
+       budget the chat header gives this button. The keyboard-visible
+       compact rule below keeps its own 36px icon-only size. */
+    min-height: 40px;
     padding: 0.3rem 0.65rem;
     border-radius: 20px;
     background: rgba(255, 255, 255, 0.1);
@@ -2818,6 +3133,11 @@ a.chat-link {
         transform: scale(1.03);
         color: #fff;
     }
+}
+
+.notify-btn:active:not(:disabled) {
+    transform: scale(0.96);
+    background: rgba(199, 125, 255, 0.15);
 }
 
 .notify-btn:disabled {
@@ -2878,23 +3198,52 @@ a.chat-link {
     margin: 1rem 0 0.5rem 0;
     padding: 0.35rem 1rem;
     border-radius: 16px;
-    background: rgba(26, 15, 46, 0.88);
-    backdrop-filter: blur(12px) saturate(1.1);
-    -webkit-backdrop-filter: blur(12px) saturate(1.1);
-    border: 1px solid rgba(199, 125, 255, 0.25);
-    color: rgba(199, 125, 255, 0.9);
+    /* Editorial pill: subtle horizontal gradient gives the marker a soft
+       left-right fall-off instead of a flat slab. */
+    background: linear-gradient(90deg,
+        rgba(26, 15, 46, 0.88) 0%,
+        rgba(44, 25, 72, 0.94) 50%,
+        rgba(26, 15, 46, 0.88) 100%);
+    /* backdrop-filter removed — 3+ dividers can be visible during a scroll,
+       each forcing a per-divider GPU pass. Background is 88–94% opaque, so
+       the blur was effectively invisible. */
+    border: 1px solid rgba(199, 125, 255, 0.32);
+    color: rgba(224, 170, 255, 0.96);
     font-family: 'Outfit', sans-serif;
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.6px;
     text-transform: uppercase;
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     pointer-events: none;
-    transition: all 0.3s var(--transition-smooth);
+    transition: background 0.3s var(--transition-smooth), box-shadow 0.3s var(--transition-smooth);
     /* P4: sticky date markers — pinned within its .chat-day section only */
     position: sticky;
     top: 0.5rem;
-    z-index: 5;
+    z-index: var(--z-sticky);
+}
+
+/* Flanking editorial tails — gradient hairlines that fade outward from the
+   pill. Attached to the sticky pill so they track the pinning as one unit. */
+.chat-date-divider::before,
+.chat-date-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: clamp(48px, 18vw, 96px);
+    height: 1px;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+.chat-date-divider::before {
+    right: 100%;
+    margin-right: 8px;
+    background: linear-gradient(90deg, transparent 0%, rgba(199, 125, 255, 0.55) 100%);
+}
+.chat-date-divider::after {
+    left: 100%;
+    margin-left: 8px;
+    background: linear-gradient(90deg, rgba(199, 125, 255, 0.55) 0%, transparent 100%);
 }
 
 @media (max-width: 768px) {
@@ -2924,11 +3273,14 @@ a.chat-link {
     touch-action: manipulation;
 }
 
-.chat-action-btn:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.15);
+@media (hover: hover) {
+    .chat-action-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.15);
+    }
 }
 
+/* :active fires on every device — keep the press feedback available. */
 .chat-action-btn:active {
     transform: scale(0.92);
     background: rgba(199, 125, 255, 0.2);
@@ -2976,9 +3328,9 @@ a.chat-link {
 }
 
 .chat-edited-tag {
-    font-size: 0.65rem;
+    font-size: var(--text-meta);
     font-style: italic;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.62);
     margin-left: 0.35rem;
 }
 
@@ -3079,8 +3431,10 @@ a.chat-link {
     color: #fff;
 }
 
-.chat-edit-save-btn:hover:not(:disabled) {
-    background: rgba(199, 125, 255, 0.7);
+@media (hover: hover) {
+    .chat-edit-save-btn:hover:not(:disabled) {
+        background: rgba(199, 125, 255, 0.7);
+    }
 }
 
 .chat-edit-save-btn:disabled {
@@ -3093,15 +3447,17 @@ a.chat-link {
     color: rgba(255, 255, 255, 0.7);
 }
 
-.chat-edit-cancel-btn:hover {
-    background: rgba(255, 255, 255, 0.25);
+@media (hover: hover) {
+    .chat-edit-cancel-btn:hover {
+        background: rgba(255, 255, 255, 0.25);
+    }
 }
 
 /* ── Quote box in bubble (single flex layout, accent bar per side) ── */
 .chat-quote-box {
     display: flex;
     flex-direction: row;
-    gap: 0.5rem;
+    gap: var(--space-2);
     background: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
     padding: 0.35rem 0.55rem;
@@ -3156,6 +3512,12 @@ a.chat-link {
     flex-wrap: wrap;
 }
 
+/* Chat lock title — a soft, static halo. No pulse; the ring behind the
+   icon already carries the "alive" signal, so the title stays calm. */
+.chat-lock-title {
+    text-shadow: 0 0 14px rgba(199, 125, 255, 0.28);
+}
+
 /* ── Reply preview inside reply bar ─────────────── */
 .reply-preview-sender {
     font-weight: 700;
@@ -3189,12 +3551,22 @@ a.chat-link {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(5, 2, 10, 0.95);
-    backdrop-filter: blur(10px);
+    /* SECURITY: this is the chat PIN gate — chat messages sit directly
+       below it and must never be visible before the PIN is entered.
+       Opaque base + gradient layered on top (same pattern as the password
+       screen) so the glow is aesthetic-only, not see-through. The earlier
+       version used `background: radial-gradient(...rgba(60,22,100,0.55)...)`
+       with no base colour, which made the entire PIN screen 45% transparent
+       at the centre — chat content bled through. */
+    background-color: #05020a;
+    background-image: radial-gradient(ellipse at 50% 38%,
+        rgba(60, 22, 100, 0.55) 0%,
+        rgba(20, 10, 38, 0.8) 44%,
+        rgba(5, 2, 10, 0.9) 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 100;
+    z-index: var(--z-lock);
     opacity: 1;
     transition: opacity 0.3s ease, visibility 0.3s ease;
 }
@@ -3206,20 +3578,55 @@ a.chat-link {
 }
 
 .chat-lock-box {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
+    /* Material now comes from .glass-card (which this element also carries).
+       The previous flat background was shadowing the glass gradient, making
+       the PIN lock look like a plain white box next to the password screen. */
     padding: 2rem;
     text-align: center;
     max-width: 320px;
     width: 90%;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-.chat-lock-icon {
-    font-size: 3rem;
-    margin-bottom: 0.5rem;
-    animation: lockPulse 2s ease-in-out infinite;
+/* Chat lock icon — wrapped in a soft ring like the password screen, but
+   tinted pink/warm so the two lock screens feel related yet distinct. */
+.chat-lock-icon-wrap {
+    position: relative;
+    width: 74px;
+    height: 74px;
+    margin: 0 auto 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-lock-icon-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 133, 161, 0.4);
+    background: radial-gradient(circle,
+        rgba(255, 133, 161, 0.24) 0%,
+        rgba(199, 125, 255, 0.14) 48%,
+        transparent 74%);
+    box-shadow:
+        0 0 26px rgba(255, 133, 161, 0.35),
+        inset 0 0 18px rgba(199, 125, 255, 0.18);
+    animation: chatLockRingBreathe 3.4s ease-in-out infinite;
+    will-change: transform;
+}
+
+@keyframes chatLockRingBreathe {
+    0%, 100% { transform: scale(1);     opacity: 0.86; }
+    50%      { transform: scale(1.04);  opacity: 1; }
+}
+
+.chat-lock-icon-wrap .chat-lock-icon {
+    font-size: 1.85rem;
+    margin: 0;
+    position: relative;
+    z-index: 1;
+    animation: lockIconBob 3.4s ease-in-out infinite;
+    filter: drop-shadow(0 4px 12px rgba(255, 133, 161, 0.45));
 }
 
 /* (lockPulse keyframes are defined once, up top with the password screen) */
@@ -3233,16 +3640,17 @@ a.chat-link {
 .chat-lock-subtitle {
     font-size: 0.9rem;
     color: rgba(255, 255, 255, 0.6);
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
     font-family: 'Outfit', sans-serif;
 }
 
-/* PIN Display Dots */
+/* PIN Display Dots — empty dots sit quiet; filled dots pop in with a
+   spring; on error every dot shakes in unison and flashes red. */
 .chat-pin-display {
     display: flex;
     gap: 12px;
     justify-content: center;
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-8);
 }
 
 .pin-dot {
@@ -3251,25 +3659,53 @@ a.chat-link {
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.1);
     border: 2px solid rgba(199, 125, 255, 0.3);
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+/* Pop runs on the filled class addition — each keypress visibly lands. */
 .pin-dot.filled {
     background: #c77dff;
     border-color: #c77dff;
-    box-shadow: 0 0 10px rgba(199, 125, 255, 0.5);
+    box-shadow: 0 0 12px rgba(199, 125, 255, 0.65), inset 0 0 5px rgba(255, 255, 255, 0.35);
+    animation: pinDotPop 0.26s var(--ease-spring);
+}
+
+@keyframes pinDotPop {
+    0%   { transform: scale(0.82); }
+    60%  { transform: scale(1.08); }
+    100% { transform: scale(1); }
+}
+
+/* Success flash — applied briefly the moment the PIN verifies. Green halo
+   + a confident pop reads as a clean "correct" without any text. */
+.pin-dot.success {
+    background: #4ade80;
+    border-color: #4ade80;
+    box-shadow: 0 0 16px rgba(74, 222, 128, 0.85), inset 0 0 6px rgba(255, 255, 255, 0.4);
+    animation: pinDotSuccess 0.7s var(--ease-spring);
+}
+
+@keyframes pinDotSuccess {
+    0%   { transform: scale(1); }
+    35%  { transform: scale(1.32); }
+    65%  { transform: scale(0.96); }
+    100% { transform: scale(1); }
 }
 
 .pin-dot.error {
     background: #ff6b6b;
     border-color: #ff6b6b;
-    animation: shakeError 0.4s ease;
+    box-shadow: 0 0 10px rgba(255, 107, 107, 0.55);
+    animation: shakeError 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97);
 }
 
+/* A short nudge — the eye notices something is wrong without the panel
+   visibly jumping. */
 @keyframes shakeError {
     0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
+    25% { transform: translateX(-3px); }
+    60% { transform: translateX(3px); }
+    82% { transform: translateX(-1px); }
 }
 
 /* PIN status is announced to assistive technology without exposing entered digits in page text. */
@@ -3290,26 +3726,34 @@ a.chat-link {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 12px;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
 }
 
 .pin-key {
     aspect-ratio: 1;
     max-width: 70px;
     margin: 0 auto;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    /* Material key: top-light + soft inner shadow + tight outer shade.
+       Reads as a real keycap instead of a flat circle. */
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.045) 55%, rgba(0, 0, 0, 0.08) 100%);
+    border: 1px solid rgba(199, 125, 255, 0.22);
     border-radius: 50%;
     color: #fff;
     font-size: 1.4rem;
     font-family: 'Outfit', sans-serif;
+    font-variant-numeric: tabular-nums;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 56px;
     min-height: 56px;
+    box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14),
+        inset 0 -2px 4px rgba(0, 0, 0, 0.18);
 }
 
 @media (hover: hover) {
@@ -3321,8 +3765,9 @@ a.chat-link {
 }
 
 .pin-key:active {
-    transform: translateY(0);
-    background: rgba(199, 125, 255, 0.5);
+    transform: scale(0.97);
+    background: rgba(199, 125, 255, 0.42);
+    box-shadow: inset 0 0 8px rgba(199, 125, 255, 0.28);
 }
 
 .pin-key:disabled {
@@ -3351,7 +3796,7 @@ a.chat-link {
 .chat-pin-error {
     color: #ff6b6b;
     font-size: 0.85rem;
-    margin-top: 1rem;
+    margin-top: var(--space-4);
     font-family: 'Outfit', sans-serif;
     animation: fadeIn 0.2s ease;
 }
@@ -3361,23 +3806,49 @@ a.chat-link {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Entrance cascade — when the chat scene becomes active, lock box children
+   step in one after another. Scoped to .scene-active so it re-fires on
+   every chat entry (including post-relock), and reverts silently when the
+   scene exits since the "to" state matches the natural resting state. */
+#scene-chat.scene-active .chat-lock-box > * {
+    animation: chatLockItemIn 0.5s var(--ease-out-quint) both;
+}
+#scene-chat.scene-active .chat-lock-box > .chat-lock-icon-wrap { animation-delay: 0.05s; }
+#scene-chat.scene-active .chat-lock-box > .chat-lock-title { animation-delay: 0.14s; }
+#scene-chat.scene-active .chat-lock-box > .chat-lock-subtitle { animation-delay: 0.22s; }
+#scene-chat.scene-active .chat-lock-box > .chat-pin-display { animation-delay: 0.32s; }
+#scene-chat.scene-active .chat-lock-box > .chat-pin-pad { animation-delay: 0.42s; }
+/* sr-only and error remain static so they don't fight screen readers */
+#scene-chat.scene-active .chat-lock-box > .chat-pin-status,
+#scene-chat.scene-active .chat-lock-box > .chat-pin-error { animation: none; }
+
+@keyframes chatLockItemIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+}
+
 /* Mobile optimizations */
 @media (max-width: 768px) {
     .chat-lock-box {
         padding: 1.5rem;
         max-width: 280px;
     }
-    
-    .chat-lock-icon {
-        font-size: 2.5rem;
+
+    .chat-lock-icon-wrap {
+        width: 64px;
+        height: 64px;
     }
-    
+
+    .chat-lock-icon-wrap .chat-lock-icon {
+        font-size: 1.55rem;
+    }
+
     .pin-key {
         min-width: 50px;
         min-height: 50px;
         font-size: 1.2rem;
     }
-    
+
     .pin-dot {
         width: 14px;
         height: 14px;
@@ -3470,7 +3941,7 @@ a.chat-link {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid rgba(199, 125, 255, 0.22);
-    padding: 0.65rem 1rem;
+    padding: 0.65rem var(--space-4);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -3482,7 +3953,7 @@ a.chat-link {
     flex-shrink: 0;
     width: 58px;
     height: 48px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     background: rgba(0, 0, 0, 0.35);
     border: 1px solid rgba(199, 125, 255, 0.3);
@@ -3510,6 +3981,10 @@ a.chat-link {
     text-overflow: ellipsis;
 }
 
+.chat-gif-preview-status {
+    font-size: var(--text-meta);
+}
+
 .chat-gif-preview-name {
     font-size: 0.82rem;
     color: rgba(255, 255, 255, 0.9);
@@ -3525,7 +4000,7 @@ a.chat-link {
     width: 44px;
     height: 44px;
     border: none;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(255, 255, 255, 0.08);
     color: rgba(255, 255, 255, 0.75);
     cursor: pointer;
@@ -3568,9 +4043,12 @@ a.chat-link {
     gap: 0.75rem;
     padding: 1rem;
     border: 1px solid rgba(199, 125, 255, 0.28);
-    border-radius: 20px;
-    background: rgba(20, 12, 36, 0.98);
-    box-shadow: 0 14px 50px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255,255,255,0.1);
+    border-radius: var(--radius-xl);
+    background: linear-gradient(180deg, rgba(36, 20, 62, 0.98) 0%, rgba(20, 12, 36, 0.98) 100%);
+    box-shadow:
+        0 18px 54px rgba(0, 0, 0, 0.55),
+        0 0 32px rgba(123, 44, 191, 0.14),
+        var(--highlight-top);
     transform: translateY(18px);
     transition: transform 0.28s var(--transition-smooth);
     overflow: hidden;
@@ -3600,11 +4078,15 @@ a.chat-link {
     width: 44px;
     height: 44px;
     border: 1px solid rgba(255,255,255,0.16);
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(255,255,255,0.08);
     color: rgba(255,255,255,0.85);
     cursor: pointer;
     touch-action: manipulation;
+}
+
+.chat-gif-close:active {
+    transform: scale(0.9);
 }
 
 .chat-gif-search-row {
@@ -3683,7 +4165,7 @@ a.chat-link {
     padding: 0;
     overflow: hidden;
     border: 1px solid rgba(199, 125, 255, 0.2);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: rgba(255,255,255,0.05);
     cursor: pointer;
     touch-action: manipulation;
@@ -3711,7 +4193,7 @@ a.chat-link {
 .chat-gif-skeleton {
     min-height: 0;
     height: 100%;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: linear-gradient(105deg, rgba(255,255,255,0.045) 25%, rgba(224,170,255,0.16) 45%, rgba(255,255,255,0.045) 65%);
     background-size: 220% 100%;
     animation: chatGifShimmer 1.35s ease-in-out infinite;
@@ -3744,7 +4226,7 @@ a.chat-link {
     min-height: 44px;
     padding: 0.55rem 1rem;
     border: 1px solid rgba(199, 125, 255, 0.45);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgba(199, 125, 255, 0.14);
     color: #e0aaff;
     cursor: pointer;
@@ -3833,7 +4315,7 @@ body.chat-gif-open {
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid rgba(199, 125, 255, 0.22);
-    padding: 0.65rem 1rem;
+    padding: 0.65rem var(--space-4);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -3845,7 +4327,7 @@ body.chat-gif-open {
     flex-shrink: 0;
     width: 48px;
     height: 48px;
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     overflow: hidden;
     background: rgba(0, 0, 0, 0.35);
     border: 1px solid rgba(199, 125, 255, 0.3);
@@ -3898,8 +4380,8 @@ body.chat-gif-open {
 }
 
 .chat-attachment-status {
-    font-size: 0.72rem;
-    color: rgba(255, 255, 255, 0.55);
+    font-size: var(--text-meta);
+    color: rgba(255, 255, 255, 0.62);
 }
 
 .chat-attachment-retry {
@@ -3910,7 +4392,7 @@ body.chat-gif-open {
     font-family: 'Outfit', sans-serif;
     font-size: 0.75rem;
     padding: 0.4rem 0.7rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
     min-height: 44px;
     touch-action: manipulation;
@@ -3920,7 +4402,7 @@ body.chat-gif-open {
     flex-shrink: 0;
     width: 44px;
     height: 44px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(255, 255, 255, 0.08);
     border: none;
     color: rgba(255, 255, 255, 0.75);
@@ -3959,7 +4441,7 @@ body.chat-gif-open {
     width: min(70vw, 320px);
     max-width: 100%;
     max-height: 360px;
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
     background: rgba(0, 0, 0, 0.35);
 }
@@ -3993,7 +4475,7 @@ body.chat-gif-open {
     margin: auto;
     width: 56px;
     height: 56px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(123, 44, 191, 0.85);
     border: 2px solid rgba(255, 255, 255, 0.55);
     color: #fff;
@@ -4022,9 +4504,9 @@ body.chat-gif-open {
     right: 8px;
     background: rgba(0, 0, 0, 0.65);
     color: #fff;
-    font-size: 0.68rem;
+    font-size: var(--text-micro);
     padding: 2px 7px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     pointer-events: none;
 }
 
@@ -4062,8 +4544,11 @@ body.chat-gif-open {
     color: #fff;
     font-size: 1rem;
     cursor: pointer;
-    min-width: 32px;
-    min-height: 32px;
+    /* 40px balances WCAG touch-target guidance against the limited vertical
+       space a video control row has over the media bubble. 32px was below
+       the mobile-comfort threshold; 44px would obscure the poster. */
+    min-width: 40px;
+    min-height: 40px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4120,9 +4605,9 @@ body.chat-gif-open {
     font-family: 'Outfit', sans-serif;
     font-size: 0.75rem;
     padding: 0.35rem 0.8rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     cursor: pointer;
-    min-height: 36px;
+    min-height: 44px;
     touch-action: manipulation;
 }
 
@@ -4130,7 +4615,7 @@ body.chat-gif-open {
 .chat-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 5000; /* below password overlay (9999) + blackout (999999) to preserve privacy re-lock */
+    z-index: var(--z-scrim); /* below password overlay (9999) + blackout (999999) to preserve privacy re-lock */
     background: rgba(5, 2, 10, 0.92);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
@@ -4153,7 +4638,7 @@ body.chat-gif-open {
     right: 1rem;
     width: 44px;
     height: 44px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(255, 255, 255, 0.12);
     border: 1px solid rgba(255, 255, 255, 0.25);
     color: #fff;
@@ -4173,7 +4658,7 @@ body.chat-lightbox-open {
 .msg-info-overlay {
     position: fixed;
     inset: 0;
-    z-index: 5000; /* below password overlay (9999) + blackout (999999), same tier as lightbox */
+    z-index: var(--z-scrim); /* below password overlay (9999) + blackout (999999), same tier as lightbox */
     background: rgba(5, 2, 10, 0.55);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
@@ -4195,12 +4680,16 @@ body.chat-lightbox-open {
     overscroll-behavior: contain;
     padding: 0.9rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
     border-radius: 24px 24px 0 0;
-    background: rgba(26, 15, 46, 0.55);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--glass-border);
+    /* Same material language as .glass-card, just flat-topped for the sheet. */
+    background: linear-gradient(180deg, rgba(36, 20, 62, 0.92) 0%, rgba(22, 12, 40, 0.9) 100%);
+    backdrop-filter: blur(20px) saturate(1.15);
+    -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    border: 1px solid rgba(199, 125, 255, 0.22);
     border-bottom: none;
-    box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45), 0 0 40px rgba(123, 44, 191, 0.12);
+    box-shadow:
+        0 -22px 60px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(123, 44, 191, 0.14),
+        var(--highlight-top);
     transform: translateY(100%);
     transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -4211,7 +4700,7 @@ body.chat-lightbox-open {
 
 @media (min-width: 520px) {
     .msg-info-sheet {
-        border-radius: 24px;
+        border-radius: var(--radius-2xl);
         margin-bottom: 1.5rem;
         border-bottom: 1px solid var(--glass-border);
     }
@@ -4220,7 +4709,7 @@ body.chat-lightbox-open {
 .msg-info-grabber {
     width: 44px;
     height: 5px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: rgba(255, 255, 255, 0.25);
     margin: 0 auto 0.85rem;
 }
@@ -4241,9 +4730,12 @@ body.chat-lightbox-open {
 }
 
 .msg-info-close {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
+    /* 44px satisfies WCAG 2.5.5 (AAA) touch target minimum. The previous
+       34px passed the 24px AA floor but was a consistent misfire target on
+       mobile next to the sheet grabber. */
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-circle);
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     color: #fff;
@@ -4260,7 +4752,7 @@ body.chat-lightbox-open {
     padding: 0.6rem 0.8rem;
     border-left: 3px solid #c77dff;
     background: rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     color: rgba(243, 232, 255, 0.85);
     font-size: 0.88rem;
     line-height: 1.35;
@@ -4294,7 +4786,7 @@ body.chat-lightbox-open {
     padding: 0.55rem 0.75rem;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(199, 125, 255, 0.14);
-    border-radius: 14px;
+    border-radius: var(--radius-lg);
 }
 
 .msg-info-icon {
@@ -4417,9 +4909,9 @@ body.msg-info-open {
     background: rgba(30, 15, 50, 0.92);
     color: #f3e8ff;
     padding: 0.6rem 1.25rem;
-    border-radius: 24px;
+    border-radius: var(--radius-2xl);
     font-family: 'Outfit', sans-serif;
-    font-size: 0.82rem;
+    font-size: var(--text-small);
     font-weight: 600;
     border: 1px solid rgba(199, 125, 255, 0.3);
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(123, 44, 191, 0.25);
@@ -4450,6 +4942,25 @@ body.msg-info-open {
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 100, 100, 0.22);
 }
 
+/* On mobile the chat header is a two-row layout ~120px tall, so a top-
+   anchored toast used to render on top of the identity toggle. Slide it up
+   from just above the composer instead — closer to the action, no overlap. */
+@media (max-width: 600px) {
+    #chat-toast {
+        top: auto;
+        bottom: calc(var(--input-bar-height, 72px) + 20px + env(safe-area-inset-bottom, 0px));
+        transform: translateX(-50%) translateY(16px) scale(0.92);
+    }
+    #chat-toast.toast-visible {
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        #chat-toast {
+            transform: translateX(-50%);
+        }
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     #chat-toast {
         transition: opacity var(--dur-ui) linear;
@@ -4468,8 +4979,16 @@ body.msg-info-open {
 /* Send button "armed" state — glows when there is text to send */
 .chat-send-btn.armed {
     background: linear-gradient(135deg, #9d4edd 0%, var(--accent-primary) 100%);
-    box-shadow: 0 4px 18px rgba(123, 44, 191, 0.55), 0 0 14px rgba(199, 125, 255, 0.4);
     transform: scale(1.06);
+    /* Very slow ambient halo — the button reads as "live, waiting for you"
+       without drawing the eye every second. Animates box-shadow only, so the
+       scale transform on this rule is unaffected. */
+    animation: armedBreathe 3.4s ease-in-out infinite;
+}
+
+@keyframes armedBreathe {
+    0%, 100% { box-shadow: 0 4px 18px rgba(123, 44, 191, 0.5),  0 0 12px rgba(199, 125, 255, 0.34); }
+    50%      { box-shadow: 0 4px 20px rgba(123, 44, 191, 0.62), 0 0 20px rgba(199, 125, 255, 0.5); }
 }
 
 /* Send-tap micro animation: 120ms squash + icon launch */
@@ -4670,7 +5189,7 @@ body.msg-info-open {
     align-items: center;
     justify-content: center;
     border: 1px solid rgba(224, 170, 255, 0.55);
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: radial-gradient(circle at 30% 20%, rgba(255, 214, 245, 0.28), transparent 35%), linear-gradient(145deg, rgba(199, 125, 255, 0.34), rgba(123, 44, 191, 0.3));
     color: #fff;
     cursor: pointer;
@@ -4727,6 +5246,10 @@ body.msg-info-open {
     opacity: 1;
 }
 
+.chat-plus-btn:active:not(:disabled) {
+    transform: scale(0.92);
+}
+
 .chat-plus-btn:disabled {
     opacity: 0.42;
     cursor: not-allowed;
@@ -4764,7 +5287,9 @@ body.msg-info-open {
     height: 11px;
     border-right: 1px solid rgba(224, 170, 255, 0.32);
     border-bottom: 1px solid rgba(224, 170, 255, 0.32);
-    background: rgba(24, 13, 42, 0.98);
+    /* Match the darker end of the menu's gradient so the arrow blends into
+       the surface instead of sitting on it as a slightly-off block. */
+    background: rgba(17, 10, 31, 0.98);
     transform: rotate(45deg);
 }
 
@@ -4874,7 +5399,9 @@ body.msg-info-open {
     }
 }
 
-/* Visible focus rings for keyboard navigation (chat controls) */
+/* Visible focus rings for keyboard navigation (chat controls).
+   Uses the --ring-focus token defined in :root so every focus ring in the
+   app is one value; a design change to focus colour lands in one place. */
 .chat-identity-toggle .toggle-btn:focus-visible,
 .notify-btn:focus-visible,
 .chat-send-btn:focus-visible,
@@ -4900,7 +5427,7 @@ body.msg-info-open {
 .chat-video-ctrl-btn:focus-visible,
 .chat-media-retry:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(199, 125, 255, 0.5);
+    box-shadow: var(--ring-focus);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4917,11 +5444,15 @@ body.msg-info-open {
 .chat-scroll-fab {
     position: absolute;
     right: 1rem;
-    /* P2: Float above the dynamic input bar (+ iOS home indicator) — uses --input-bar-height */
-    bottom: calc(var(--input-bar-height, 72px) + 16px + env(safe-area-inset-bottom, 0px));
+    /* Float above the dynamic composer. --input-bar-height is measured from
+       the composer's offsetHeight in JS, which already includes the
+       safe-area-inset-bottom padding the composer carries — so adding
+       env(safe-area-inset-bottom) here double-counted and left the FAB
+       floating ~34px higher than intended on notched iPhones. */
+    bottom: calc(var(--input-bar-height, 72px) + 16px);
     width: 44px;
     height: 44px;
-    border-radius: 50%;
+    border-radius: var(--radius-circle);
     background: rgba(26, 15, 46, 0.85);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
@@ -4933,7 +5464,7 @@ body.msg-info-open {
     align-items: center;
     justify-content: center;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), 0 0 14px rgba(123, 44, 191, 0.25);
-    z-index: 30;
+    z-index: var(--z-popover);
     opacity: 0;
     transform: scale(0.6) translateY(8px);
     pointer-events: none;
@@ -5000,9 +5531,9 @@ body.msg-info-open {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     text-align: center;
-    padding: 2rem 1.5rem;
+    padding: var(--space-8) var(--space-6);
     animation: emptyStateIn var(--dur-glide) var(--ease-out-quint) both;
 }
 
@@ -5013,8 +5544,17 @@ body.msg-info-open {
 
 .chat-empty-icon {
     font-size: 3rem;
-    animation: cueBreathe 2.4s ease-in-out infinite;
+    animation: emptyIconPulse 2.8s ease-in-out infinite;
     filter: drop-shadow(0 4px 16px rgba(123, 44, 191, 0.5));
+    will-change: transform;
+    transform-origin: center;
+}
+
+/* Gentle scale-breathe. Transform-only so it stays on the compositor and
+   doesn't re-rasterize the emoji's drop-shadow every frame. */
+@keyframes emptyIconPulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.09); }
 }
 
 .chat-empty-title {
@@ -5078,13 +5618,20 @@ body.msg-info-open {
 .chat-identity-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(5, 2, 10, 0.9);
+    /* SECURITY: identity gate between PIN and live chat. Same opaque-base
+       pattern as the password and PIN overlays — defense in depth so no
+       chat content can bleed through even if a future code path forgets
+       to clear the message list on relock. */
+    background-color: #05020a;
+    background-image: linear-gradient(180deg,
+        rgba(20, 10, 38, 0.92) 0%,
+        rgba(5, 2, 10, 0.96) 100%);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 90; /* below the PIN lock overlay (100) */
+    z-index: var(--z-sheet); /* below the PIN lock overlay (--z-lock) */
     padding: calc(1.5rem + env(safe-area-inset-top, 0px)) 1.5rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
 }
 
@@ -5134,7 +5681,7 @@ body.msg-info-open {
     gap: 0.6rem;
     width: 100%;
     min-height: 52px;
-    padding: 0.85rem 1.25rem;
+    padding: 0.85rem var(--space-5);
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.07);
     border: 1.5px solid rgba(199, 125, 255, 0.35);
@@ -5374,10 +5921,16 @@ body.msg-info-open {
     pointer-events: none;
 }
 
+/* Pop runs as a keyframe so the badge lands with a small overshoot and a
+   hint of rotation, then settles. Reads as tactile without being loud. */
 .chat-reaction.pop {
-    opacity: 1;
-    transform: scale(1);
-    transition: transform var(--dur-ui) var(--ease-spring), opacity var(--dur-ui) var(--transition-smooth);
+    animation: reactionPop 0.5s var(--ease-spring) both;
+}
+
+@keyframes reactionPop {
+    0%   { opacity: 0; transform: scale(0.42) rotate(-10deg); }
+    55%  { opacity: 1; transform: scale(1.14) rotate(5deg); }
+    100% { opacity: 1; transform: scale(1)   rotate(0deg); }
 }
 
 .chat-bubble.left .chat-reaction {
@@ -5400,5 +5953,54 @@ body.msg-info-open {
 
     .chat-new-divider.divider-pop {
         animation: none;
+    }
+}
+
+/* ===================================================
+   REDUCED MOTION — MASTER SAFETY NET
+   The earlier @media (prefers-reduced-motion) blocks cover specific
+   components one by one. This final block is defense in depth:
+     1. A global duration clamp so any animation or transition added in
+        future cannot accidentally ship without reduced-motion handling
+        just because a new component forgets to be listed. This is the
+        standard pattern used by normalize/reset libraries.
+     2. Explicit overrides for the continuous ambient motion earlier
+        blocks did not name: the drifting background orbs and floating
+        bokeh particles. These run for the entire session and are the
+        most likely source of low-level motion discomfort.
+     3. An explicit override for .chat-lock-icon, which shares the
+        lockPulse keyframe with .lock-icon but was missed by the earlier
+        block that only listed .lock-icon.
+   The clamp uses !important on duration only, never on animation-name
+   or transition-property, so the earlier `animation: none` /
+   `transition: none` blocks still win — and animationend / transitionend
+   events continue to fire for JS listeners that depend on them.
+   =================================================== */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        transition-delay: 0s !important;
+        scroll-behavior: auto !important;
+    }
+
+    .bg-orb {
+        animation: none !important;
+    }
+
+    .bokeh-particle {
+        display: none !important;
+        animation: none !important;
+    }
+
+    .confetti-piece {
+        animation: none !important;
+    }
+
+    .chat-lock-icon {
+        animation: none !important;
     }
 }
