@@ -4,13 +4,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- SECURITY: never leak the current URL via the Referer header when a
+         chat link opens in a new tab. Chat links already carry rel="noreferrer",
+         but this meta is the belt-and-suspenders default for any future link
+         or navigation that doesn't. -->
+    <meta name="referrer" content="no-referrer">
     <title>For Penguin 💜</title>
     <link rel="icon"
         href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐧</text></svg>">
     <meta name="description" content="A special birthday surprise for my bestfriend">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <!-- display=optional: without this, the first visit renders fallback
+         text briefly and swaps to Outfit when the woff2 arrives. Because the
+         password card is flex-centred, the text-height change during that
+         swap shifts the entire card vertically — visible jitter. With
+         display=optional the fallback is used for the entire session if the
+         font is not already cached; subsequent visits (cached) use Outfit
+         from the first paint. No swap = no jitter, ever. -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600&display=optional" rel="stylesheet">
+    <!-- Display typefaces used by the ladder, letter, and chat headers.
+         Loaded asynchronously (preload + onload flip) so they don't block
+         first paint but are already applied by the time the first scene
+         reveals. Previously injected by loadDisplayFonts() at scene entry,
+         which caused a visible serif→Lora FOUT right as the ladder appeared. -->
+    <link rel="preload" as="style"
+        href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Caveat:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap"
+        onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link rel="stylesheet"
+            href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Caveat:wght@400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap">
+    </noscript>
+    <!-- Warm up connections for services the chat/media scenes will hit.
+         Preconnect does DNS+TCP+TLS during the password/ladder phases so
+         the first /api/auth call and the first Cloudinary upload don't pay
+         the handshake at the worst possible moment. -->
+    <link rel="preconnect" href="https://penguin-api.madmax801065.workers.dev" crossorigin>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://api.cloudinary.com">
+    <link rel="dns-prefetch" href="https://res.cloudinary.com">
+    <link rel="dns-prefetch" href="https://api.giphy.com">
     <link rel="stylesheet" href="style.css?v=1.0.10">
 </head>
 
@@ -24,8 +57,15 @@
 
     <!-- Password Protection Overlay -->
     <div id="password-overlay" class="password-screen">
+        <div class="password-ambient" aria-hidden="true">
+            <span class="password-orb password-orb-1"></span>
+            <span class="password-orb password-orb-2"></span>
+        </div>
         <div class="password-box glass-card">
-            <div class="lock-icon">🔒</div>
+            <div class="lock-icon-wrap">
+                <span class="lock-icon-ring" aria-hidden="true"></span>
+                <div class="lock-icon">🔒</div>
+            </div>
             <h2 class="glow-text mb-4">My Comfort Space… 💜</h2>
             <p class="body-text mb-2" style="font-size: 0.9rem;">Please enter the 4-digit code to unlock.</p>
             <div class="input-group">
@@ -50,6 +90,11 @@
     <!-- Hidden Content Root — 3 Scene Experience -->
     <div id="main-content" class="content-root"
         style="display: none; opacity: 0; transform: scale(0.98); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);">
+
+        <!-- Scene Transition Progress Indicator -->
+        <div class="scene-transition-progress" id="scene-transition-progress">
+            <div class="scene-transition-progress-bar" id="scene-transition-progress-bar"></div>
+        </div>
 
         <!-- Bokeh Particles Container -->
         <div id="bokeh-container"></div>
@@ -179,6 +224,9 @@
 
             <!-- Fullscreen Letter View -->
             <div id="letter-fullscreen" class="letter-fullscreen">
+                <div class="letter-progress-track" id="letter-progress-track">
+                    <div class="letter-progress-fill" id="letter-progress-fill"></div>
+                </div>
                 <div class="letter-full-content" id="letter-full-content">
                     <div class="letter-date">29 July 💜</div>
                     <div class="letter-greeting">Dear Bhandhari!</div>
@@ -226,7 +274,10 @@ You</p>
             <!-- Chat Security Lock Overlay -->
             <div id="chat-lock-overlay" class="chat-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="chat-lock-title" aria-describedby="chat-lock-subtitle chat-pin-status chat-pin-error" tabindex="-1">
                 <div class="chat-lock-box glass-card">
-                    <div class="chat-lock-icon" aria-hidden="true">🔒</div>
+                    <div class="chat-lock-icon-wrap">
+                        <span class="chat-lock-icon-ring" aria-hidden="true"></span>
+                        <div class="chat-lock-icon" aria-hidden="true">🔒</div>
+                    </div>
                     <h2 class="chat-lock-title glow-text" id="chat-lock-title">Chat Locked 💜</h2>
                     <p class="chat-lock-subtitle" id="chat-lock-subtitle">Enter 4-digit PIN to unlock chat</p>
                     <!-- PIN entry is memory-only and uses the custom keypad; no password-like input is present. -->
@@ -276,7 +327,7 @@ You</p>
                 <!-- Header -->
                 <header class="chat-header">
                     <div class="chat-header-title-wrap">
-                        <span class="presence-dot" id="presence-dot" role="img" aria-label="Presence unknown"></span>
+                        <span class="presence-dot" id="presence-dot" role="img" aria-label="Presence unknown" aria-live="polite" aria-atomic="true"></span>
                         <h2 class="chat-title">Chat Screen</h2>
                         <button type="button" class="notify-btn" id="notify-bhatari-btn" title="Notify Bhatari on Telegram" aria-label="Notify Bhatari on Telegram">
                             <span class="notify-icon" aria-hidden="true">🔔</span>

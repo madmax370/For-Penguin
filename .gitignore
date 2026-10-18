@@ -69,3 +69,7 @@ htmlcov/
 # Freebuff workspace data
 .freebuff/
 ```
+# Brud Code workspace history
+.brud/
+# Cloudflare Worker (deployed separately; not tracked here)
+worker.js
