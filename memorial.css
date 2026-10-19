@@ -1,0 +1,261 @@
+/* ===================================================
+   MEMORIAL SCREEN — styles
+   ===================================================
+   Isolated module. Depends on :root tokens defined in
+   style.css (loaded first). To remove, delete this file
+   and memorial.js, then revert the index.html additions.
+   =================================================== */
+
+.memorial-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    /* Default hidden. showMemorialScreen() sets display:flex.
+       If JS is disabled or the flag is off, this stays hidden
+       and initMainApp's else branch runs the normal ladder flow. */
+    display: none;
+    /* safe center: vertically centres content normally, but aligns to the
+       top (instead of clipping both ends) when the content is taller than
+       the viewport. Critical for landscape phones and very short screens
+       where the number + message + Continue button together exceed the
+       available height. Falls back to plain `center` on browsers without
+       `safe` support — same behaviour as before on those. */
+    align-items: safe center;
+    justify-content: center;
+    /* Opaque base + soft radial glow layered on top. Same pattern
+       as the password/PIN overlays, so this screen can never leak
+       content behind it. */
+    background-color: #05020a;
+    background-image: radial-gradient(ellipse 100% 60% at 50% 38%,
+        rgba(60, 22, 100, 0.42) 0%,
+        rgba(20, 10, 38, 0.78) 45%,
+        rgba(5, 2, 10, 0.96) 100%);
+    padding: env(safe-area-inset-top, 0px) var(--space-6) env(safe-area-inset-bottom, 0px);
+    /* overflow-y instead of overflow: hidden so on short viewports the
+       Continue button is reachable by scrolling rather than being clipped
+       with no way to proceed. overflow-x stays hidden to preserve the
+       vertical composition. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    outline: none;
+    animation: memorialOverlayIn 0.3s var(--ease-out-quint) both;
+}
+
+.memorial-screen.memorial-leaving {
+    animation: memorialOverlayOut 0.45s var(--ease-out-quint) forwards;
+    pointer-events: none;
+}
+
+@keyframes memorialOverlayIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes memorialOverlayOut {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* ---------------------------------------------------------- */
+
+.memorial-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    max-width: 380px;
+    width: 100%;
+}
+
+/* Thin hanging line — thematic nod to the ladder's dangling strings,
+   and a literal gesture toward "days in suspension". */
+.memorial-line {
+    width: 1px;
+    height: 48px;
+    background: linear-gradient(to bottom,
+        transparent 0%,
+        rgba(199, 125, 255, 0.5) 100%);
+    margin-bottom: var(--space-6);
+    transform-origin: top center;
+    animation: memorialLineIn 0.5s var(--ease-out-quint) 0.08s both;
+}
+@keyframes memorialLineIn {
+    from { transform: scaleY(0); opacity: 0; }
+    to   { transform: scaleY(1); opacity: 1; }
+}
+
+.memorial-counter {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    /* Hidden until JS adds .font-ready once Playfair Display is ready.
+       Prevents the number from flashing in a fallback serif on first
+       visit (the woff2 has not downloaded yet when the memorial appears). */
+    opacity: 0;
+}
+.memorial-counter.font-ready {
+    animation: memorialCounterIn 0.6s var(--ease-spring) both;
+}
+@keyframes memorialCounterIn {
+    from { transform: translateY(10px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Slow breathing halo behind the number. 6 s cycle — reads as a
+   living glow rather than an animation. */
+.memorial-counter::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 220px;
+    height: 220px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle,
+        rgba(199, 125, 255, 0.16) 0%,
+        transparent 68%);
+    pointer-events: none;
+    z-index: -1;
+    animation: memorialGlow 6s ease-in-out infinite;
+}
+@keyframes memorialGlow {
+    0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+    50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.06); }
+}
+
+.memorial-number {
+    /* Georgia first so even a brief fallback flash has similar metrics to
+       Playfair; generic serif is the last resort. */
+    font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+    font-weight: 600;
+    font-size: clamp(4rem, 18vw, 7rem);
+    line-height: 1;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #c77dff 0%, #f3e8ff 50%, #e0aaff 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: #f3e8ff;
+    filter: drop-shadow(0 0 24px rgba(199, 125, 255, 0.35));
+    font-variant-numeric: tabular-nums;
+}
+
+.memorial-days {
+    font-family: 'Outfit', sans-serif;
+    font-size: var(--text-micro);
+    font-weight: 600;
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    color: rgba(224, 170, 255, 0.72);
+}
+
+.memorial-divider {
+    width: 48px;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(199, 125, 255, 0.5) 50%,
+        transparent 100%);
+    margin: var(--space-6) 0 var(--space-5);
+    transform-origin: center;
+    animation: memorialDividerIn 0.4s var(--ease-out-quint) 0.5s both;
+}
+@keyframes memorialDividerIn {
+    from { transform: scaleX(0); opacity: 0; }
+    to   { transform: scaleX(1); opacity: 1; }
+}
+
+@keyframes memorialFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.memorial-text-1 {
+    margin: 0;
+    font-family: 'Lora', serif;
+    font-style: italic;
+    font-size: var(--text-small);
+    line-height: var(--leading-relaxed);
+    color: rgba(241, 241, 241, 0.62);
+    animation: memorialFadeIn 0.38s var(--ease-out-quint) 0.64s both;
+}
+
+.memorial-text-2 {
+    margin: var(--space-5) 0 0;
+    font-family: 'Playfair Display', serif;
+    font-weight: 500;
+    font-size: clamp(1.15rem, 4vw, 1.4rem);
+    line-height: var(--leading-snug);
+    color: rgba(243, 232, 255, 0.96);
+    text-wrap: balance;
+    animation: memorialFadeIn 0.4s var(--ease-out-quint) 0.78s both;
+}
+
+.memorial-heart {
+    display: inline-block;
+    margin-left: 0.12em;
+    filter: drop-shadow(0 0 8px rgba(255, 133, 161, 0.4));
+}
+
+/* Continue — inherits .continue-btn base style, overrides the
+   default opacity:0 with its own entrance animation. */
+.memorial-continue {
+    margin-top: var(--space-8);
+    min-width: 10rem;
+    min-height: 44px; /* WCAG AAA touch target */
+    opacity: 1;
+    animation: memorialBtnIn 0.4s var(--ease-out-quint) 0.95s both;
+    touch-action: manipulation;
+}
+@keyframes memorialBtnIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------- */
+/* Reduced motion: everything becomes a plain cross-fade.      */
+/* ---------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    .memorial-screen,
+    .memorial-screen * {
+        animation-duration: 0.15s !important;
+        animation-delay: 0ms !important;
+    }
+    .memorial-line,
+    .memorial-counter,
+    .memorial-divider,
+    .memorial-text-1,
+    .memorial-text-2,
+    .memorial-continue,
+    .memorial-counter::before {
+        transform: none !important;
+        animation: none !important;
+    }
+    /* Force the counter visible even though its .font-ready animation is
+       disabled above. Without this, the base opacity:0 would leave the
+       number permanently hidden for reduced-motion users. */
+    .memorial-counter {
+        opacity: 1 !important;
+    }
+    .memorial-counter::before {
+        opacity: 0.7;
+    }
+    .memorial-screen.memorial-leaving {
+        animation: memorialOverlayOut 0.2s linear forwards !important;
+    }
+}
+
+/* ---------------------------------------------------------- */
+/* Desktop: a little more breathing room                       */
+/* ---------------------------------------------------------- */
+@media (min-width: 768px) {
+    .memorial-line {
+        height: 64px;
+    }
+    .memorial-content {
+        padding: var(--space-4) 0;
+    }
+}

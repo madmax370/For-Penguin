@@ -1810,8 +1810,21 @@ transition: none;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* safe center: content stays vertically centred when it fits, but
+       aligns to the top (instead of clipping top AND bottom) when it
+       overflows. Without `safe`, flex-centre overflow splits equally
+       above and below, leaving the Close button below the viewport. */
+    justify-content: safe center;
     padding: var(--space-8) var(--space-6);
+    /* BUG FIX: on short viewports (landscape phones, small tablets in
+       landscape) the letter card (max-height 75vh) plus the Close Letter
+       button exceeded 100vh, and the parent scene's overflow: hidden
+       clipped the button with no way to reach it. Allowing the fullscreen
+       overlay itself to scroll reveals the button and letter together,
+       without touching the scene's own overflow handling. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.5s cubic-bezier(0.25, 1, 0.5, 1), visibility 0s linear 0.5s;
@@ -1842,6 +1855,10 @@ transition: none;
     width: 100%;
     max-height: 75vh;
     overflow-y: auto;
+    /* Prevent flex-shrink so the letter card keeps its full height and
+       the fullscreen overlay scrolls instead of compressing the card
+       (which would just hide more content inside the card). */
+    flex-shrink: 0;
     /* Layered shadow system — five layers that together read as a lit,
        dimensional sheet of paper:
          (1) deep soft drop for physical depth
@@ -1908,6 +1925,48 @@ transition: none;
     cursor: pointer;
     box-shadow: 0 4px 15px rgba(123, 44, 191, 0.3);
     transition: all 0.3s ease;
+    /* Prevent flex-shrink — the Close Letter button must stay full size
+       so it remains a 44px+ touch target regardless of vertical pressure. */
+    flex-shrink: 0;
+}
+
+/* ===================================================
+   LETTER FULLSCREEN — MOBILE LAYOUT FIX
+   ===================================================
+   On mobile, 100vh represents the largest viewport (URL bar hidden), not
+   the current visible area. With the letter paper at 75vh plus the Close
+   Letter button and paddings, the button ends up below the visible
+   viewport on small phones. overflow-y: auto on the fullscreen helps,
+   but touch gestures on the letter paper are captured by the paper's own
+   internal scroller first, so the fullscreen scroll never triggers and
+   the button becomes unreachable.
+
+   Fix: cap the letter paper height using calc() against dvh (dynamic
+   viewport height, which tracks the *currently visible* area) so the
+   Close button always fits inside the visible screen — no scroll needed.
+   The 220px reserve covers: 32px top padding + 24px button margin +
+   44px button + 32px bottom padding + ~88px safety margin for browser
+   chrome / safe-area / progress bar.
+   Desktop is unaffected (media query is mobile-only).            */
+@media (max-width: 768px) {
+    .letter-fullscreen {
+        height: 100vh;
+        height: 100dvh;
+        max-height: 100vh;
+        max-height: 100dvh;
+    }
+    .letter-full-content {
+        /* Fallback for browsers without svh support — same 220px reserve
+           used below, kept consistent so maintainers read one number. */
+        max-height: calc(100vh - 220px);
+        /* Cap the paper so the Close Letter button always fits within the
+           *smallest* viewport (svh = URL bar shown, the worst case). Using
+           svh instead of dvh avoids the paper resizing mid-scroll when
+           mobile browsers show/hide the URL bar as the user reads —
+           dvh updates dynamically and would cause visible reflow. svh is
+           static and therefore jitter-free. */
+        max-height: min(75vh, calc(100svh - 220px));
+    }
 }
 
 @media (hover: hover) {

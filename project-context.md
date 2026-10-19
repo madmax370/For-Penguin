@@ -1,10 +1,12 @@
 # Project Context
 
-> **Last reviewed:** 2026-10-18
+> **Last reviewed:** 2026-10-19
 >
 > This document describes the current implementation of the project. It is documentation only; changing this file does not change application behavior.
 >
 > **2026-10-18 session highlights:** unified design-token system (`:root` custom properties for spacing/type/radius/z-index/shadows/focus), ~460 lines of dead CSS removed, mobile performance rewrite (invisible `backdrop-filter` passes removed, all scroll/resize listeners rAF-throttled, cached parallax geometry), security hardening (opaque privacy overlays, Firestore listener + DOM teardown on relock, `<meta name="referrer">`), accessibility pass (WCAG touch targets, missing `:focus-visible` rules, identity-overlay focus trap, master reduced-motion safety net), typography cleanup (`--text-meta` token, contrast bumps), and real bug fixes (PIN dot animation clip, heading sheen cascade, FAB safe-area double-count, letter progress listener leak, deprecated `keypress`, untracked progress-bar timer, stale ladder reveal timers). Full changelog in §11.
+>
+> **2026-10-19 session highlights:** new temporary memorial interstitial (self-contained, feature-flagged, removable) between the password unlock and the ladder scene, showing an elapsed-day counter from 30 Aug 2026; letter fullscreen mobile viewport fix (`dvh`/`svh`, `safe center`, scrollable when overflowing) so the Close Letter button is always reachable on short screens; Playfair Display prefetch + font-gate to prevent FOUT on the memorial counter; password double-submit guard (`passwordAuthSucceeded` flag + disabled controls during the 500 ms fade-out) so `initMainApp()` runs exactly once even on rapid clicks; identity-overlay focus trap.
 
 ---
 
@@ -40,6 +42,8 @@ The Chat Scene can also be opened directly from the Image Ladder using **Go to C
 | `index.html` | Complete page structure, overlays, scenes, and chat markup |
 | `style.css` | All layout, colors, typography, responsive rules, animations, and chat styling |
 | `script.js` | Backend calls, scene controller, Firebase chat, media, presence, receipts, reactions, and UI interactions |
+| `memorial.js` | **Temporary, removable.** Self-contained IIFE that renders a one-shot memorial interstitial between password unlock and the ladder. Feature flag `MEMORIAL_ENABLED` inside the file; `window.showMemorialScreen({ onComplete })` is the only external API. Uses `Date.UTC` of local calendar components for DST-safe day counting. Not imported anywhere — loaded via `<script defer>` in `index.html`. |
+| `memorial.css` | All memorial-screen styles. Isolated from `style.css`; delete with `memorial.js` to fully remove the feature. |
 | `songs/song1.mp3` | Currently unused audio asset |
 | `instructions.md` | Repository workflow and Git requirements |
 | `task.md` | Historical planning document for the Chat Scene revamp |
@@ -498,6 +502,7 @@ Important security items:
 - There is no JavaScript linter, test runner, build process, or automated browser test suite.
 - **2026-10-18:** ~460 lines of dead CSS removed — unused scene blocks (`.dua-particles`, `.question-*`/`.nav-*`, `.letter-modal*`, `.letter-paper*`, `.letter-header`, `.letter-tag`, `.letter-title`), the entire `.reply-scene` / `.send-reply-btn` / `.spinner` block, `.pulse-anim`, `@keyframes spin`, `@keyframes ringPulse`, `@keyframes pulse`. All selectors were grep-confirmed to have no matching element in `index.html` and no reference from `script.js`. The stylesheet has been reorganised around a `:root` token system (see §12) — new rules should use the tokens rather than one-off rem/px values.
 - `worker.js` is untracked in git by design (deployed from Cloudflare dashboard), but its source lives in the repo root for reference.
+- **Memorial screen (2026-10-19) is intentionally temporary.** To remove entirely: (1) delete `memorial.js` and `memorial.css`; (2) delete the `<link rel="stylesheet" href="memorial.css">`, `<div id="memorial-screen">…</div>` block, and `<script src="memorial.js" defer>` line from `index.html`; (3) delete `let memorialShownThisSession` and the `if (memorialEl && !memorialShownThisSession) { … } else { … }` block from `initMainApp()` in `script.js` — restore the original single line `controller.showScene(0)` (or leave the guard; the `else` branch runs identically when the element is absent). To disable without deleting: set `MEMORIAL_ENABLED = false` at the top of `memorial.js`. No other file references the memorial — verification after removal: `grep -i memorial index.html script.js style.css` returns zero matches.
 
 ### UI caveat
 
@@ -506,6 +511,34 @@ The current Chat Scene has been reviewed through source inspection and manual pr
 ---
 
 ## 11. Recent UI Updates
+
+### Session: Memorial screen + letter mobile fix — 2026-10-19
+
+**Memorial interstitial (temporary feature)**
+
+- New self-contained screen inserted between password unlock and the ladder scene, showing an elapsed-day counter from 30 Aug 2026. Message: **"50 days of not talking to you… Missing you a lot, Bhandhari. ❤️"**
+- **Architecture:** `memorial.js` (IIFE, exposes `window.showMemorialScreen` + `window.__memorialGetElapsedDays` for verification) and `memorial.css` (all memorial-specific styles). Only integration point: a ~20-line block at the end of `initMainApp()` that runs the memorial instead of calling `controller.showScene(0)` directly. If the element or function is absent, `initMainApp()` falls through to the normal ladder flow — zero risk of breaking the app if the feature is removed.
+- **Feature flag:** `const MEMORIAL_ENABLED = true;` at the top of `memorial.js`. Flip to `false` to disable without deleting any files — the module exits immediately, `window.showMemorialScreen` stays undefined, `initMainApp()` falls through.
+- **Day counting:** elapsed **calendar** days in the user's local timezone, not inclusive. Both the start date (30 Aug 2026) and today are canonicalised to `Date.UTC(year, month, day)` from local components, so the difference is always an exact multiple of 86400000 — no DST drift, no timezone off-by-one. Day count updates at local midnight via a single self-rescheduling `setTimeout` (no polling) and on `visibilitychange`. Exposed at `window.__memorialGetElapsedDays(date)` for offline verification.
+- **Font FOUT prevention:** Playfair Display 600/500 woff2 prefetched via `document.fonts.load()` in `script.js` immediately on page load. The counter's visibility is gated by a `.font-ready` class (added once `document.fonts.load()` resolves, with a 400ms fallback timeout) — the number never flashes in fallback serif. `memorial.css` starts `.memorial-counter` at `opacity: 0`; reduced-motion block forces it visible since the reveal animation is disabled for those users.
+- **Double-submit guard (real bug fixed):** previously, a double-click on Unlock (or Enter + click during the 500ms password fade-out) could schedule `initMainApp()` twice. The first call would show the memorial; the second call would see `memorialShownThisSession = true`, hit the `else` branch, and immediately hide the memorial element the first call had just shown — appearing as "memorial flashes then disappears". Fixed with `passwordAuthSucceeded` flag (declared in the DOMContentLoaded scope, checked at the top of `checkPassword()`, set to `true` on successful auth, reset to `false` on privacy relock) plus `passwordInput.disabled = true` / `unlockBtn.disabled = true` in the success path so the controls physically cannot trigger a second submission.
+- **Focus trap:** the memorial declares `role="dialog" aria-modal="true"`; a `keydown` handler on the overlay routes Tab and Shift+Tab back to the Continue button so focus cannot escape to elements rendered behind the overlay.
+- **Screen-reader label:** removed `aria-label="Days"` from the `.memorial-number` span — it was overriding the element's text content so a screen reader announced "Days days" instead of the actual number. The natural text ("50" followed by the adjacent "days" label) is read correctly.
+- **Motion:** intro choreography (~1.35s total) — line grows down, counter fades up with breathing halo, divider expands, two message lines fade up, Continue button arrives. All properties are `transform` and `opacity` (GPU-composited); no filters, no blur, no JS animation loop. Outro: overlay fades out over 450ms while the ladder scene's own 1.2s fade-in crossfades underneath — single continuous transition, no gap. Continue click during intro cancels remaining animations via `getAnimations().forEach(finish)`.
+- **Reduced-motion:** every memorial animation becomes instant fade, transforms stripped, counter forced visible (see font FOUT note above).
+
+**Letter fullscreen mobile viewport fix**
+
+- **Root cause:** `.letter-fullscreen` was a `position: fixed` overlay sitting inside `#scene-envelope` (which carries `overflow: hidden`). On mobile, `100vh` represents the *largest* viewport (URL bar hidden), not the current visible area. On small phones, `letter-full-content` (75vh) + Close Letter button + paddings exceeded the visible area, but the parent's `overflow: hidden` clipped the button with no way to reach it. Touch gestures on the letter paper are captured by the paper's own internal scroller first, so the fullscreen overlay's own scroll never triggered.
+- **Fix:** `.letter-fullscreen` now uses `justify-content: safe center` (vertically centres content normally, aligns to top instead of clipping both ends when overflowing), `overflow-y: auto` with `-webkit-overflow-scrolling: touch` and `overscroll-behavior: contain`, and `overflow-x: hidden`. `flex-shrink: 0` on `.letter-full-content` and `.letter-close-btn` prevents compression under vertical pressure. Mobile media query caps the paper at `min(75vh, calc(100svh - 220px))` — using `svh` (small viewport height = URL bar shown, worst case) rather than `dvh` avoids the paper resizing mid-scroll as mobile browsers show/hide their chrome. Desktop is unaffected (the media query is `max-width: 768px`).
+
+**Session validation**
+
+- `node --check script.js` and `node --check memorial.js` pass after every batch.
+- `worker.js` **untouched** throughout — verified via `git diff --stat worker.js` returning no output.
+- Manual verification still recommended on real devices: memorial on landscape phone (Continue button reachable via scroll), letter fullscreen on short screens (Close Letter button reachable), double-click Unlock (memorial appears exactly once), Playfair "50" (no fallback-serif flash on first visit).
+
+---
 
 ### Session: CSS refactor + visual polish — 2026-10-18
 
@@ -806,3 +839,5 @@ There is no automated test suite. The following checks are currently appropriate
 The most recent validation (after the date-divider/unread-nav changes) completed successfully for JavaScript syntax (`node --check script.js`), CSS lint (`stylelint style.css`), and Git whitespace checks (`git diff --check`). The secure-backend work added validation of `node --check worker.js` and live HTTP checks against the deployed Worker: `/api/auth` success + 401/429 paths, `/api/tg` (POST JSON and GET query) returning 200 and calling Telegram, an expired token returning 401, and CORS preflight answering 204. Earlier passes also covered GIF/PIN structure assertions and HTTP 200 responses from a temporary local static preview. No automated browser test runner is installed, so the sticky push-out, midnight relabel, unread jump, GIF picker, keyboard, focus, lifecycle, and lockout behavior still require manual browser checks.
 
 **2026-10-18:** `node --check script.js` passed after every edit batch in the CSS-refactor and visual-polish session (§11). No automated browser test runner is installed — the polish work was validated by structural diff review and targeted DevTools checks on the reported issues (password card jitter during font swap, letter bottom fade, chat scroll smoothness, iPhone FAB positioning). **Manual mobile-device verification is still recommended** for the new animations, touch targets, and reduced-motion states listed in §11 before any release.
+
+**2026-10-19:** `node --check script.js` and `node --check memorial.js` both pass. `worker.js` was verified untouched (`git diff --stat worker.js` returns no output). The memorial day-counting function is exposed at `window.__memorialGetElapsedDays(date)` for deterministic offline verification: expected `__memorialGetElapsedDays(new Date(2026, 7, 30, 12))` = 0, `__memorialGetElapsedDays(new Date(2026, 9, 18, 12))` = 49, `__memorialGetElapsedDays(new Date(2026, 9, 19, 12))` = 50. No automated browser test runner; the double-submit fix, font prefetch, letter mobile fix, and memorial removal path were validated by structural review. Manual device checks are still recommended for: memorial on landscape phone, letter on short screens, double-click Unlock, first-visit font render.
