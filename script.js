@@ -9,6 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // If you don't see this in the console, the browser is serving a stale cached script.
     console.info('[For Penguin] build 1.0.10');
 
+    // Prefetch the Playfair Display woff2 files. The memorial screen is the
+    // first user of this font, and without a hint the download does not even
+    // start until the number is laid out — producing a visible fallback-serif
+    // flash as the memorial appears. Kicking the load off here means the
+    // font is ready by the time the user has finished typing the password.
+    if (document.fonts && document.fonts.load) {
+        document.fonts.load('600 4rem "Playfair Display"').catch(() => {});
+        document.fonts.load('500 1.4rem "Playfair Display"').catch(() => {});
+    }
+
     // ===== PASSWORD LOGIC (FIXED LOCKOUT PERSISTENCE) =====
     const passwordOverlay = document.getElementById('password-overlay');
     const passwordInput = document.getElementById('password-input');
@@ -72,6 +82,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let failedAttempts = parseInt(sessionStorage.getItem('pwd_attempts') || '0');
     let lockoutEndTime = parseInt(sessionStorage.getItem('pwd_lockout_end') || '0');
     let isLockedOut = false;
+    // One-shot success guard. Prevents a double submit (click + Enter, or an
+    // impatient re-click during the 500 ms fade-out) from scheduling
+    // initMainApp() twice — the second call used to hide the memorial the
+    // first call had just shown. Reset on privacy relock so re-unlock works.
+    let passwordAuthSucceeded = false;
 
     // Check if still locked out on page load
     const now = Date.now();
@@ -155,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // returned session token in memory and hand it to the worker for chat,
     // Telegram and private images. No secret is compared in the browser.
     const checkPassword = async () => {
-        if (isLockedOut) return;
+        if (isLockedOut || passwordAuthSucceeded) return;
 
         try {
             const code = String(passwordInput.value || '').trim();
@@ -170,6 +185,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json().catch(() => ({}));
                 if (!data.ok || !data.token) throw new Error('Bad payload');
                 sessionToken = data.token;
+                passwordAuthSucceeded = true;
+                // Disable the controls so a stray Enter / click during the
+                // 500 ms fade-out cannot trigger a second submission (which
+                // previously caused initMainApp to run twice and the second
+                // call to hide the memorial the first call had just shown).
+                passwordInput.disabled = true;
+                unlockBtn.disabled = true;
                 startSessionKeepAlive();
                 failedAttempts = 0;
                 // Brief confirmation beat before the fade-out — a soft green
@@ -292,6 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cleanupReadReceiptObserver();
             relockChatForLifecycle();
             sessionToken = null; // privacy re-lock: never keep the session token across a hide
+            passwordAuthSucceeded = false; // allow the unlock flow to run again
             const notifyBtn = document.getElementById('notify-bhatari-btn');
             if (notifyBtn) notifyBtn.style.display = 'none';
             document.querySelectorAll('#chat-identity-toggle .toggle-btn').forEach(b => {
@@ -526,6 +549,11 @@ document.addEventListener('DOMContentLoaded', () => {
     //  MAIN APP INIT
     // ===================================================
 
+    // One-shot guard: the memorial screen shows once per page-load, not
+    // again after a privacy relock + re-unlock. In-memory only — a full
+    // page reload resets it, which is the intended behaviour.
+    let memorialShownThisSession = false;
+
     function initMainApp() {
         // Start all three ladder photos now (scene is still display:none
         // for 600ms). Otherwise photo 3, below the fold, waited to download.
@@ -566,10 +594,41 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Start Scene 1 after a brief pause for the content to render
-        setTimeout(() => {
+        // Hand off to the memorial screen (if present and not already
+        // shown this session), then transition to Scene 1 on Continue.
+        // Falls through to the normal ladder flow if the memorial is
+        // disabled, absent, or has already run. The existing
+        // SceneController transition handles the ladder fade-in — no
+        // second transition system is introduced.
+        const memorialEl = document.getElementById('memorial-screen');
+        if (memorialEl && !memorialShownThisSession) {
+            // Robust startup: memorial.js normally executes long before this
+            // point, but a transient cache miss or slow network can leave
+            // window.showMemorialScreen undefined. Poll briefly, then fall
+            // through to the ladder scene rather than getting stuck. The
+            // font-gate inside memorial.js hides the big number until
+            // Playfair is ready, so no FOUT on first visit.
+            const tryShowMemorial = (attemptsLeft) => {
+                if (typeof window.showMemorialScreen === 'function') {
+                    try {
+                        window.showMemorialScreen({
+                            onComplete: () => controller.showScene(0)
+                        });
+                        memorialShownThisSession = true;
+                        return;
+                    } catch (e) { /* fall through to retry */ }
+                }
+                if (attemptsLeft > 0) {
+                    setTimeout(() => tryShowMemorial(attemptsLeft - 1), 100);
+                } else {
+                    controller.showScene(0);
+                }
+            };
+            tryShowMemorial(15);
+        } else {
+            if (memorialEl) memorialEl.style.display = 'none';
             controller.showScene(0);
-        }, 600);
+        }
     }
 
 
