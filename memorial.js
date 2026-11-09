@@ -31,7 +31,7 @@
     'use strict';
 
     // Single feature flag — one-line rollback if needed.
-    var MEMORIAL_ENABLED = true;
+    var MEMORIAL_ENABLED = false;
     if (!MEMORIAL_ENABLED) return;
 
     // ----------------------------------------------------------------
